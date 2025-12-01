@@ -1,4 +1,4 @@
-# Resy-Bot
+# Resy Bot
 
 A comprehensive automated reservation system for Resy with both a Python backend API and a modern React web interface. Automatically search for and book restaurant reservations as soon as they become available.
 
@@ -30,7 +30,7 @@ Resy-Bot leverages Resy's API endpoints to make automated reservation calls righ
 - **AI-Powered Insights** - Get intelligent reservation tips and recommendations
 - **Restaurant Photos** - View high-quality venue images
 - **Firebase Caching** - Fast loading with persistent data storage
-- **Social Links** - Quick access to Google Maps, Resy, and Beli (coming soon)
+- **Social Links** - Quick access to Google Maps and Resy
 
 ## Tech Stack
 
@@ -106,7 +106,10 @@ pip install -r requirements.txt
 
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
+GOOGLE_PLACES_API_KEY=your_google_places_api_key_here
 ```
+
+Note: The Google Places API key is required for Google Maps link generation. Get your API key from the [Google Cloud Console](https://console.cloud.google.com/) and enable the Places API.
 
 5. Start the Flask server:
 
@@ -194,7 +197,7 @@ Firebase is pre-configured in the frontend. The Realtime Database caches:
 
 - AI-powered reservation insights
 - Restaurant photos
-- Social links (Google Maps, Resy, Beli)
+- Social links (Google Maps, Resy)
 
 Data persists across sessions and users, reducing API calls and improving load times.
 

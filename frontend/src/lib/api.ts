@@ -23,6 +23,7 @@ export interface SearchResult {
   type: string;
   price_range: number;
   address: string | null;
+  imageUrl?: string | null;
 }
 
 export interface ReservationRequest {
@@ -213,7 +214,8 @@ export async function getCalendar(venueId: string, partySize?: string): Promise<
 }
 
 export interface VenuePhotoData {
-  photoUrl: string;
+  photoUrl: string;  // For backwards compatibility
+  photoUrls: string[];  // Array of photo URLs
   placeName: string;
   placeAddress: string;
 }
@@ -252,5 +254,128 @@ export async function healthCheck(): Promise<boolean> {
     return data.status === 'ok';
   } catch {
     return false;
+  }
+}
+
+export interface TrendingRestaurant {
+  id: string;
+  name: string;
+  type: string;
+  priceRange: number;
+  location: {
+    neighborhood: string;
+    locality: string;
+    region: string;
+    address: string;
+  };
+  imageUrl: string | null;
+  rating: number | null;
+}
+
+/**
+ * Get trending/climbing restaurants
+ */
+export async function getTrendingRestaurants(limit?: number): Promise<TrendingRestaurant[]> {
+  const params = new URLSearchParams();
+  if (limit) {
+    params.append('limit', limit.toString());
+  }
+
+  const url = `${API_BASE_URL}/api/climbing${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch trending restaurants');
+  }
+
+  const result: ApiResponse<TrendingRestaurant[]> = await response.json();
+
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to fetch trending restaurants');
+  }
+
+  return result.data;
+}
+
+/**
+ * Get top-rated restaurants
+ */
+export async function getTopRatedRestaurants(limit?: number): Promise<TrendingRestaurant[]> {
+  const params = new URLSearchParams();
+  if (limit) {
+    params.append('limit', limit.toString());
+  }
+
+  const url = `${API_BASE_URL}/api/top-rated${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch top-rated restaurants');
+  }
+
+  const result: ApiResponse<TrendingRestaurant[]> = await response.json();
+
+  if (!result.success || !result.data) {
+    throw new Error(result.error || 'Failed to fetch top-rated restaurants');
+  }
+
+  return result.data;
+}
+
+export interface VenueLinks {
+  googleMaps: string | null;
+  resy: string | null;
+}
+
+export interface VenueBasicData {
+  name: string;
+  type: string;
+  address: string;
+  neighborhood: string;
+  priceRange: number;
+  rating: number;
+}
+
+export interface VenueLinksResponse {
+  links: VenueLinks;
+  venueData: VenueBasicData;
+}
+
+/**
+ * Get social media links and basic data for a venue (Google Maps, Resy, Beli)
+ */
+export async function getVenueLinks(venueId: string): Promise<VenueLinksResponse> {
+  console.log(`[API] Fetching venue links for venue_id: ${venueId}`);
+  const startTime = performance.now();
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/venue-links/${venueId}`);
+
+    if (!response.ok) {
+      console.error(`[API] Failed to fetch venue links. Status: ${response.status}`);
+      throw new Error('Failed to fetch venue links');
+    }
+
+    const result = await response.json();
+
+    if (!result.success) {
+      console.error(`[API] API returned error:`, result.error);
+      throw new Error(result.error || 'Failed to fetch venue links');
+    }
+
+    const elapsedTime = (performance.now() - startTime).toFixed(0);
+    const foundCount = Object.values(result.links).filter(link => link !== null).length;
+    console.log(`[API] ✓ Successfully fetched venue links in ${elapsedTime}ms. Found ${foundCount}/3 links:`, result.links);
+
+    return {
+      links: result.links,
+      venueData: result.venueData
+    };
+  } catch (error) {
+    const elapsedTime = (performance.now() - startTime).toFixed(0);
+    console.error(`[API] ✗ Error fetching venue links after ${elapsedTime}ms:`, error);
+    throw error;
   }
 }

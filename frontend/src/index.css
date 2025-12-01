@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Force cursor reset */
+* {
+  cursor: inherit;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -117,23 +122,26 @@
   }
   body {
     @apply bg-background text-foreground;
+    overscroll-behavior: none;
+    cursor: default;
   }
+}
 
-  /* Fix cursor visibility */
-  button,
-  [role="button"],
-  [role="tab"],
-  [type="button"],
-  select,
-  a {
-    cursor: pointer !important;
-  }
+/* Cursor styles - outside of @layer to ensure they're applied */
+button:not(:disabled),
+[role="button"]:not([disabled]),
+[role="tab"]:not([disabled]),
+[type="button"]:not(:disabled),
+select,
+a,
+.cursor-pointer {
+  cursor: pointer !important;
+}
 
-  input[type="text"],
-  input[type="email"],
-  input[type="password"],
-  input[type="number"],
-  textarea {
-    cursor: text !important;
-  }
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea {
+  cursor: text !important;
 }

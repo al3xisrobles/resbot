@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ArrowLeft, LoaderCircle, AlertCircle, CheckCircle2, MapPin, DollarSign, Sparkles, ExternalLink, RefreshCw, Map, CalendarRange, UtensilsCrossed, Calendar as CalendarIcon, ChevronDown } from 'lucide-react'
+import { ArrowLeft, LoaderCircle, AlertCircle, CheckCircle2, MapPin, Banknote, Sparkles, ExternalLink, RefreshCw, Map, CalendarRange, Calendar as CalendarIcon, ChevronDown, Bookmark, Share } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -10,11 +11,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
-import { makeReservation, searchRestaurant, getGeminiSearch, getCalendar, getVenuePhoto, type VenueData, type GeminiSearchResponse, type CalendarData, type VenuePhotoData } from '@/lib/api'
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel'
+import { makeReservation, searchRestaurant, getGeminiSearch, getCalendar, getVenuePhoto, getVenueLinks, type VenueData, type GeminiSearchResponse, type CalendarData, type VenuePhotoData, type VenueLinks, type VenueLinksResponse } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { TIME_SLOTS } from '@/lib/time-slots'
 import { useVenue } from '@/contexts/VenueContext'
-import { getVenueCache, saveAiInsights } from '@/services/firebase'
+import { getVenueCache, saveAiInsights, saveVenueCache } from '@/services/firebase'
 
 export function VenueDetailPage() {
   const [searchParams] = useSearchParams()
@@ -32,6 +34,7 @@ export function VenueDetailPage() {
   const [loadingAi, setLoadingAi] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const [showAiDetails, setShowAiDetails] = useState(false)
+  const [aiLastUpdated, setAiLastUpdated] = useState<number | null>(null)
 
   const [calendarData, setCalendarData] = useState<CalendarData | null>(null)
   const [loadingCalendar, setLoadingCalendar] = useState(false)
@@ -40,9 +43,14 @@ export function VenueDetailPage() {
   const [venuePhoto, setVenuePhoto] = useState<VenuePhotoData | null>(null)
   const [loadingPhoto, setLoadingPhoto] = useState(false)
 
+  const [venueLinks, setVenueLinks] = useState<VenueLinks | null>(null)
+  const [loadingLinks, setLoadingLinks] = useState(false)
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  const [isBookmarked, setIsBookmarked] = useState(false)
 
   // Fetch venue data
   useEffect(() => {
@@ -90,6 +98,7 @@ export function VenueDetailPage() {
           // Parse the cached AI insights back to GeminiSearchResponse
           const cachedSummary = JSON.parse(cachedData.aiInsights) as GeminiSearchResponse
           setAiSummary(cachedSummary)
+          setAiLastUpdated(cachedData.lastUpdated)
 
           // Store in memory cache too
           setAiSummaryCache({
@@ -100,6 +109,8 @@ export function VenueDetailPage() {
           // Not in Firebase, fetch from API
           const summary = await getGeminiSearch(venueData.name, venueId)
           setAiSummary(summary)
+          const now = Date.now()
+          setAiLastUpdated(now)
 
           // Store in both caches
           setAiSummaryCache({
@@ -160,6 +171,93 @@ export function VenueDetailPage() {
     fetchVenuePhoto()
   }, [venueData?.name, venueId])
 
+  // Fetch venue links (Google Maps, Resy) and venue data
+  useEffect(() => {
+    if (!venueId) return
+
+    const fetchVenueLinksAndData = async () => {
+      console.log('[VenueDetailPage] Starting venue links and data fetch...')
+      try {
+        setLoadingLinks(true)
+
+        // Check Firebase cache first
+        const cachedData = await getVenueCache(venueId)
+
+        // Check if we have both links AND complete venue data in cache
+        const hasCompleteCache = cachedData?.googleMapsLink !== undefined &&
+                                 cachedData?.resyLink !== undefined &&
+                                 cachedData?.venueName &&
+                                 cachedData?.venueType // Ensure we have the new venue data fields
+
+        if (hasCompleteCache) {
+          // We have cached links and venue data, use them
+          console.log('[VenueDetailPage] ✓ Using cached venue links and data from Firebase')
+          setVenueLinks({
+            googleMaps: cachedData.googleMapsLink || null,
+            resy: cachedData.resyLink || null
+          })
+
+          // Use cached venue data
+          if (cachedData.venueName && !venueData) {
+            console.log('[VenueDetailPage] ✓ Using cached venue data from Firebase')
+            setVenueData({
+              name: cachedData.venueName,
+              venue_id: venueId,
+              type: cachedData.venueType || '',
+              address: cachedData.address || '',
+              neighborhood: cachedData.neighborhood || '',
+              price_range: cachedData.priceRange || 0,
+              rating: cachedData.rating || null
+            })
+            setLoadingVenue(false)
+          }
+        } else {
+          // No cache, fetch from API
+          console.log('[VenueDetailPage] Cache miss - fetching from API')
+          const response: VenueLinksResponse = await getVenueLinks(venueId)
+          setVenueLinks(response.links)
+
+          const foundCount = Object.values(response.links).filter(link => link !== null).length
+          console.log(`[VenueDetailPage] ✓ Venue links loaded successfully. ${foundCount}/2 links available`)
+
+          // Save links and venue data to Firebase cache
+          await saveVenueCache(venueId, {
+            googleMapsLink: response.links.googleMaps || undefined,
+            resyLink: response.links.resy || undefined,
+            venueName: response.venueData.name,
+            venueType: response.venueData.type,
+            address: response.venueData.address,
+            neighborhood: response.venueData.neighborhood,
+            priceRange: response.venueData.priceRange,
+            rating: response.venueData.rating
+          })
+          console.log('[VenueDetailPage] ✓ Saved venue links and data to Firebase cache')
+
+          // Also update venue data if we haven't loaded it yet
+          if (!venueData) {
+            setVenueData({
+              name: response.venueData.name,
+              venue_id: venueId,
+              type: response.venueData.type,
+              address: response.venueData.address,
+              neighborhood: response.venueData.neighborhood,
+              price_range: response.venueData.priceRange,
+              rating: response.venueData.rating
+            })
+            setLoadingVenue(false)
+          }
+        }
+      } catch (err) {
+        console.error('[VenueDetailPage] ✗ Failed to load venue links:', err)
+      } finally {
+        setLoadingLinks(false)
+        console.log('[VenueDetailPage] Venue links fetch completed')
+      }
+    }
+
+    fetchVenueLinksAndData()
+  }, [venueId, venueData])
+
   // Manual refresh function
   const handleRefreshAiSummary = async () => {
     if (!venueData?.name || !venueId) return
@@ -169,6 +267,8 @@ export function VenueDetailPage() {
       setAiError(null)
       const summary = await getGeminiSearch(venueData.name, venueId)
       setAiSummary(summary)
+      const now = Date.now()
+      setAiLastUpdated(now)
 
       // Update both caches
       setAiSummaryCache({
@@ -236,7 +336,7 @@ export function VenueDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pt-32">
       {/* Header with Back Button */}
       <div className="bg-card">
         <div className="container mx-auto px-4 py-4">
@@ -287,7 +387,18 @@ export function VenueDetailPage() {
                           <MapPin className="size-5 text-muted-foreground mt-0.5 shrink-0" />
                           <div>
                             <p className="font-medium">Address</p>
-                            <p className="text-sm text-muted-foreground">{venueData.address}</p>
+                            {venueLinks?.googleMaps ? (
+                              <a
+                                href={venueLinks.googleMaps}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-primary hover:underline cursor-pointer"
+                              >
+                                {venueData.address}
+                              </a>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">{venueData.address}</p>
+                            )}
                             {venueData.neighborhood && (
                               <p className="text-sm text-muted-foreground">{venueData.neighborhood}</p>
                             )}
@@ -295,7 +406,7 @@ export function VenueDetailPage() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <DollarSign className="size-5 text-muted-foreground shrink-0" />
+                          <Banknote className="size-5 text-muted-foreground shrink-0" />
                           <div>
                             <p className="font-medium">Price Range</p>
                             <p className="text-sm text-muted-foreground">
@@ -303,8 +414,8 @@ export function VenueDetailPage() {
                             </p>
                           </div>
                         </div>
-
-                        {venueData.rating && (
+{/*
+                        {venueData.rating && venueData.rating != 0 && venueData.rating != "0" && (
                           <div className="flex items-center gap-3">
                             <span className="text-lg">⭐</span>
                             <div>
@@ -312,45 +423,80 @@ export function VenueDetailPage() {
                               <p className="text-sm text-muted-foreground">{venueData.rating}/5</p>
                             </div>
                           </div>
-                        )}
+                        )} */}
                       </div>
                     </div>
                   )}
 
-                  {/* Social Links - Positioned at bottom */}
-                  {venueData && (
-                    <div className="absolute bottom-0 left-0 right-0 p-6">
+                  <div className="absolute bottom-0 left-0 right-0 p-6 space-y-3">
+                    {/* Bookmark and Share Buttons */}
+                    {venueData && (
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 gap-2"
-                          disabled
+                          className={`gap-2 ${isBookmarked ? 'bg-primary/10' : ''}`}
+                          onClick={() => setIsBookmarked(!isBookmarked)}
                         >
-                          <Map className="size-4" />
-                          Google Maps
+                          <Bookmark className={`size-4 ${isBookmarked ? 'fill-primary stroke-primary' : ''}`} />
+                          {isBookmarked ? 'Bookmarked' : 'Bookmark'}
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 gap-2"
-                          disabled
+                          className="gap-2"
+                          onClick={() => {
+                            const url = window.location.href
+                            navigator.clipboard.writeText(url)
+                            toast('Link copied to clipboard', {
+                              description: 'Share this restaurant with friends'
+                            })
+                          }}
                         >
-                          <CalendarRange className="size-4" />
-                          Resy
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 gap-2"
-                          disabled
-                        >
-                          <UtensilsCrossed className="size-4" />
-                          Beli
+                          <Share className="size-4" />
+                          Share
                         </Button>
                       </div>
-                    </div>
-                  )}
+                    )}
+
+                    {/* Social Links */}
+                    {venueData && (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={`flex-1 w-max gap-2 ${loadingLinks ? 'animate-pulse' : ''}`}
+                            disabled={!venueLinks?.googleMaps || loadingLinks}
+                            onClick={() => {
+                              if (venueLinks?.googleMaps) {
+                                console.log('[VenueDetailPage] Opening Google Maps link:', venueLinks.googleMaps)
+                                window.open(venueLinks.googleMaps, '_blank')
+                              }
+                            }}
+                          >
+                            <Map className="size-4" />
+                            Google Maps
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={`flex-1 w-max gap-2 ${loadingLinks ? 'animate-pulse' : ''}`}
+                            disabled={!venueLinks?.resy || loadingLinks}
+                            onClick={() => {
+                              if (venueLinks?.resy) {
+                                console.log('[VenueDetailPage] Opening Resy link:', venueLinks.resy)
+                                window.open(venueLinks.resy, '_blank')
+                              }
+                            }}
+                          >
+                            <CalendarRange className="size-4" />
+                            Resy
+                          </Button>
+                        </div>
+                    )}
+                  </div>
+
+                  {/* Social Links - Positioned at bottom */}
                 </CardContent>
               </Card>
 
@@ -411,16 +557,29 @@ export function VenueDetailPage() {
                     <CardTitle>Reservation Insights</CardTitle>
                   </div>
                   {aiSummary && !loadingAi && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRefreshAiSummary}
-                      disabled={loadingAi}
-                      className="gap-2"
-                    >
-                      <RefreshCw className="size-4" />
-                      Refresh
-                    </Button>
+                    <div className="flex items-center gap-3">
+                      {aiLastUpdated && (
+                        <span className="text-xs text-muted-foreground">
+                          Last updated: {new Date(aiLastUpdated).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                          })}
+                        </span>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRefreshAiSummary}
+                        disabled={loadingAi}
+                        className="gap-2"
+                      >
+                        <RefreshCw className="size-4" />
+                        Refresh
+                      </Button>
+                    </div>
                   )}
                 </div>
                 <CardDescription>
@@ -537,19 +696,31 @@ export function VenueDetailPage() {
 
           {/* Right Side - Make Reservation */}
           <div>
-            {/* Restaurant Photo */}
-            {venuePhoto && !loadingPhoto && (
-              <div className="mb-6 rounded-lg overflow-hidden border shadow-sm">
-                <img
-                  src={venuePhoto.photoUrl}
-                  alt={venueData?.name || 'Restaurant'}
-                  className="w-full h-auto max-w-full object-cover"
-                  style={{ maxHeight: '400px' }}
-                  onError={(e) => {
-                    // Hide image if it fails to load
-                    e.currentTarget.style.display = 'none'
-                  }}
-                />
+            {/* Restaurant Photos Carousel */}
+            {venuePhoto && venuePhoto.photoUrls && venuePhoto.photoUrls.length > 0 && !loadingPhoto && (
+              <div className="mb-6">
+                <Carousel className="w-full">
+                  <CarouselContent>
+                    {venuePhoto.photoUrls.map((photoUrl, index) => (
+                      <CarouselItem key={index}>
+                        <div className="rounded-lg overflow-hidden border shadow-sm">
+                          <img
+                            src={photoUrl}
+                            alt={`${venueData?.name || 'Restaurant'} - Photo ${index + 1}`}
+                            className="w-full h-auto max-w-full object-cover pointer-events-none select-none"
+                            style={{ maxHeight: '400px' }}
+                            onError={(e) => {
+                              // Hide image if it fails to load
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious className="left-2" />
+                  <CarouselNext className="right-2" />
+                </Carousel>
               </div>
             )}
 
@@ -654,7 +825,7 @@ export function VenueDetailPage() {
                   <h3 className="text-lg flex items-center gap-2">
                     Preferences
                   </h3>
-                  <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label>Time Window (±hours)</Label>
                       <Select

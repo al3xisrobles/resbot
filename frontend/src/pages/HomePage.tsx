@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { Search, AlertCircle, MapPin, ChevronRight } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Search, AlertCircle, TrendingUp, Star } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -10,15 +9,23 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
-import { searchRestaurants, getVenuePhoto } from '@/lib/api'
+import { searchRestaurants, getTrendingRestaurants, getTopRatedRestaurants, getVenuePhoto, type TrendingRestaurant } from '@/lib/api'
 import { useVenue } from '@/contexts/VenueContext'
 import { TIME_SLOTS } from '@/lib/time-slots'
 import { cn } from '@/lib/utils'
+import { SearchResultItem } from '@/components/SearchResultItem'
+import { RestaurantGridCard } from '@/components/RestaurantGridCard'
+import { getTrendingRestaurantsCache, saveTrendingRestaurantsCache, getTopRatedRestaurantsCache, saveTopRatedRestaurantsCache } from '@/services/firebase'
 
 export function HomePage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [trendingRestaurants, setTrendingRestaurants] = useState<TrendingRestaurant[]>([])
+  const [loadingTrending, setLoadingTrending] = useState(false)
+  const [topRatedRestaurants, setTopRatedRestaurants] = useState<TrendingRestaurant[]>([])
+  const [loadingTopRated, setLoadingTopRated] = useState(false)
+  const [searchPopoverOpen, setSearchPopoverOpen] = useState(false)
   const {
     searchResults,
     setSearchResults,
@@ -28,213 +35,362 @@ export function HomePage() {
     setReservationForm
   } = useVenue()
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      setError('Please enter a restaurant name')
+  const handleSearchChange = async (value: string) => {
+    setSearchQuery(value)
+
+    if (!value.trim()) {
+      setSearchResults([])
+      setError(null)
+      setSearchPopoverOpen(false)
       return
     }
 
     setLoading(true)
     setError(null)
-    setSearchResults([])
+    setSearchPopoverOpen(true)
 
     try {
-      const results = await searchRestaurants(searchQuery)
-      setSearchResults(results)
+      const results = await searchRestaurants(value)
 
-      if (results.length === 0) {
+      // Fetch images for all results
+      const resultsWithImages = await Promise.all(
+        results.map(async (result) => {
+          try {
+            const photoData = await getVenuePhoto(result.id, result.name)
+            return { ...result, imageUrl: photoData.photoUrl }
+          } catch {
+            return { ...result, imageUrl: null }
+          }
+        })
+      )
+
+      setSearchResults(resultsWithImages)
+      setSearchPopoverOpen(resultsWithImages.length > 0)
+
+      if (resultsWithImages.length === 0) {
         setError('No restaurants found matching your search')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to search restaurants')
+      setSearchPopoverOpen(false)
     } finally {
       setLoading(false)
     }
   }
 
   const handleSelectVenue = (venueId: string) => {
+    setSearchPopoverOpen(false)
     navigate(`/venue?id=${venueId}`)
   }
 
-  // Prefetch images for all search results
-  useEffect(() => {
-    if (searchResults.length === 0) return
+  const handleSeeAllResults = () => {
+    setSearchPopoverOpen(false)
+    navigate('/search-results')
+  }
 
-    const prefetchImages = async () => {
-      // Prefetch images for all results in the background
-      searchResults.forEach(async (result) => {
-        try {
-          await getVenuePhoto(result.id, result.name)
-        } catch (err) {
-          // Silently fail - prefetching is optional
-          console.debug('Failed to prefetch photo for', result.name, err)
+  // Fetch trending restaurants on mount
+  useEffect(() => {
+    const fetchTrending = async () => {
+      setLoadingTrending(true)
+      try {
+        // Try to get from cache first
+        const cachedData = await getTrendingRestaurantsCache()
+
+        if (cachedData) {
+          console.log('Using cached trending restaurants')
+          setTrendingRestaurants(cachedData)
+        } else {
+          // Fetch fresh data from API
+          console.log('Fetching fresh trending restaurants')
+          const data = await getTrendingRestaurants(10)
+          setTrendingRestaurants(data)
+
+          // Save to cache
+          await saveTrendingRestaurantsCache(data)
         }
-      })
+      } catch (err) {
+        console.error('Failed to fetch trending restaurants:', err)
+      } finally {
+        setLoadingTrending(false)
+      }
     }
 
-    prefetchImages()
-  }, [searchResults])
+    fetchTrending()
+  }, [])
+
+  // Fetch top-rated restaurants on mount
+  useEffect(() => {
+    const fetchTopRated = async () => {
+      setLoadingTopRated(true)
+      try {
+        // Try to get from cache first
+        const cachedData = await getTopRatedRestaurantsCache()
+
+        if (cachedData) {
+          console.log('Using cached top-rated restaurants')
+          setTopRatedRestaurants(cachedData)
+        } else {
+          // Fetch fresh data from API
+          console.log('Fetching fresh top-rated restaurants')
+          const data = await getTopRatedRestaurants(10)
+          setTopRatedRestaurants(data)
+
+          // Save to cache
+          await saveTopRatedRestaurantsCache(data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch top-rated restaurants:', err)
+      } finally {
+        setLoadingTopRated(false)
+      }
+    }
+
+    fetchTopRated()
+  }, [])
+
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-24">
-        <div className="w-full max-w-xl mx-auto">
-          <Card className='px-10 py-16'>
-            <CardHeader>
-              <CardTitle>Restaurant Search</CardTitle>
-              <CardDescription>
-                Search for restaurants by name to make a reservation
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Error Messages */}
-              {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="size-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
+    <div className="h-screen bg-background pt-32 overflow-y-auto">
+      {/* Main Content - Grid Layout */}
+      <main className="container mx-auto px-4 py-8">
+        <div className="flex flex-col sm:flex-row gap-8 mb-2">
+          {/* Left: Search Section */}
+          <div className='max-w-160 w-full'>
+            {/* Title */}
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold tracking-tight mb-2">Restaurant Search</h1>
+              <p className="text-muted-foreground">
+                Search for restaurants by name to snipe a reservation
+              </p>
+            </div>
 
-              <div className="space-y-4">
+          {/* Error Messages */}
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="size-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-                                {/* Reservation Details */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                  {/* Party Size */}
-                  <div>
-                    <Label htmlFor="party-size">Party Size</Label>
-                    <Select
-                      value={reservationForm.partySize}
-                      onValueChange={(value) => setReservationForm({ ...reservationForm, partySize: value })}
-                    >
-                      <SelectTrigger id="party-size">
-                        <SelectValue placeholder="Select party size" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 6 }, (_, i) => i + 1).map((size) => (
-                          <SelectItem key={size} value={size.toString()}>
-                            {size} {size === 1 ? 'person' : 'people'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Date */}
-                  <div>
-                    <Label>Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          className={cn(
-                            "flex h-10 w-full items-center justify-start rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer hover:bg-accent/50 transition-colors",
-                            !reservationForm.date && "text-muted-foreground"
-                          )}
-                        >
-                          {reservationForm.date ? format(reservationForm.date, 'EEE, MMM d') : <span>Pick a date</span>}
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={reservationForm.date}
-                          onSelect={(date) => setReservationForm({ ...reservationForm, date })}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  {/* Time */}
-                  <div>
-                    <Label htmlFor="time-slot">Desired Time</Label>
-                    <Select
-                      value={reservationForm.timeSlot}
-                      onValueChange={(value) => setReservationForm({ ...reservationForm, timeSlot: value })}
-                    >
-                      <SelectTrigger id="time-slot">
-                        <SelectValue placeholder="Select time" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TIME_SLOTS.map((slot) => (
-                          <SelectItem key={slot.value} value={slot.value}>
-                            {slot.display}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+          {/* Search Bar */}
+          <div className="space-y-2 mb-6">
+            <Popover open={searchPopoverOpen} onOpenChange={setSearchPopoverOpen}>
+              <PopoverTrigger asChild>
+                <div className="relative">
+                  <Input
+                    id="search-query"
+                    placeholder="e.g., Carbone, Torrisi"
+                    value={searchQuery}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    autoComplete="off"
+                    className="min-h-12 pr-10 pl-5 py-8"
+                  />
+                  <Search className="absolute right-6 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
                 </div>
-
-                {/* Search Bar */}
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <Label htmlFor="search-query">Restaurant Name</Label>
-                    <Input
-                      id="search-query"
-                      placeholder="e.g., Carbone, Torrisi"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                    />
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[var(--radix-popover-trigger-width)] p-0"
+                align="start"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
+                {loading ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    Loading results...
                   </div>
-                  <div className="flex items-end">
-                    <Button onClick={handleSearch} disabled={loading || !searchQuery}>
-                      <Search className="mr-2 size-4" />
-                      {loading ? 'Searching...' : 'Search'}
-                    </Button>
-                  </div>
-                </div>
-
-
-              </div>
-
-              {/* Search Results */}
-              {searchResults.length > 0 && (
-                <div className="space-y-2 pt-4">
-                  <p className="text-sm text-muted-foreground">
-                    Found {searchResults.length} {searchResults.length === 1 ? 'restaurant' : 'restaurants'}
-                  </p>
-                  <div className="space-y-2">
-                    {searchResults.map((result) => (
-                      <button
+                ) : searchResults.length > 0 ? (
+                  <div className="max-h-[400px] overflow-y-auto">
+                    {searchResults.slice(0, 5).map((result) => (
+                      <SearchResultItem
                         key={result.id}
+                        id={result.id}
+                        name={result.name}
+                        type={result.type}
+                        priceRange={result.price_range}
+                        location={[result.neighborhood, result.locality, result.region]
+                          .filter(Boolean)
+                          .filter(item => item !== 'N/A')
+                          .join(', ')}
+                        imageUrl={result.imageUrl || null}
                         onClick={() => handleSelectVenue(result.id)}
-                        className="w-full text-left p-4 rounded-lg border hover:border-primary hover:bg-accent/50 transition-all group"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-semibold group-hover:text-primary transition-colors">
-                                {result.name}
-                              </h4>
-                              {result.price_range > 0 && (
-                                <span className="text-sm text-muted-foreground">
-                                  {'$'.repeat(result.price_range)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <MapPin className="size-3" />
-                              <span>
-                                {[result.neighborhood, result.locality, result.region]
-                                  .filter(Boolean)
-                                  .filter(item => item !== 'N/A')
-                                  .join(', ')}
-                              </span>
-                            </div>
-                            {result.type && result.type !== "N/A" && (
-                              <p className="text-sm text-muted-foreground">{result.type}</p>
-                            )}
-                          </div>
-                          <ChevronRight className="size-5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                        </div>
-                      </button>
+                      />
                     ))}
+                    {searchResults.length > 5 && (
+                      <div className="p-2 border-t">
+                        <Button
+                          variant="ghost"
+                          className="w-full"
+                          onClick={handleSeeAllResults}
+                        >
+                          See all {searchResults.length} results
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                ) : null}
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Reservation Form - One Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            {/* Party Size */}
+            <div className="space-y-2">
+              <Label>Party Size</Label>
+              <Select
+                value={reservationForm.partySize}
+                onValueChange={(value) => setReservationForm({ ...reservationForm, partySize: value })}
+              >
+                <SelectTrigger id="party-size">
+                  <SelectValue placeholder="Select party size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 6 }, (_, i) => i + 1).map((size) => (
+                    <SelectItem key={size} value={size.toString()}>
+                      {size} {size === 1 ? 'person' : 'people'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Date */}
+            <div className="space-y-2">
+              <Label>Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    className={cn(
+                      "flex h-10 w-full items-center justify-start rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer hover:bg-accent/50 transition-colors",
+                      !reservationForm.date && "text-muted-foreground"
+                    )}
+                  >
+                    {reservationForm.date ? format(reservationForm.date, 'EEE, MMM d') : <span>Pick a date</span>}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={reservationForm.date}
+                    onSelect={(date) => setReservationForm({ ...reservationForm, date })}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Time */}
+            <div className="space-y-2">
+              <Label>Desired Time</Label>
+              <Select
+                value={reservationForm.timeSlot}
+                onValueChange={(value) => setReservationForm({ ...reservationForm, timeSlot: value })}
+              >
+                <SelectTrigger id="time-slot">
+                  <SelectValue placeholder="Select time" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIME_SLOTS.map((slot) => (
+                    <SelectItem key={slot.value} value={slot.value}>
+                      {slot.display}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          </div>
+
+          {/* Right: Placeholder Image */}
+          <div className="hidden lg:flex w-full items-center justify-center">
+            <div className="w-full h-[350px] bg-muted rounded-lg flex items-center justify-center">
+              <p className="text-muted-foreground text-sm">Placeholder for graphic</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Trending Restaurants Grid */}
+        <div className="">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="size-6 text-primary" />
+            <h2 className="text-2xl font-bold">Trending Restaurants</h2>
+          </div>
+          <p className="text-sm pb-6 pt-2 text-muted-foreground">
+            Popular restaurants climbing on Resy right now
+          </p>
+
+          {loadingTrending ? (
+            <div className="flex items-center justify-center h-[400px]">
+              <p className="text-muted-foreground">Loading trending restaurants...</p>
+            </div>
+          ) : trendingRestaurants.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              {trendingRestaurants.map((restaurant) => (
+                <RestaurantGridCard
+                  key={restaurant.id}
+                  id={restaurant.id}
+                  name={restaurant.name}
+                  type={restaurant.type}
+                  priceRange={restaurant.priceRange}
+                  location={[restaurant.location.neighborhood, restaurant.location.locality]
+                    .filter(Boolean)
+                    .join(', ')}
+                  imageUrl={restaurant.imageUrl}
+                  onClick={() => handleSelectVenue(restaurant.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-[400px]">
+              <div className="text-center space-y-3">
+                <Search className="size-12 text-muted-foreground mx-auto opacity-20" />
+                <p className="text-muted-foreground text-lg">
+                  No trending restaurants available
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Top Rated Restaurants Grid */}
+        <div className="mt-12">
+          <div className="flex items-center gap-2">
+            <Star className="size-6 text-primary" />
+            <h2 className="text-2xl font-bold">Top Rated Restaurants</h2>
+          </div>
+          <p className="text-sm pb-6 pt-2 text-muted-foreground">
+            The highest-rated restaurants on Resy right now
+          </p>
+
+          {loadingTopRated ? (
+            <div className="flex items-center justify-center h-[400px]">
+              <p className="text-muted-foreground">Loading top-rated restaurants...</p>
+            </div>
+          ) : topRatedRestaurants.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              {topRatedRestaurants.map((restaurant) => (
+                <RestaurantGridCard
+                  key={restaurant.id}
+                  id={restaurant.id}
+                  name={restaurant.name}
+                  type={restaurant.type}
+                  priceRange={restaurant.priceRange}
+                  location={[restaurant.location.neighborhood, restaurant.location.locality]
+                    .filter(Boolean)
+                    .join(', ')}
+                  imageUrl={restaurant.imageUrl}
+                  onClick={() => handleSelectVenue(restaurant.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-[400px]">
+              <div className="text-center space-y-3">
+                <Star className="size-12 text-muted-foreground mx-auto opacity-20" />
+                <p className="text-muted-foreground text-lg">
+                  No top-rated restaurants available
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

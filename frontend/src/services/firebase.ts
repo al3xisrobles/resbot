@@ -1,6 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getDatabase, ref, get, set } from "firebase/database";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import type { TrendingRestaurant } from "@/lib/api";
 
 // Firebase configuration
 const firebaseConfig = {
@@ -18,6 +20,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
 const database = getDatabase(app);
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
 
 console.log('[Firebase] Initialized with config:', {
   projectId: firebaseConfig.projectId,
@@ -26,11 +30,24 @@ console.log('[Firebase] Initialized with config:', {
 console.log('[Firebase] Database instance:', database);
 
 export interface VenueCacheData {
-  aiInsights?: string;
+  // Venue basic info
+  venueName?: string;
+  venueType?: string;
+  address?: string;
+  neighborhood?: string;
+  priceRange?: number;
+  rating?: number;
+
+  // Links
   googleMapsLink?: string;
   resyLink?: string;
-  beliLink?: string;
-  photoUrl?: string;
+  photoUrl?: string;  // Kept for backwards compatibility
+  photoUrls?: string[];  // Array of photo URLs
+
+  // AI insights
+  aiInsights?: string;
+
+  // Metadata
   lastUpdated: number;
 }
 
@@ -126,4 +143,127 @@ export async function saveAiInsights(venueId: string, aiInsights: string): Promi
   return saveVenueCache(venueId, { aiInsights });
 }
 
-export { database, analytics };
+export interface TrendingRestaurantsCacheData {
+  restaurants: TrendingRestaurant[];
+  lastUpdated: number;
+}
+
+/**
+ * Get cached trending restaurants
+ * @param maxAgeMs - Maximum age of cache in milliseconds (default: 7 days)
+ * @returns Cached data if valid, null otherwise
+ */
+export async function getTrendingRestaurantsCache(maxAgeMs: number = 7 * 24 * 60 * 60 * 1000): Promise<TrendingRestaurant[] | null> {
+  try {
+    const path = 'trending/restaurants';
+    console.log('[Firebase] Getting trending restaurants cache');
+
+    const cacheRef = ref(database, path);
+    const snapshot = await get(cacheRef);
+
+    if (snapshot.exists()) {
+      const data = snapshot.val() as TrendingRestaurantsCacheData;
+      const age = Date.now() - data.lastUpdated;
+
+      console.log(`[Firebase] Cache found. Age: ${Math.floor(age / 1000 / 60)} minutes`);
+
+      if (age < maxAgeMs) {
+        console.log('[Firebase] Cache is still valid');
+        return data.restaurants;
+      } else {
+        console.log('[Firebase] Cache expired');
+        return null;
+      }
+    }
+
+    console.log('[Firebase] No cache found');
+    return null;
+  } catch (error) {
+    console.error('[Firebase] Error getting trending restaurants cache:', error);
+    return null;
+  }
+}
+
+/**
+ * Save trending restaurants to cache
+ */
+export async function saveTrendingRestaurantsCache(restaurants: TrendingRestaurant[]): Promise<boolean> {
+  try {
+    const path = 'trending/restaurants';
+    console.log('[Firebase] Saving trending restaurants cache');
+
+    const cacheRef = ref(database, path);
+    const cacheData: TrendingRestaurantsCacheData = {
+      restaurants,
+      lastUpdated: Date.now()
+    };
+
+    await set(cacheRef, cacheData);
+    console.log('[Firebase] Successfully saved trending restaurants cache');
+    return true;
+  } catch (error) {
+    console.error('[Firebase] Error saving trending restaurants cache:', error);
+    return false;
+  }
+}
+
+/**
+ * Get cached top-rated restaurants
+ * @param maxAgeMs - Maximum age of cache in milliseconds (default: 7 days)
+ * @returns Cached data if valid, null otherwise
+ */
+export async function getTopRatedRestaurantsCache(maxAgeMs: number = 7 * 24 * 60 * 60 * 1000): Promise<TrendingRestaurant[] | null> {
+  try {
+    const path = 'topRated/restaurants';
+    console.log('[Firebase] Getting top-rated restaurants cache');
+
+    const cacheRef = ref(database, path);
+    const snapshot = await get(cacheRef);
+
+    if (snapshot.exists()) {
+      const data = snapshot.val() as TrendingRestaurantsCacheData;
+      const age = Date.now() - data.lastUpdated;
+
+      console.log(`[Firebase] Cache found. Age: ${Math.floor(age / 1000 / 60)} minutes`);
+
+      if (age < maxAgeMs) {
+        console.log('[Firebase] Cache is still valid');
+        return data.restaurants;
+      } else {
+        console.log('[Firebase] Cache expired');
+        return null;
+      }
+    }
+
+    console.log('[Firebase] No cache found');
+    return null;
+  } catch (error) {
+    console.error('[Firebase] Error getting top-rated restaurants cache:', error);
+    return null;
+  }
+}
+
+/**
+ * Save top-rated restaurants to cache
+ */
+export async function saveTopRatedRestaurantsCache(restaurants: TrendingRestaurant[]): Promise<boolean> {
+  try {
+    const path = 'topRated/restaurants';
+    console.log('[Firebase] Saving top-rated restaurants cache');
+
+    const cacheRef = ref(database, path);
+    const cacheData: TrendingRestaurantsCacheData = {
+      restaurants,
+      lastUpdated: Date.now()
+    };
+
+    await set(cacheRef, cacheData);
+    console.log('[Firebase] Successfully saved top-rated restaurants cache');
+    return true;
+  } catch (error) {
+    console.error('[Firebase] Error saving top-rated restaurants cache:', error);
+    return false;
+  }
+}
+
+export { database, analytics, auth, googleProvider };

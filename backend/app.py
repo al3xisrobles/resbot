@@ -591,30 +591,69 @@ def get_venue_photo(venue_id):
                 'error': 'No restaurant found'
             }), 404
 
-        # Get the first result
+        # Get the first result and extract place_id
         place = search_data['results'][0]
+        place_id = place.get('place_id')
+
+        if not place_id:
+            return jsonify({
+                'success': False,
+                'error': 'No place ID found'
+            }), 404
+
+        # Fetch place details to get more photos
+        # Place Details API returns up to 10 photos
+        app.logger.info(f"Fetching place details for place_id: {place_id}")
+        details_url = 'https://maps.googleapis.com/maps/api/place/details/json'
+        details_params = {
+            'place_id': place_id,
+            'fields': 'name,formatted_address,photos',
+            'key': GOOGLE_PLACES_API_KEY
+        }
+
+        details_response = requests.get(details_url, params=details_params, timeout=10)
+
+        if details_response.status_code != 200:
+            return jsonify({
+                'success': False,
+                'error': f'Place Details API returned status {details_response.status_code}'
+            }), 500
+
+        details_data = details_response.json()
+
+        if details_data.get('status') != 'OK':
+            return jsonify({
+                'success': False,
+                'error': f'Place Details API error: {details_data.get("status")}'
+            }), 500
+
+        place_details = details_data.get('result', {})
 
         # Check if place has photos
-        if not place.get('photos') or len(place['photos']) == 0:
+        if not place_details.get('photos') or len(place_details['photos']) == 0:
             return jsonify({
                 'success': False,
                 'error': 'No photos available for this restaurant'
             }), 404
 
-        # Get the photo reference from the first photo
-        photo_reference = place['photos'][0]['photo_reference']
+        # Get up to 5 photos from the details
+        photos = place_details['photos'][:5]
+        photo_urls = []
 
-        # Construct the Google Places Photo URL with high quality
-        # The frontend will use this URL to load the image directly from Google
-        # Using maxwidth=1600 for high quality images (Google's max is 1600)
-        photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=1600&photo_reference={photo_reference}&key={GOOGLE_PLACES_API_KEY}"
+        for photo in photos:
+            photo_reference = photo['photo_reference']
+            # Construct the Google Places Photo URL with high quality
+            # Using maxwidth=1600 for high quality images (Google's max is 1600)
+            photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=1600&photo_reference={photo_reference}&key={GOOGLE_PLACES_API_KEY}"
+            photo_urls.append(photo_url)
 
-        app.logger.info(f"Found photo for {restaurant_name}")
+        app.logger.info(f"Found {len(photo_urls)} photos for {restaurant_name}")
 
         return jsonify({
             'success': True,
             'data': {
-                'photoUrl': photo_url,
+                'photoUrls': photo_urls,  # Array of photo URLs
+                'photoUrl': photo_urls[0] if photo_urls else None,  # Keep for backwards compatibility
                 'placeName': place.get('name'),
                 'placeAddress': place.get('formatted_address')
             }
@@ -640,6 +679,307 @@ def health_check():
     })
 
 
+@app.route('/api/venue-links/<venue_id>', methods=['GET'])
+def get_venue_links(venue_id):
+    """
+    GET /api/venue-links/<venue_id>
+    Search for restaurant links (Google Maps, Resy)
+    """
+    app.logger.info(f"[VENUE-LINKS] Starting link search for venue_id: {venue_id}")
+
+    try:
+        # First get venue details to get the restaurant name
+        app.logger.info(f"[VENUE-LINKS] Fetching venue details from Resy API...")
+        credentials = load_credentials()
+        headers = get_resy_headers(credentials)
+
+        # Use the /3/venue endpoint which returns complete venue data
+        venue_response = requests.get(
+            'https://api.resy.com/3/venue',
+            params={'id': venue_id},
+            headers=headers
+        )
+
+        if venue_response.status_code != 200:
+            app.logger.error(f"[VENUE-LINKS] Failed to fetch venue details. Status: {venue_response.status_code}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to fetch venue details'
+            }), 500
+
+        venue_data = venue_response.json()
+        restaurant_name = venue_data.get('name', '')
+        location = venue_data.get('location', {})
+        city = location.get('locality', '')
+
+        app.logger.info(f"[VENUE-LINKS] Found restaurant: '{restaurant_name}' in {city}")
+
+        if not restaurant_name:
+            app.logger.error(f"[VENUE-LINKS] Restaurant name not found in venue data")
+            return jsonify({
+                'success': False,
+                'error': 'Restaurant name not found'
+            }), 404
+
+        # Initialize links
+        # Clean restaurant name for Resy URL: remove neighborhood suffix (e.g., " - Little Italy", " - New York")
+        clean_name = restaurant_name
+        if ' - ' in clean_name:
+            # Split on ' - ' and take only the first part (restaurant name without neighborhood)
+            clean_name = clean_name.split(' - ')[0]
+
+        # Convert to Resy URL format: lowercase, spaces to hyphens, & to "and"
+        resy_slug = clean_name.lower().replace(" ", "-").replace("&", "and")
+        resy_link = f'https://resy.com/cities/ny/{resy_slug}'
+        app.logger.info(f"[VENUE-LINKS] Generated Resy link from '{restaurant_name}' -> '{clean_name}' -> {resy_link}")
+
+        links = {
+            'googleMaps': None,
+            'resy': resy_link
+        }
+
+        # Use Google Places API for Google Maps link
+        if GOOGLE_PLACES_API_KEY:
+            try:
+                # Google Maps search using Places API
+                app.logger.info(f"[VENUE-LINKS] Searching for Google Maps URL using Places API...")
+
+                # Get detailed address from venue data
+                address_1 = location.get('address_1', '')
+                address_2 = location.get('address_2', '')
+                neighborhood = location.get('neighborhood', '')
+                postal_code = location.get('postal_code', '')
+                state = location.get('region', '')
+
+                # Build the most complete address possible
+                # Include street address, neighborhood, city, state, zip for best results
+                address_parts = [restaurant_name]
+                if address_1:
+                    address_parts.append(address_1)
+                if city:
+                    address_parts.append(city)
+                if state:
+                    address_parts.append(state)
+                if postal_code:
+                    address_parts.append(postal_code)
+
+                # For type constraint, add "restaurant" to avoid matching law firms, etc.
+                full_address = ', '.join(address_parts) + ' restaurant'
+
+                app.logger.info(f"[VENUE-LINKS] Full address data: {location}")
+                app.logger.info(f"[VENUE-LINKS] Searching for: {full_address}")
+
+                # Use Places API Text Search
+                places_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+                params = {
+                    'input': full_address,
+                    'inputtype': 'textquery',
+                    'fields': 'place_id,name',
+                    'key': GOOGLE_PLACES_API_KEY
+                }
+
+                places_response = requests.get(places_url, params=params)
+
+                if places_response.status_code == 200:
+                    places_data = places_response.json()
+
+                    if places_data.get('status') == 'OK' and places_data.get('candidates'):
+                        place_id = places_data['candidates'][0]['place_id']
+                        # Construct Google Maps URL
+                        links['googleMaps'] = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+                        app.logger.info(f"[VENUE-LINKS] ✓ Found Google Maps URL via Places API: {links['googleMaps']}")
+                    else:
+                        app.logger.warning(f"[VENUE-LINKS] ✗ No results from Places API. Status: {places_data.get('status')}")
+                else:
+                    app.logger.error(f"[VENUE-LINKS] ✗ Places API request failed. Status: {places_response.status_code}")
+
+            except Exception as e:
+                app.logger.error(f"[VENUE-LINKS] Error searching Google Maps with Places API: {str(e)}")
+        else:
+            app.logger.warning(f"[VENUE-LINKS] Google Places API key not configured, skipping Google Maps search")
+
+        # Log final results
+        found_count = sum(1 for link in links.values() if link is not None)
+        app.logger.info(f"[VENUE-LINKS] ✓ Completed. Found {found_count}/2 links for '{restaurant_name}'")
+
+        # Debug: Log what we're getting from the API
+        app.logger.info(f"[VENUE-LINKS] Venue type: {venue_data.get('type')}")
+        app.logger.info(f"[VENUE-LINKS] Location address_1: {location.get('address_1')}")
+        app.logger.info(f"[VENUE-LINKS] Location neighborhood: {location.get('neighborhood')}")
+        app.logger.info(f"[VENUE-LINKS] Price range ID: {venue_data.get('price_range_id')}")
+        app.logger.info(f"[VENUE-LINKS] Rating: {venue_data.get('rating')}")
+
+        response_data = {
+            'success': True,
+            'links': links,
+            'venueData': {
+                'name': restaurant_name,
+                'type': venue_data.get('type', ''),
+                'address': location.get('address_1', ''),
+                'neighborhood': location.get('neighborhood', ''),
+                'priceRange': venue_data.get('price_range_id', 0),
+                'rating': venue_data.get('rating', 0)
+            }
+        }
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        app.logger.error(f"[VENUE-LINKS] ✗ Error getting venue links: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/climbing', methods=['GET'])
+def get_climbing_restaurants():
+    """
+    GET /api/climbing
+    Get trending/climbing restaurants from Resy
+    """
+    try:
+        limit = request.args.get('limit', '10')
+
+        # Load credentials
+        config = load_credentials()
+        headers = get_resy_headers(config)
+
+        # Query the climbing endpoint
+        url = f'https://api.resy.com/3/cities/new-york-ny/list/climbing?limit={limit}'
+        app.logger.info(f"Fetching climbing restaurants from: {url}")
+
+        response = requests.get(url, headers=headers, timeout=10)
+
+        if response.status_code != 200:
+            return jsonify({
+                'success': False,
+                'error': f'API returned status {response.status_code}'
+            }), 500
+
+        data = response.json()
+        venues = data.get('results', {}).get('venues', [])
+
+        # Transform the data to match our frontend structure
+        restaurants = []
+        for venue in venues:
+            location = venue.get('location', {})
+            image_data = venue.get('responsive_images', {})
+
+            # Get the first image URL (1:1 aspect ratio, 400px)
+            image_url = None
+            urls = image_data.get('urls', {})
+            if urls:
+                first_file = image_data.get('file_names', [None])[0]
+                if first_file and first_file in urls:
+                    aspect_ratios = urls[first_file]
+                    if '1:1' in aspect_ratios and '400' in aspect_ratios['1:1']:
+                        image_url = aspect_ratios['1:1']['400']
+
+            restaurants.append({
+                'id': str(venue.get('id', {}).get('resy', '')),
+                'name': venue.get('name', ''),
+                'type': venue.get('type', ''),
+                'priceRange': venue.get('price_range_id', 0),
+                'location': {
+                    'neighborhood': location.get('neighborhood', ''),
+                    'locality': location.get('locality', ''),
+                    'region': location.get('region', ''),
+                    'address': location.get('address_1', '')
+                },
+                'imageUrl': image_url,
+                'rating': venue.get('rater', [{}])[0].get('score') if venue.get('rater') else None
+            })
+
+        app.logger.info(f"Fetched {len(restaurants)} climbing restaurants")
+
+        return jsonify({
+            'success': True,
+            'data': restaurants
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error fetching climbing restaurants: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/top-rated', methods=['GET'])
+def get_top_rated_restaurants():
+    """
+    GET /api/top-rated
+    Get top-rated restaurants from Resy
+    """
+    try:
+        limit = request.args.get('limit', '10')
+
+        # Load credentials
+        config = load_credentials()
+        headers = get_resy_headers(config)
+
+        # Query the top-rated endpoint
+        url = f'https://api.resy.com/3/cities/new-york-ny/list/top-rated?limit={limit}'
+        app.logger.info(f"Fetching top-rated restaurants from: {url}")
+
+        response = requests.get(url, headers=headers, timeout=10)
+
+        if response.status_code != 200:
+            return jsonify({
+                'success': False,
+                'error': f'API returned status {response.status_code}'
+            }), 500
+
+        data = response.json()
+        venues = data.get('results', {}).get('venues', [])
+
+        # Transform the data to match our frontend structure
+        restaurants = []
+        for venue in venues:
+            location = venue.get('location', {})
+            image_data = venue.get('responsive_images', {})
+
+            # Get the first image URL (1:1 aspect ratio, 400px)
+            image_url = None
+            urls = image_data.get('urls', {})
+            if urls:
+                first_file = image_data.get('file_names', [None])[0]
+                if first_file and first_file in urls:
+                    aspect_ratios = urls[first_file]
+                    if '1:1' in aspect_ratios and '400' in aspect_ratios['1:1']:
+                        image_url = aspect_ratios['1:1']['400']
+
+            restaurants.append({
+                'id': str(venue.get('id', {}).get('resy', '')),
+                'name': venue.get('name', ''),
+                'type': venue.get('type', ''),
+                'priceRange': venue.get('price_range_id', 0),
+                'location': {
+                    'neighborhood': location.get('neighborhood', ''),
+                    'locality': location.get('locality', ''),
+                    'region': location.get('region', ''),
+                    'address': location.get('address_1', '')
+                },
+                'imageUrl': image_url,
+                'rating': venue.get('rater', [{}])[0].get('score') if venue.get('rater') else None
+            })
+
+        app.logger.info(f"Fetched {len(restaurants)} top-rated restaurants")
+
+        return jsonify({
+            'success': True,
+            'data': restaurants
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error fetching top-rated restaurants: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     print("\n🚀 Resy Bot Flask Server starting...")
     print("📍 API endpoints:")
@@ -647,6 +987,9 @@ if __name__ == '__main__':
     print("   GET  /api/venue/<venueId>         - Get restaurant by ID")
     print("   GET  /api/venue/<venueId>/photo   - Get restaurant photo URL")
     print("   GET  /api/calendar/<venueId>      - Get restaurant availability calendar")
+    print("   GET  /api/venue-links/<venueId>   - Get restaurant social links")
+    print("   GET  /api/climbing                - Get trending/climbing restaurants")
+    print("   GET  /api/top-rated               - Get top-rated restaurants")
     print("   POST /api/reservation             - Make reservation")
     print("   POST /api/gemini-search           - Get AI reservation summary")
     print("   GET  /api/health                  - Health check\n")
