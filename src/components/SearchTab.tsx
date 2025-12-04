@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { searchRestaurants } from "@/lib/api";
 import { useVenue } from "@/contexts/VenueContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function SearchTab({
   onTabChange,
@@ -20,6 +21,7 @@ export function SearchTab({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const auth = useAuth();
   const {
     setSelectedVenueId,
     searchResults,
@@ -39,7 +41,10 @@ export function SearchTab({
     setSearchResults([]);
 
     try {
-      const response = await searchRestaurants({ query: searchQuery });
+      const user = auth.currentUser;
+      const response = await searchRestaurants(user!.uid, {
+        query: searchQuery,
+      });
       setSearchResults(response.results);
 
       if (response.results.length === 0) {

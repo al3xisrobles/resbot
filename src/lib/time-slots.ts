@@ -5,8 +5,8 @@ export function generateTimeSlots() {
   const slots = [];
   for (let hour = 0; hour < 24; hour++) {
     // for testing
-    for (let minute = 0; minute < 60; minute += 1) {
-      // for (let minute = 0; minute < 60; minute += 15) {
+    // for (let minute = 0; minute < 60; minute += 1) {
+    for (let minute = 0; minute < 60; minute += 15) {
       const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
       const period = hour < 12 ? "AM" : "PM";
       const display = `${hour12}:${minute

@@ -21,14 +21,16 @@ logger.setLevel(logging.INFO)
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
 def calendar(req: Request):
     """
-    GET /calendar?id=<venue_id>&partySize=<party_size>
+    GET /calendar?id=<venue_id>&partySize=<party_size>&userId=<user_id>
     Get restaurant availability calendar
     Query parameters:
     - id: Venue ID (required)
     - partySize: Party size (default: 2)
+    - userId: User ID (optional) - if provided, loads credentials from Firestore
     """
     try:
         venue_id = req.args.get('id')
+        user_id = req.args.get('userId')
 
         if not venue_id:
             return {
@@ -36,8 +38,8 @@ def calendar(req: Request):
                 'error': 'Missing venue_id parameter'
             }, 400
 
-        # Load credentials
-        config = load_credentials()
+        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        config = load_credentials(user_id)
         headers = get_resy_headers(config)
 
         # Get party size from query params (default to 2)
@@ -116,9 +118,12 @@ def reservation(req: Request):
     - seatingType: Seating type preference (optional)
     - dropHour: Drop hour when reservations open (optional, default: 9)
     - dropMinute: Drop minute when reservations open (optional, default: 0)
+    Query parameters:
+    - userId: User ID (optional) - if provided, loads credentials from Firestore
     """
     try:
         data = req.get_json(silent=True) or {}
+        user_id = req.args.get('userId')
 
         # Validate required fields
         required_fields = ['venueId', 'partySize', 'date', 'hour', 'minute']
@@ -130,8 +135,8 @@ def reservation(req: Request):
                 'error': f"Missing required fields: {', '.join(missing_fields)}"
             }, 400
 
-        # Load credentials
-        credentials = load_credentials()
+        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        credentials = load_credentials(user_id)
         config = ResyConfig(**credentials)
 
         # Build reservation request

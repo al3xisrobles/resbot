@@ -25,11 +25,14 @@ def gemini_search(req: Request):
     Body should include:
     - restaurantName: Name of the restaurant (required)
     - venueId: Resy venue ID (optional, but recommended for better results)
+    Query parameters:
+    - userId: User ID (optional) - if provided, loads credentials from Firestore
     """
     try:
         data = req.get_json(silent=True) or {}
         restaurant_name = data.get('restaurantName')
         venue_id = data.get('venueId')
+        user_id = req.args.get('userId')
 
         if not restaurant_name:
             return {
@@ -47,8 +50,8 @@ def gemini_search(req: Request):
         resy_findings = ""
         if venue_id:
             try:
-                # Load credentials
-                credentials = load_credentials()
+                # Load credentials (from Firestore if userId provided, else from credentials.json)
+                credentials = load_credentials(user_id)
                 headers = get_resy_headers(credentials)
 
                 # Use calendar API to get complete availability overview

@@ -72,8 +72,8 @@ import {
   saveAiInsights,
   saveVenueCache,
   scheduleReservationSnipe,
-  auth,
 } from "@/services/firebase";
+import { useAuth } from "@/contexts/AuthContext";
 
 function renderMarkdownBold(text: string) {
   if (!text) return null;
@@ -106,6 +106,8 @@ export function VenueDetailPage() {
   useEffect(() => {
     console.log("[VenueDetailPage] Reservation form state:", reservationForm);
   }, [reservationForm]);
+
+  const auth = useAuth();
 
   const [venueData, setVenueData] = useState<VenueData | null>(null);
   const [loadingVenue, setLoadingVenue] = useState(true);
@@ -144,7 +146,8 @@ export function VenueDetailPage() {
     const fetchVenueData = async () => {
       try {
         setLoadingVenue(true);
-        const data = await searchRestaurant(venueId);
+        const user = auth.currentUser;
+        const data = await searchRestaurant(user!.uid, venueId);
         setVenueData(data);
       } catch (err) {
         setVenueError(
@@ -156,7 +159,7 @@ export function VenueDetailPage() {
     };
 
     fetchVenueData();
-  }, [venueId]);
+  }, [auth.currentUser, venueId]);
 
   // Fetch AI summary when venue data is loaded
   useEffect(() => {
@@ -192,7 +195,12 @@ export function VenueDetailPage() {
           });
         } else {
           // Not in Firebase, fetch from API
-          const summary = await getGeminiSearch(venueData.name, venueId);
+          const user = auth.currentUser;
+          const summary = await getGeminiSearch(
+            user!.uid,
+            venueData.name,
+            venueId
+          );
           setAiSummary(summary);
           const now = Date.now();
           setAiLastUpdated(now);
@@ -216,7 +224,13 @@ export function VenueDetailPage() {
     };
 
     fetchAiSummary();
-  }, [venueData?.name, venueId, aiSummaryCache, setAiSummaryCache]);
+  }, [
+    venueData?.name,
+    venueId,
+    aiSummaryCache,
+    setAiSummaryCache,
+    auth.currentUser,
+  ]);
 
   // Fetch calendar data when venue is loaded
   useEffect(() => {
@@ -226,7 +240,12 @@ export function VenueDetailPage() {
       try {
         setLoadingCalendar(true);
         setCalendarError(null);
-        const data = await getCalendar(venueId, reservationForm.partySize);
+        const user = auth.currentUser;
+        const data = await getCalendar(
+          user!.uid,
+          venueId,
+          reservationForm.partySize
+        );
         setCalendarData(data);
       } catch (err) {
         setCalendarError(
@@ -238,7 +257,7 @@ export function VenueDetailPage() {
     };
 
     fetchCalendarData();
-  }, [venueId, reservationForm.partySize]);
+  }, [venueId, reservationForm.partySize, auth.currentUser]);
 
   // Fetch venue photo when venue data is loaded
   useEffect(() => {
@@ -247,7 +266,12 @@ export function VenueDetailPage() {
     const fetchVenuePhoto = async () => {
       try {
         setLoadingPhoto(true);
-        const photoData = await getVenuePhoto(venueId, venueData.name);
+        const user = auth.currentUser;
+        const photoData = await getVenuePhoto(
+          user!.uid,
+          venueId,
+          venueData.name
+        );
         setVenuePhoto(photoData);
       } catch (err) {
         // Silently fail - photo is optional
@@ -258,7 +282,7 @@ export function VenueDetailPage() {
     };
 
     fetchVenuePhoto();
-  }, [venueData?.name, venueId]);
+  }, [auth.currentUser, venueData?.name, venueId]);
 
   // Fetch venue links (Google Maps, Resy) and venue data
   useEffect(() => {
@@ -308,7 +332,11 @@ export function VenueDetailPage() {
         } else {
           // No cache, fetch from API
           console.log("[VenueDetailPage] Cache miss - fetching from API");
-          const response: VenueLinksResponse = await getVenueLinks(venueId);
+          const user = auth.currentUser;
+          const response: VenueLinksResponse = await getVenueLinks(
+            user!.uid,
+            venueId
+          );
           setVenueLinks(response.links);
 
           const foundCount = Object.values(response.links).filter(
@@ -365,7 +393,8 @@ export function VenueDetailPage() {
     try {
       setLoadingAi(true);
       setAiError(null);
-      const summary = await getGeminiSearch(venueData.name, venueId);
+      const user = auth.currentUser;
+      const summary = await getGeminiSearch(user!.uid, venueData.name, venueId);
       setAiSummary(summary);
       const now = Date.now();
       setAiLastUpdated(now);

@@ -24,11 +24,15 @@ logger.setLevel(logging.INFO)
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
 def venue(req: Request):
     """
-    GET /venue?id=<venue_id>
+    GET /venue?id=<venue_id>&userId=<user_id>
     Get restaurant information by venue ID with cached photo
+    Query parameters:
+    - id: Venue ID (required)
+    - userId: Optional Firebase user ID for personalized credentials
     """
     try:
         venue_id = req.args.get('id')
+        user_id = req.args.get('userId')
 
         if not venue_id:
             return {
@@ -36,8 +40,8 @@ def venue(req: Request):
                 'error': 'Missing venue_id parameter'
             }, 400
 
-        # Load credentials
-        config = load_credentials()
+        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        config = load_credentials(user_id)
         headers = get_resy_headers(config)
 
         response = requests.get(
@@ -82,11 +86,15 @@ def venue(req: Request):
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
 def venue_links(req: Request):
     """
-    GET /venue_links?id=<venue_id>
+    GET /venue_links?id=<venue_id>&userId=<user_id>
     Search for restaurant links (Google Maps, Resy)
+    Query parameters:
+    - id: Venue ID (required)
+    - userId: Optional Firebase user ID for personalized credentials
     """
     try:
         venue_id = req.args.get('id')
+        user_id = req.args.get('userId')
 
         if not venue_id:
             return {
@@ -98,7 +106,7 @@ def venue_links(req: Request):
 
         # First get venue details to get the restaurant name
         logger.info(f"[VENUE-LINKS] Fetching venue details from Resy API...")
-        credentials = load_credentials()
+        credentials = load_credentials(user_id)
         headers = get_resy_headers(credentials)
 
         # Use the /3/venue endpoint which returns complete venue data

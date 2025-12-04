@@ -10,6 +10,7 @@ import { BookmarkedRestaurantsPage } from '@/pages/BookmarkedRestaurantsPage'
 import { ReservationsPage } from '@/pages/ReservationsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { SignupPage } from '@/pages/SignupPage'
+import { OnboardingPage } from '@/pages/OnboardingPage'
 import { VenueProvider } from '@/contexts/VenueContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 // Firebase is initialized in services/firebase.ts
@@ -27,6 +28,7 @@ function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
+              <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="/" element={<HomePage />} />
               <Route path="/venue" element={<VenueDetailPage />} />
               <Route path="/search" element={<SearchPage />} />

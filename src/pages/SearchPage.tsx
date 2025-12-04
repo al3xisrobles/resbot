@@ -53,6 +53,7 @@ import {
   PaginationEllipsis,
 } from "@/components/ui/pagination";
 import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Mock data for filters
 const CUISINES = [
@@ -109,6 +110,7 @@ export function SearchPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [inputsHaveChanged, setInputsHaveChanged] = useState(true); // Track if inputs have changed since last search
   const [activeTab, setActiveTab] = useState<string>("browse"); // Track which tab is active
+  const auth = useAuth();
   const mapRef = useRef<LeafletMap | null>(null);
 
   // Client-side cache for paginated results
@@ -307,14 +309,16 @@ export function SearchPage() {
 
       console.log("[SearchPage] API call parameters:", apiParams);
 
-      const response = await searchRestaurantsByMap(apiParams);
+      const user = auth.currentUser;
+      const userId = user!.uid;
+      const response = await searchRestaurantsByMap(userId, apiParams);
 
       // Fetch venue data (type/cuisine + image) for all results using venue-links endpoint
       const resultsWithVenueData = await Promise.all(
         response.results.map(async (result) => {
           try {
             // Use the Cloud Function API to get venue links and data
-            const venueLinksData = await getVenueLinks(result.id);
+            const venueLinksData = await getVenueLinks(userId, result.id);
 
             // Update result with type from venue details
             return {

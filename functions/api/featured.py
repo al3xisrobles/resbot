@@ -18,16 +18,18 @@ logger.setLevel(logging.INFO)
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
 def climbing(req: Request):
     """
-    GET /climbing?limit=<limit>
+    GET /climbing?limit=<limit>&userId=<user_id>
     Get trending/climbing restaurants from Resy
     Query parameters:
     - limit: Number of restaurants to return (default: 10)
+    - userId: User ID (optional) - if provided, loads credentials from Firestore
     """
     try:
         limit = req.args.get('limit', '10')
+        user_id = req.args.get('userId')
 
-        # Load credentials
-        config = load_credentials()
+        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        config = load_credentials(user_id)
         headers = get_resy_headers(config)
 
         # Query the climbing endpoint
@@ -89,16 +91,18 @@ def climbing(req: Request):
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
 def top_rated(req: Request):
     """
-    GET /top_rated?limit=<limit>
+    GET /top_rated?limit=<limit>&userId=<user_id>
     Get top-rated restaurants from Resy
     Query parameters:
     - limit: Number of restaurants to return (default: 10)
+    - userId: User ID (optional) - if provided, loads credentials from Firestore
     """
     try:
         limit = req.args.get('limit', '10')
+        user_id = req.args.get('userId')
 
-        # Load credentials
-        config = load_credentials()
+        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        config = load_credentials(user_id)
         headers = get_resy_headers(config)
 
         # Query the top-rated endpoint

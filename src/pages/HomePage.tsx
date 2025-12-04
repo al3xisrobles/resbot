@@ -30,9 +30,11 @@ import {
   getTopRatedRestaurantsCache,
   saveTopRatedRestaurantsCache,
 } from "@/services/firebase";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function HomePage() {
   const navigate = useNavigate();
+  const auth = useAuth();
   const [trendingRestaurants, setTrendingRestaurants] = useState<
     TrendingRestaurant[]
   >([]);
@@ -61,7 +63,8 @@ export function HomePage() {
         } else {
           // Fetch fresh data from API
           console.log("Fetching fresh trending restaurants");
-          const data = await getTrendingRestaurants(10);
+          const user = auth.currentUser;
+          const data = await getTrendingRestaurants(user!.uid, 10);
           setTrendingRestaurants(data);
 
           // Save to cache
@@ -91,7 +94,8 @@ export function HomePage() {
         } else {
           // Fetch fresh data from API
           console.log("Fetching fresh top-rated restaurants");
-          const data = await getTopRatedRestaurants(10);
+          const user = auth.currentUser;
+          const data = await getTopRatedRestaurants(user!.uid, 10);
           setTopRatedRestaurants(data);
 
           // Save to cache

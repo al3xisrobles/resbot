@@ -28,12 +28,13 @@ def get_db():
     return _db
 
 
-def _build_reservation_request_from_dict(data: dict) -> tuple[ReservationRequest, ResyManager]:
+def _build_reservation_request_from_dict(data: dict, user_id: str = None) -> tuple[ReservationRequest, ResyManager]:
     """
     Convert our stored job/reservation data dict into a ReservationRequest
     and a configured ResyManager.
     """
-    credentials = load_credentials()
+    # Load credentials (from Firestore if userId provided, else from credentials.json)
+    credentials = load_credentials(user_id)
     config = ResyConfig(**credentials)
 
     reservation_data = {
@@ -56,13 +57,13 @@ def _build_reservation_request_from_dict(data: dict) -> tuple[ReservationRequest
     return reservation_request, manager
 
 
-def _make_reservation_for_job(job_data: dict) -> str:
+def _make_reservation_for_job(job_data: dict, user_id: str = None) -> str:
     """
     Execute the reservation attempt using job_data stored in Firestore.
     Returns the resy_token (or raises on error).
     """
     logger.info(f"[run_snipe] Starting reservation for job {job_data.get('jobId')} at {dt.datetime.now().isoformat()}")
-    reservation_request, manager = _build_reservation_request_from_dict(job_data)
+    reservation_request, manager = _build_reservation_request_from_dict(job_data, user_id)
     resy_token = manager.make_reservation_with_retries(reservation_request)
     return resy_token
 
@@ -73,6 +74,8 @@ def run_snipe(req: Request):
     Sniper function called by Cloud Scheduler.
 
     Body: { "jobId": "<firestore-doc-id>" }
+    Query parameters:
+    - userId: User ID (optional) - if provided, loads credentials from Firestore
 
     Steps:
       1. Load job from Firestore
@@ -84,6 +87,7 @@ def run_snipe(req: Request):
         logger.info("[run_snipe] Received request")
         body = req.get_json(silent=True) or {}
         job_id = body.get("jobId")
+        user_id = req.args.get('userId')
         if not job_id:
             return {"error": "Missing jobId"}, 400
 
@@ -120,7 +124,7 @@ def run_snipe(req: Request):
 
         while time.time() - start < deadline_seconds:
             try:
-                resy_token = _make_reservation_for_job(job_data)
+                resy_token = _make_reservation_for_job(job_data, user_id)
                 success = True
                 logger.info(f"[run_snipe] ✓ Reservation successful!")
                 break

@@ -17,6 +17,7 @@ from api.featured import climbing, top_rated  # noqa: F401
 from api.gemini_search import gemini_search  # noqa: F401
 from api.snipe import run_snipe  # noqa: F401
 from api.schedule import create_snipe  # noqa: F401
+from api.onboarding import start_resy_onboarding, resy_account  # noqa: F401
 
 # Initialize Firebase Admin (Firestore, etc.)
 initialize_app()

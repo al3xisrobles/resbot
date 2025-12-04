@@ -1,68 +1,77 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
-import { Separator } from '@/components/ui/separator'
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Separator } from "@/components/ui/separator";
+import { FirebaseError } from "@firebase/util";
 
 export function SignupPage() {
-  const [displayName, setDisplayName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const { signup, loginWithGoogle } = useAuth()
-  const navigate = useNavigate()
+  const { signup, loginWithGoogle } = useAuth();
+  const navigate = useNavigate();
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
 
     if (password !== confirmPassword) {
-      return setError('Passwords do not match')
+      return setError("Passwords do not match");
     }
 
     if (password.length < 6) {
-      return setError('Password must be at least 6 characters')
+      return setError("Password must be at least 6 characters");
     }
 
     try {
-      setError(null)
-      setLoading(true)
-      await signup(email, password, displayName)
-      navigate('/')
-    } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') {
-        setError('An account with this email already exists.')
-      } else if (err.code === 'auth/weak-password') {
-        setError('Password is too weak. Please use a stronger password.')
-      } else if (err.code === 'auth/invalid-email') {
-        setError('Invalid email address.')
+      setError(null);
+      setLoading(true);
+      await signup(email, password, displayName);
+      console.log("Signup successful. Redirecting to onboarding...");
+      navigate("/onboarding");
+    } catch (err: unknown) {
+      const firebaseError = err as FirebaseError;
+      if (firebaseError.code === "auth/email-already-in-use") {
+        setError("An account with this email already exists.");
+      } else if (firebaseError.code === "auth/weak-password") {
+        setError("Password is too weak. Please use a stronger password.");
+      } else if (firebaseError.code === "auth/invalid-email") {
+        setError("Invalid email address.");
       } else {
-        setError('Failed to create account. Please try again.')
+        setError("Failed to create account. Please try again.");
       }
-      console.error(err)
+      console.error(err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function handleGoogleSignIn() {
     try {
-      setError(null)
-      setLoading(true)
-      await loginWithGoogle()
-      navigate('/')
+      setError(null);
+      setLoading(true);
+      await loginWithGoogle();
+      navigate("/onboarding");
     } catch (err) {
-      setError('Failed to sign in with Google.')
-      console.error(err)
+      setError("Failed to sign in with Google.");
+      console.error(err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -71,9 +80,7 @@ export function SignupPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">Create Account</CardTitle>
-          <CardDescription>
-            Create a new account to get started
-          </CardDescription>
+          <CardDescription>Create a new account to get started</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
@@ -115,7 +122,9 @@ export function SignupPage() {
               <Separator />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+              <span className="bg-card px-2 text-muted-foreground">
+                Or continue with
+              </span>
             </div>
           </div>
 
@@ -167,12 +176,12 @@ export function SignupPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Creating account...' : 'Create Account'}
+              {loading ? "Creating account..." : "Create Account"}
             </Button>
           </form>
 
           <div className="text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
+            Already have an account?{" "}
             <Link to="/login" className="text-primary hover:underline">
               Sign in
             </Link>
@@ -180,5 +189,5 @@ export function SignupPage() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

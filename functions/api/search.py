@@ -31,6 +31,7 @@ def search(req: Request):
     GET /search
     Search for restaurants by name (NYC only)
     Query parameters:
+    - userId: Optional Firebase user ID for personalized credentials
     - query: Optional restaurant name search
     - available_only: Optional availability-only boolean
     - available_day: Optional day if available_only is true (format: 'YYYY-MM-DD')
@@ -41,6 +42,7 @@ def search(req: Request):
     - perPage: Optional results per page (default: 20, max: 50)
     """
     try:
+        user_id = req.args.get('userId')
         query = req.args.get('query', '').strip()
 
         # Parse filters using helper function
@@ -56,8 +58,8 @@ def search(req: Request):
                 'error': 'At least one search parameter is required (query, cuisines, or priceRanges)'
             }, 400
 
-        # Load credentials
-        config = load_credentials()
+        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        config = load_credentials(user_id)
         headers = get_resy_headers(config)
 
         # Default to Times Square with large radius
@@ -134,6 +136,7 @@ def search_map(req: Request):
     GET /search_map
     Search for restaurants by map bounding box
     Query parameters:
+    - userId: Optional Firebase user ID for personalized credentials
     - swLat: Southwest latitude (bottom-left)
     - swLng: Southwest longitude (bottom-left)
     - neLat: Northeast latitude (top-right)
@@ -148,6 +151,8 @@ def search_map(req: Request):
     - perPage: Optional results per page (default: 20, max: 50)
     """
     try:
+        user_id = req.args.get('userId')
+
         # Get bounding box coordinates
         sw_lat = float(req.args.get('swLat', 0))
         sw_lng = float(req.args.get('swLng', 0))
@@ -163,8 +168,8 @@ def search_map(req: Request):
         print(f"[MAP SEARCH] Params - query: '{query}', available_only: {filters['available_only']}, not_released_only: {filters.get('not_released_only', False)}, offset: {filters['offset']}, perPage: {filters['per_page']}")
         print(f"[MAP SEARCH] Parsed filters - cuisines: {filters['cuisines']}, priceRanges: {filters['price_ranges']}")
 
-        # Load credentials
-        config = load_credentials()
+        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        config = load_credentials(user_id)
         headers = get_resy_headers(config)
 
         # Build geo config for bounding box

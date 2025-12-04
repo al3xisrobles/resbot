@@ -10,9 +10,7 @@ import requests
 from time import time
 from hashlib import md5
 from google import genai
-from google.genai import types
-import firebase_admin
-from firebase_admin import storage
+from firebase_admin import storage, firestore
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -254,10 +252,57 @@ def fetch_venue_image_for_list(venue_id, venue_name, image_data):
     return None
 
 
-def load_credentials():
-    """Load Resy credentials from credentials.json"""
-    with open(CREDENTIALS_PATH, 'r') as f:
-        return json.load(f)
+def load_credentials(user_id=None):
+    """
+    Load Resy credentials from Firestore
+
+    Args:
+        user_id: Firebase user ID. Required.
+
+    Returns:
+        dict: Credentials containing api_key, token, etc.
+
+    Note:
+        The Firestore document uses camelCase field names (apiKey, paymentMethodId)
+        but this function returns snake_case for backwards compatibility
+    """
+    if not user_id:
+        logger.error("✗ user_id not provided for loading credentials from Firestore")
+        raise ValueError("user_id is required to load credentials from Firestore")
+
+    try:
+        db = firestore.client()
+        doc = db.collection('resyCredentials').document(user_id).get()
+
+        if not doc.exists:
+            logger.warning(f"✗ No Resy credentials found in Firestore for user {user_id}")
+            raise ValueError(f"User {user_id} has not connected their Resy account")
+
+        # Get the Firestore data (uses camelCase)
+        data = doc.to_dict()
+
+        # Transform to snake_case for backwards compatibility with existing code
+        credentials = {
+            'api_key': data.get('apiKey'),
+            'token': data.get('token'),
+            'payment_method_id': data.get('paymentMethodId'),
+            'email': data.get('email'),
+            'password': None,  # Never stored
+            'guest_id': data.get('guestId'),
+            'user_id': data.get('userId'),
+            'first_name': data.get('firstName'),
+            'last_name': data.get('lastName'),
+            'mobile_number': data.get('mobileNumber'),
+            'payment_methods': data.get('paymentMethods', []),
+            'legacy_token': data.get('legacyToken')
+        }
+
+        logger.info(f"✓ Loaded Resy credentials from Firestore for user {user_id}")
+        return credentials
+
+    except Exception as e:
+        logger.error(f"✗ Error loading credentials from Firestore: {str(e)}")
+        raise
 
 
 def get_resy_headers(config):

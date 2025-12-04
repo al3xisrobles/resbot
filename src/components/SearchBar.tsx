@@ -11,6 +11,7 @@ import {
 import { useVenue } from "@/contexts/VenueContext";
 import { searchRestaurants } from "@/lib/api";
 import { SearchResultItem } from "@/components/SearchResultItem";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SearchBarProps {
   className?: string;
@@ -26,6 +27,7 @@ export function SearchBar({ className, inputClassName }: SearchBarProps) {
   const [inputFocused, setInputFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const currentQueryRef = useRef<string>("");
+  const auth = useAuth();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Prevent body scroll when popover is open
@@ -64,7 +66,9 @@ export function SearchBar({ className, inputClassName }: SearchBarProps) {
           query,
         };
 
-        const results = (await searchRestaurants(searchFilter)).results;
+        const user = auth.currentUser;
+        const results = (await searchRestaurants(user!.uid, searchFilter))
+          .results;
 
         // Check if this query is still current
         if (currentQueryRef.current !== querySnapshot) {

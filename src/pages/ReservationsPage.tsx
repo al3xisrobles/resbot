@@ -6,9 +6,9 @@ import {
   type ReservationJob,
   getVenueCache,
 } from "@/services/firebase";
-import { auth } from "@/services/firebase";
 import { searchRestaurant } from "@/lib/api";
 import type { Reservation } from "@/lib/interfaces/app-types";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Transform Firestore ReservationJob to UI Reservation format
@@ -58,6 +58,7 @@ function transformJobToReservation(
 export function ReservationsPage() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
+  const auth = useAuth();
 
   useEffect(() => {
     const fetchReservations = async () => {
@@ -84,7 +85,8 @@ export function ReservationsPage() {
             let venueImage = "";
 
             try {
-              const venueData = await searchRestaurant(job.venueId);
+              const user = auth.currentUser;
+              const venueData = await searchRestaurant(user!.uid, job.venueId);
               venueName = venueData.name;
 
               // Try to get image from cache

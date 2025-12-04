@@ -27,7 +27,6 @@ import type {
   SearchResponse,
   SearchApiResponse,
   VenueData,
-  ReservationRequest,
   GeminiSearchResponse,
   CalendarData,
   VenuePhotoData,
@@ -41,9 +40,11 @@ import type {
  * Search for restaurants by name and/or filters
  */
 export async function searchRestaurants(
+  userId: string,
   filters: SearchFilters
 ): Promise<SearchResponse> {
   const params = new URLSearchParams();
+  params.append("firebaseUid", userId);
 
   if (filters.query) {
     params.append("query", filters.query);
@@ -121,10 +122,12 @@ export async function searchRestaurants(
  * Search for restaurants by name and/or filters with map bounds
  */
 export async function searchRestaurantsByMap(
+  userId: string,
   filters: MapSearchFilters
 ): Promise<SearchResponse> {
   const params = new URLSearchParams();
 
+  params.append("firebaseUid", userId);
   params.append("swLat", filters.swLat.toString());
   params.append("swLng", filters.swLng.toString());
   params.append("neLat", filters.neLat.toString());
@@ -216,8 +219,13 @@ export async function searchRestaurantsByMap(
 /**
  * Search for restaurant by venue ID
  */
-export async function searchRestaurant(venueId: string): Promise<VenueData> {
-  const response = await fetch(`${API_ENDPOINTS.venue}?id=${venueId}`);
+export async function searchRestaurant(
+  userId: string,
+  venueId: string
+): Promise<VenueData> {
+  const response = await fetch(
+    `${API_ENDPOINTS.venue}?id=${venueId}?firebaseUid=${userId}`
+  );
 
   if (!response.ok) {
     const error = await response.json();
@@ -234,47 +242,23 @@ export async function searchRestaurant(venueId: string): Promise<VenueData> {
 }
 
 /**
- * Make a reservation
- */
-export async function makeReservation(
-  request: ReservationRequest
-): Promise<{ resy_token: string }> {
-  const response = await fetch(API_ENDPOINTS.reservation, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to make reservation");
-  }
-
-  const result: ApiResponse<{ resy_token: string }> = await response.json();
-
-  if (!result.success) {
-    throw new Error(result.error || "Failed to make reservation");
-  }
-
-  return { resy_token: result.message || "Reservation successful" };
-}
-
-/**
  * Get AI-powered reservation information using Gemini
  */
 export async function getGeminiSearch(
+  userId: string,
   restaurantName: string,
   venueId?: string
 ): Promise<GeminiSearchResponse> {
-  const response = await fetch(API_ENDPOINTS.gemini_search, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ restaurantName, venueId }),
-  });
+  const response = await fetch(
+    `${API_ENDPOINTS.gemini_search}?userId=${userId}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ restaurantName, venueId }),
+    }
+  );
 
   if (!response.ok) {
     const error = await response.json();
@@ -294,15 +278,16 @@ export async function getGeminiSearch(
  * Get restaurant availability calendar
  */
 export async function getCalendar(
+  userId: string,
   venueId: string,
   partySize?: string
 ): Promise<CalendarData> {
   const params = new URLSearchParams();
   params.append("id", venueId);
+  params.append("firebaseUid", userId);
   if (partySize) {
     params.append("partySize", partySize);
   }
-
   const url = `${API_ENDPOINTS.calendar}?${params.toString()}`;
   const response = await fetch(url);
 
@@ -324,12 +309,14 @@ export async function getCalendar(
  * Get restaurant photo URL from Google Places
  */
 export async function getVenuePhoto(
+  userId: string,
   venueId: string,
   restaurantName: string
 ): Promise<VenuePhotoData | null> {
   const params = new URLSearchParams();
   params.append("id", venueId);
   params.append("name", restaurantName);
+  params.append("firebaseUid", userId);
 
   const url = `${API_ENDPOINTS.venue_photo}?${params.toString()}`;
 
@@ -381,9 +368,11 @@ export async function healthCheck(): Promise<boolean> {
  * Get trending/climbing restaurants
  */
 export async function getTrendingRestaurants(
+  userId: string,
   limit?: number
 ): Promise<TrendingRestaurant[]> {
   const params = new URLSearchParams();
+  params.append("firebaseUid", userId);
   if (limit) {
     params.append("limit", limit.toString());
   }
@@ -411,9 +400,11 @@ export async function getTrendingRestaurants(
  * Get top-rated restaurants
  */
 export async function getTopRatedRestaurants(
+  userId: string,
   limit?: number
 ): Promise<TrendingRestaurant[]> {
   const params = new URLSearchParams();
+  params.append("firebaseUid", userId);
   if (limit) {
     params.append("limit", limit.toString());
   }
@@ -441,13 +432,16 @@ export async function getTopRatedRestaurants(
  * Get social media links and basic data for a venue (Google Maps, Resy, Beli)
  */
 export async function getVenueLinks(
+  userId: string,
   venueId: string
 ): Promise<VenueLinksResponse> {
   console.log(`[API] Fetching venue links for venue_id: ${venueId}`);
   const startTime = performance.now();
 
   try {
-    const response = await fetch(`${API_ENDPOINTS.venue_links}?id=${venueId}`);
+    const response = await fetch(
+      `${API_ENDPOINTS.venue_links}?id=${venueId}&firebaseUid=${userId}`
+    );
 
     if (!response.ok) {
       console.error(
@@ -482,6 +476,100 @@ export async function getVenueLinks(
       `[API] ✗ Error fetching venue links after ${elapsedTime}ms:`,
       error
     );
+    throw error;
+  }
+}
+
+/**
+ * Connect Resy account via direct API authentication
+ */
+export async function connectResyAccount(
+  userId: string,
+  email: string,
+  password: string
+): Promise<{
+  success: boolean;
+  hasPaymentMethod?: boolean;
+  paymentMethodId?: number;
+  error?: string;
+}> {
+  const url = `${CLOUD_FUNCTIONS_BASE}/start_resy_onboarding`;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        firebaseUid: userId,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Failed to connect Resy account");
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[API] Error connecting Resy account:", error);
+    throw error;
+  }
+}
+
+/**
+ * Check if user has connected their Resy account
+ */
+export async function checkResyAccountStatus(userId: string): Promise<{
+  success: boolean;
+  connected: boolean;
+  hasPaymentMethod?: boolean;
+  email?: string;
+  name?: string;
+}> {
+  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?firebaseUid=${userId}`;
+
+  try {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to check Resy account status");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("[API] Error checking Resy account status:", error);
+    throw error;
+  }
+}
+
+/**
+ * Disconnect Resy account
+ */
+export async function disconnectResyAccount(userId: string): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?firebaseUid=${userId}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to disconnect Resy account");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("[API] Error disconnecting Resy account:", error);
     throw error;
   }
 }
