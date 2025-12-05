@@ -4,6 +4,9 @@ import { format } from "date-fns";
 import { TrendingUp, Star, Search } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import chooseIllustration from "@/assets/undraw_choose_5kz4.svg";
+import timeManagementIllustration from "@/assets/undraw_time-management_4ss6.svg";
+import mailSentIllustration from "@/assets/undraw_mail-sent_ujev.svg";
 import {
   Select,
   SelectContent,
@@ -31,6 +34,32 @@ import {
   saveTopRatedRestaurantsCache,
 } from "@/services/firebase";
 import { useAuth } from "@/contexts/AuthContext";
+
+const HOW_IT_WORKS_STEPS = [
+  {
+    id: 1,
+    title: "Plan Your Snipe",
+    description: "Pick the restaurant, date, time window, and party size.",
+    image: chooseIllustration,
+    alt: "Choose",
+  },
+  {
+    id: 2,
+    title: "We Snipe at Drop Time",
+    description:
+      "At the exact drop time, our bot finds the best slot and races to book it instantly.",
+    image: timeManagementIllustration,
+    alt: "Time Management",
+  },
+  {
+    id: 3,
+    title: "Get Notified",
+    description:
+      "You'll receive an email from Resy if we secure the reservation. If not, we'll explain happened.",
+    image: mailSentIllustration,
+    alt: "Mail Sent",
+  },
+];
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -121,7 +150,7 @@ export function HomePage() {
     <div className="h-screen bg-background py-24 overflow-y-auto">
       {/* Main Content - Grid Layout */}
       <main className="container mx-auto px-4 py-8">
-        <div className="flex flex-col sm:flex-row gap-8 mb-2">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-8 mb-2">
           {/* Left: Search Section */}
           <div className="max-w-160 w-full lg:pr-16">
             {/* Title */}
@@ -220,12 +249,39 @@ export function HomePage() {
             </div>
           </div>
 
-          {/* Right: Placeholder Image */}
-          <div className="hidden lg:flex w-full items-center justify-center">
-            <div className="w-full h-[350px] bg-muted rounded-lg flex items-center justify-center">
-              <p className="text-muted-foreground text-sm">
-                Placeholder for graphic
-              </p>
+          {/* Right: How It Works Section */}
+          <div className="mb-8 sm:mb-0 flex w-full items-start justify-center">
+            <div className="w-full space-y-4">
+              <div className="w-full flex justify-center">
+                <p className="text-muted-foreground text-sm">
+                  How Reservation Sniping Works
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {HOW_IT_WORKS_STEPS.map((step) => (
+                  <div
+                    key={step.id}
+                    className="flex flex-row gap-4 sm:gap-0 sm:flex-col items-center sm:text-center p-6 rounded-xl bg-card border border-border hover:border-primary/20 hover:shadow-sm transition-all"
+                  >
+                    <div className="shrink-0 w-24 h-24 sm:w-full sm:h-46 bg-muted/50 rounded-lg flex items-center justify-center mb-0 sm:mb-4 p-2 sm:p-8">
+                      <img
+                        src={step.image}
+                        alt={step.alt}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2 items-start sm:items-center">
+                      <h3 className="font-semibold text-base">
+                        {step.id}. {step.title}
+                      </h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
