@@ -392,7 +392,7 @@ export function VenueDetailPage() {
     };
 
     fetchVenueLinksAndData();
-  }, [venueId, venueData]);
+  }, [venueId, venueData, auth.currentUser]);
 
   // Manual refresh function
   const handleRefreshAiSummary = async () => {

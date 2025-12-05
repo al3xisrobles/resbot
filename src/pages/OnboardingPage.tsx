@@ -22,7 +22,6 @@ import {
   CheckCircle2,
   Loader2,
   ChevronDown,
-  Icon,
   ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
