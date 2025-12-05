@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 
 import logging
-from .errors import NoSlotsError, ExhaustedRetriesError
+from requests import HTTPError
+from .errors import NoSlotsError, ExhaustedRetriesError, SlotTakenError
 from .constants import (
     N_RETRIES,
     SECONDS_TO_WAIT_BETWEEN_RETRIES,
@@ -78,14 +79,19 @@ class ResyManager:
 
         booking_request = build_book_request_body(token, self.config)
 
-        resy_token = self.api_access.book_slot(booking_request)
-
-        return resy_token
+        try:
+            resy_token = self.api_access.book_slot(booking_request)
+            return resy_token
+        except HTTPError as e:
+            # Log the error type and message when booking fails
+            logger.error(f"Booking failed - Error type: {type(e).__name__}, Status: {e.response.status_code if hasattr(e, 'response') else 'N/A'}, Message: {str(e)}")
+            # Raise SlotTakenError to allow retry logic to handle it
+            raise SlotTakenError(f"Failed to book slot: {str(e)}") from e
 
     def make_reservation_with_retries(
         self, reservation_request: ReservationRequest
     ) -> str:
-        for _ in range(self.retry_config.n_retries):
+        for attempt in range(self.retry_config.n_retries):
             try:
                 return self.make_reservation(reservation_request)
 
@@ -93,6 +99,15 @@ class ResyManager:
                 logger.info(
                     f"no slots, retrying; currently {datetime.now().isoformat()}"
                 )
+
+            except SlotTakenError as e:
+                if self.config.retry_on_taken_slot:
+                    logger.info(
+                        f"slot taken (attempt {attempt + 1}/{self.retry_config.n_retries}), retrying; currently {datetime.now().isoformat()}"
+                    )
+                else:
+                    # If retry_on_taken_slot is False, propagate the error immediately
+                    raise
 
         raise ExhaustedRetriesError(
             f"Retried {self.retry_config.n_retries} times, " "without finding a slot"

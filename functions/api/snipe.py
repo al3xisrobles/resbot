@@ -36,7 +36,8 @@ def _build_reservation_request_from_dict(data: dict, user_id: str = None) -> tup
     """
     # Load credentials (from Firestore if userId provided, else from credentials.json)
     credentials = load_credentials(user_id)
-    config = ResyConfig(**credentials)
+    # Explicitly set retry_on_taken_slot to True for now
+    config = ResyConfig(**credentials, retry_on_taken_slot=True)
 
     reservation_data = {
         "party_size": int(data["partySize"]),
@@ -73,7 +74,8 @@ def _make_reservation_for_job(job_data: dict, user_id: str = None) -> str:
     cors=CorsOptions(
         cors_origins="*",
         cors_methods=["POST", "OPTIONS"],  # allow POST + OPTIONS
-    )
+    ),
+    timeout_sec=120,
 )
 def run_snipe(req: Request):
     """
