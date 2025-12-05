@@ -264,6 +264,74 @@
   animation: gradient-flow 3s ease infinite;
 }
 
+@keyframes mesh-1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(300px, -300px) scale(1.1);
+  }
+  66% {
+    transform: translate(-200px, 200px) scale(0.9);
+  }
+}
+
+@keyframes mesh-2 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(-40p0x, 300px) scale(0.95);
+  }
+  66% {
+    transform: translate(250px, -250px) scale(1.05);
+  }
+}
+
+@keyframes mesh-3 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(350px, 350px) scale(1.08);
+  }
+  66% {
+    transform: translate(-300px, -200px) scale(0.92);
+  }
+}
+
+@keyframes mesh-4 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(-250px, -350px) scale(0.93);
+  }
+  66% {
+    transform: translate(400px, 250px) scale(1.07);
+  }
+}
+
+.animate-mesh-1 {
+  animation: mesh-1 10s ease-in-out infinite;
+}
+
+.animate-mesh-2 {
+  animation: mesh-2 12s ease-in-out infinite;
+}
+
+.animate-mesh-3 {
+  animation: mesh-3 8s ease-in-out infinite;
+}
+
+.animate-mesh-4 {
+  animation: mesh-4 10 ease-in-out infinite;
+}
+
 @layer utilities {
   .no-scrollbar {
     -ms-overflow-style: none; /* IE and Edge */

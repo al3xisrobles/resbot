@@ -147,9 +147,17 @@ export function HomePage() {
   }, []);
 
   return (
-    <div className="h-screen bg-background py-24 overflow-y-auto">
+    <div className="h-screen py-24 overflow-y-auto relative">
+      {/* Animated Mesh Gradient Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none bg-background opacity-0 sm:opacity-20 lg:opacity-50">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-linear-to-br from-orange-300/10 via-red-300/15 to-pink-300/10 rounded-full blur-3xl animate-mesh-1" />
+        <div className="absolute top-1/4 right-1/3 w-lg h-128 bg-linear-to-bl from-amber-300/10 via-orange-300/10 to-red-400/10 rounded-full blur-3xl animate-mesh-2" />
+        <div className="absolute top-1/2 left-1/4 w-md h-112 bg-linear-to-tr from-rose-300/15 via-orange-400/10 to-amber-300/15 rounded-full blur-3xl animate-mesh-3" />
+        <div className="absolute bottom-1/4 left-0 w-80 h-80 bg-linear-to-tl from-red-400/10 via-pink-300/10 to-orange-300/15 rounded-full blur-3xl animate-mesh-4" />
+      </div>
+
       {/* Main Content - Grid Layout */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 relative">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-8 mb-2">
           {/* Left: Search Section */}
           <div className="max-w-160 w-full lg:pr-16">
@@ -262,9 +270,9 @@ export function HomePage() {
                 {HOW_IT_WORKS_STEPS.map((step) => (
                   <div
                     key={step.id}
-                    className="flex flex-row gap-4 sm:gap-0 sm:flex-col items-center sm:text-center p-6 rounded-xl bg-card border border-border hover:border-primary/20 hover:shadow-sm transition-all"
+                    className="flex flex-row gap-4 sm:gap-0 sm:flex-col items-center sm:text-center p-6 rounded-xl bg-card border border-border hover:border-primary/10 hover:shadow-sm transition-all"
                   >
-                    <div className="shrink-0 w-24 h-24 sm:w-full sm:h-46 bg-muted/50 rounded-lg flex items-center justify-center mb-0 sm:mb-4 p-2 sm:p-8">
+                    <div className="shrink-0 w-24 h-24 sm:w-full sm:h-46 bg-muted/40 rounded-lg flex items-center justify-center mb-0 sm:mb-4 p-2 sm:p-8">
                       <img
                         src={step.image}
                         alt={step.alt}
