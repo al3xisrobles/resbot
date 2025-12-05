@@ -11,8 +11,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  ChevronDown,
+  Icon,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { connectResyAccount } from "@/lib/api";
 import ResyLogo from "../assets/ResyLogo.png";
@@ -79,8 +91,8 @@ export function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="h-screen flex justify-center bg-background px-4 py-10 overflow-y-auto">
+      <Card className="w-full max-w-md my-32 h-max">
         <CardHeader>
           <img src={ResyLogo} alt="Resy Logo" className="h-12 mb-4" />
           <CardTitle>Connect Your Resy Account</CardTitle>
@@ -91,9 +103,30 @@ export function OnboardingPage() {
         <CardContent>
           <form onSubmit={handleConnectResy} className="space-y-4">
             {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="size-4" />
-                <AlertDescription>{error}</AlertDescription>
+              <Alert
+                variant="destructive"
+                className="flex items-center flex-row gap-2 justify-between"
+              >
+                <div className="flex flex-row gap-2 items-center">
+                  <AlertCircle className="size-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </div>
+                {error === "Invalid Resy login" && (
+                  <Button
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => {
+                      window.open(
+                        "https://resy.com",
+                        "_blank",
+                        "noopener,noreferrer"
+                      );
+                    }}
+                  >
+                    <p>Go to Resy.com</p>
+                    <ChevronRight className="size-4" />
+                  </Button>
+                )}
               </Alert>
             )}
 
@@ -102,15 +135,56 @@ export function OnboardingPage() {
                 <h3 className="font-semibold text-sm mb-2">How it works:</h3>
                 <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                   <li>Enter your Resy email and password below</li>
-                  <li>Click "Connect Account" to authenticate</li>
-                  <li>Your credentials are securely stored</li>
                   <li>
-                    Your password is never saved - only an auth token is kept
+                    Click <strong>Connect Account</strong> to authenticate
+                  </li>
+                  <li>
+                    We <strong>never</strong> store your password—only a secure
+                    authorization token from Resy, which allows us to perform
+                    reservation checks and snipes on your behalf.
                   </li>
                 </ol>
+
+                {/* Learn More Dropdown */}
+                <Collapsible className="mt-3">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="px-0 text-sm w-full"
+                    >
+                      <AlertCircle className="size-4" />
+                      <p>Why do I need to give you my password?</p>
+                      <ChevronDown className="size-4 ml-1 transition-transform data-[state=open]:rotate-180" />
+                    </Button>
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent className="text-sm text-muted-foreground mt-2 space-y-2">
+                    <p>
+                      To make reservations on your behalf, we need permission
+                      from your Resy account. The only way Resy allows apps to
+                      do this is by signing in once and receiving an
+                      authorization token that belongs to your account.
+                    </p>
+
+                    <p>
+                      This token is what lets us check availability, potentially
+                      use your saved payment method, and book the reservation
+                      for you the moment it drops.
+                    </p>
+
+                    <p>
+                      We never store your email or password. They’re only used
+                      one time to request your token from Resy—and then they’re
+                      immediately thrown away. The only thing we save is the
+                      token, which is the minimum needed for your snipes to run
+                      automatically.
+                    </p>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
 
-              {/* Fake fields to soak up autofill */}
+              {/* Fake fields to suppress autofill */}
               <input
                 type="text"
                 name="fake-username"

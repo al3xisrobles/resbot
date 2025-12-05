@@ -34,5 +34,19 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
     }
+
+    // Reservation jobs collection
+    match /reservationJobs/{jobId} {
+      // Creating a job: the doc must have userUid equal to the caller's uid
+      allow create: if isOwner(request.resource.data.userId);
+
+      // Reading/updating/deleting: only the owner of the job can touch it
+      allow read, update, delete: if isOwner(resource.data.userId);
+    }
+
+    // Resy credentials collection - user can only access their own credentials
+    match /resyCredentials/{userId} {
+      allow read, write: if isOwner(userId);
+    }
   }
 }

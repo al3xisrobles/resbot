@@ -34,7 +34,7 @@
         "firebase-debug.*.log",
         "*.local"
       ],
-      "runtime": "python313"
+      "runtime": "python312"
     }
   ],
   "emulators": {
@@ -44,15 +44,18 @@
     "firestore": {
       "port": 8080
     },
-    "hosting": {
-      "port": 5000
-    },
     "storage": {
       "port": 9199
     },
     "ui": {
       "enabled": true
     },
-    "singleProjectMode": true
+    "singleProjectMode": true,
+    "auth": {
+      "port": 9099
+    },
+    "pubsub": {
+      "port": 8085
+    }
   }
 }

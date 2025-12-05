@@ -3,7 +3,9 @@ Firebase Python Cloud Functions for Resy Bot
 These functions can call code from resy_client/ module
 """
 
+import os
 import logging
+from dotenv import load_dotenv
 
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
@@ -22,15 +24,19 @@ from api.onboarding import start_resy_onboarding, resy_account  # noqa: F401
 # Initialize Firebase Admin (Firestore, etc.)
 initialize_app()
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Setup logging for GCP Cloud Functions
 # GCP automatically captures stdout/stderr, so we configure logging to use stdout
 logging.basicConfig(
     level=logging.INFO,
     format='%(levelname)s:%(name)s:%(message)s',
-    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
+logger.info("OBJC_DISABLE_INITIALIZE_FORK_SAFETY=%r", os.environ.get("OBJC_DISABLE_INITIALIZE_FORK_SAFETY"))
+logger.info("GUNICORN_CMD_ARGS=%r", os.environ.get("GUNICORN_CMD_ARGS"))
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
 def health(req: Request):

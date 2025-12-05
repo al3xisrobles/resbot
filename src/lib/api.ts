@@ -2,10 +2,7 @@
  * API client for Resy Bot backend
  * Now using Cloud Functions instead of Flask server
  */
-
-// Cloud Function URLs
-const CLOUD_FUNCTIONS_BASE =
-  "https://us-central1-resybot-bd2db.cloudfunctions.net";
+import { CLOUD_FUNCTIONS_BASE } from "../services/firebase";
 
 const API_ENDPOINTS = {
   search: `${CLOUD_FUNCTIONS_BASE}/search`,
@@ -44,7 +41,7 @@ export async function searchRestaurants(
   filters: SearchFilters
 ): Promise<SearchResponse> {
   const params = new URLSearchParams();
-  params.append("firebaseUid", userId);
+  params.append("userId", userId);
 
   if (filters.query) {
     params.append("query", filters.query);
@@ -127,7 +124,7 @@ export async function searchRestaurantsByMap(
 ): Promise<SearchResponse> {
   const params = new URLSearchParams();
 
-  params.append("firebaseUid", userId);
+  params.append("userId", userId);
   params.append("swLat", filters.swLat.toString());
   params.append("swLng", filters.swLng.toString());
   params.append("neLat", filters.neLat.toString());
@@ -224,7 +221,7 @@ export async function searchRestaurant(
   venueId: string
 ): Promise<VenueData> {
   const response = await fetch(
-    `${API_ENDPOINTS.venue}?id=${venueId}?firebaseUid=${userId}`
+    `${API_ENDPOINTS.venue}?id=${venueId}&userId=${userId}`
   );
 
   if (!response.ok) {
@@ -284,7 +281,7 @@ export async function getCalendar(
 ): Promise<CalendarData> {
   const params = new URLSearchParams();
   params.append("id", venueId);
-  params.append("firebaseUid", userId);
+  params.append("userId", userId);
   if (partySize) {
     params.append("partySize", partySize);
   }
@@ -316,7 +313,7 @@ export async function getVenuePhoto(
   const params = new URLSearchParams();
   params.append("id", venueId);
   params.append("name", restaurantName);
-  params.append("firebaseUid", userId);
+  params.append("userId", userId);
 
   const url = `${API_ENDPOINTS.venue_photo}?${params.toString()}`;
 
@@ -372,7 +369,7 @@ export async function getTrendingRestaurants(
   limit?: number
 ): Promise<TrendingRestaurant[]> {
   const params = new URLSearchParams();
-  params.append("firebaseUid", userId);
+  params.append("userId", userId);
   if (limit) {
     params.append("limit", limit.toString());
   }
@@ -404,7 +401,7 @@ export async function getTopRatedRestaurants(
   limit?: number
 ): Promise<TrendingRestaurant[]> {
   const params = new URLSearchParams();
-  params.append("firebaseUid", userId);
+  params.append("userId", userId);
   if (limit) {
     params.append("limit", limit.toString());
   }
@@ -440,7 +437,7 @@ export async function getVenueLinks(
 
   try {
     const response = await fetch(
-      `${API_ENDPOINTS.venue_links}?id=${venueId}&firebaseUid=${userId}`
+      `${API_ENDPOINTS.venue_links}?id=${venueId}&userId=${userId}`
     );
 
     if (!response.ok) {
@@ -462,7 +459,7 @@ export async function getVenueLinks(
       (link) => link !== null
     ).length;
     console.log(
-      `[API] ✓ Successfully fetched venue links in ${elapsedTime}ms. Found ${foundCount}/3 links:`,
+      `[API] ✓ Successfully fetched venue links in ${elapsedTime}ms. Found ${foundCount}/2 links:`,
       result.links
     );
 
@@ -504,7 +501,7 @@ export async function connectResyAccount(
       body: JSON.stringify({
         email,
         password,
-        firebaseUid: userId,
+        userId: userId,
       }),
     });
 
@@ -531,7 +528,7 @@ export async function checkResyAccountStatus(userId: string): Promise<{
   email?: string;
   name?: string;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?firebaseUid=${userId}`;
+  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?userId=${userId}`;
 
   try {
     const response = await fetch(url);
@@ -555,7 +552,7 @@ export async function disconnectResyAccount(userId: string): Promise<{
   success: boolean;
   message?: string;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?firebaseUid=${userId}`;
+  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?userId=${userId}`;
 
   try {
     const response = await fetch(url, {

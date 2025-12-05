@@ -17,10 +17,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # Configuration
-CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), "credentials.json")
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')
-CLOUD_FUNCTIONS_BASE = "https://us-central1-resybot-bd2db.cloudfunctions.net"
 
 # Search results cache with TTL (5 minutes)
 # Format: {cache_key: {'results': [...], 'total': int, 'timestamp': float}}
@@ -38,6 +36,24 @@ if GEMINI_API_KEY:
 # Firebase Storage bucket (lazily initialized)
 _firebase_bucket = None
 
+def is_emulator() -> bool:
+    # Any of these being set basically implies you're in `firebase emulators:start`
+    return any(
+        os.getenv(name)
+        for name in [
+            "FIREBASE_EMULATOR_HUB",
+            "FIRESTORE_EMULATOR_HOST",
+            "FIREBASE_AUTH_EMULATOR_HOST",
+            "STORAGE_EMULATOR_HOST",
+        ]
+    )
+
+if is_emulator():
+    logger.info("⚠ Running in Firebase Emulator mode")
+    CLOUD_FUNCTIONS_BASE = "http://127.0.0.1:5001/resybot-bd2db/us-central1"
+else:
+    logger.info("✓ Running in Production mode")
+    CLOUD_FUNCTIONS_BASE = "https://us-central1-resybot-bd2db.cloudfunctions.net"
 
 def get_firebase_bucket():
     """Lazily get Firebase Storage bucket"""
@@ -252,7 +268,7 @@ def fetch_venue_image_for_list(venue_id, venue_name, image_data):
     return None
 
 
-def load_credentials(user_id=None):
+def load_credentials(userId=None):
     """
     Load Resy credentials from Firestore
 
@@ -266,17 +282,17 @@ def load_credentials(user_id=None):
         The Firestore document uses camelCase field names (apiKey, paymentMethodId)
         but this function returns snake_case for backwards compatibility
     """
-    if not user_id:
-        logger.error("✗ user_id not provided for loading credentials from Firestore")
-        raise ValueError("user_id is required to load credentials from Firestore")
+    if not userId:
+        logger.error("✗ userId not provided for loading credentials from Firestore")
+        raise ValueError("userId is required to load credentials from Firestore")
 
     try:
         db = firestore.client()
-        doc = db.collection('resyCredentials').document(user_id).get()
+        doc = db.collection('resyCredentials').document(userId).get()
 
         if not doc.exists:
-            logger.warning(f"✗ No Resy credentials found in Firestore for user {user_id}")
-            raise ValueError(f"User {user_id} has not connected their Resy account")
+            logger.warning(f"✗ No Resy credentials found in Firestore for user {userId}")
+            raise ValueError(f"User {userId} has not connected their Resy account")
 
         # Get the Firestore data (uses camelCase)
         data = doc.to_dict()
@@ -297,7 +313,7 @@ def load_credentials(user_id=None):
             'legacy_token': data.get('legacyToken')
         }
 
-        logger.info(f"✓ Loaded Resy credentials from Firestore for user {user_id}")
+        logger.info(f"✓ Loaded Resy credentials from Firestore for user {userId}")
         return credentials
 
     except Exception as e:

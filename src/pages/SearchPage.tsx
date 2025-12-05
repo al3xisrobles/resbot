@@ -40,7 +40,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { SearchResultItem } from "@/components/SearchResultItem";
-import { searchRestaurantsByMap, getVenueLinks } from "@/lib/api";
+import { searchRestaurantsByMap } from "@/lib/api";
 import type { SearchPagination, SearchResult } from "@/lib/interfaces";
 import { useVenue } from "@/contexts/VenueContext";
 import {
@@ -311,50 +311,28 @@ export function SearchPage() {
 
       const user = auth.currentUser;
       const userId = user!.uid;
+
+      // Fetch venue data (type/cuisine + image) for all results
       const response = await searchRestaurantsByMap(userId, apiParams);
+      const results = response.results;
 
-      // Fetch venue data (type/cuisine + image) for all results using venue-links endpoint
-      const resultsWithVenueData = await Promise.all(
-        response.results.map(async (result) => {
-          try {
-            // Use the Cloud Function API to get venue links and data
-            const venueLinksData = await getVenueLinks(userId, result.id);
-
-            // Update result with type from venue details
-            return {
-              ...result,
-              type: venueLinksData.venueData?.type || result.type,
-              imageUrl: result.imageUrl, // Use imageUrl from search results
-            };
-          } catch (error) {
-            console.error(
-              `Failed to fetch venue links for ${result.id}:`,
-              error
-            );
-            // Fallback: return result as-is
-            return { ...result };
-          }
-        })
-      );
-
-      console.log("Search results:", resultsWithVenueData);
+      console.log("Search results:", results);
       console.log(
         "[SearchPage] First result availableTimes:",
-        resultsWithVenueData[0]?.availableTimes
+        results[0]?.availableTimes
       );
 
-      setSearchResults(resultsWithVenueData);
+      setSearchResults(results);
       setPagination(response.pagination);
 
       // Cache the results for this page
       pageCache.current[cacheKey] = {
-        results: resultsWithVenueData,
+        results: results,
         pagination: response.pagination,
       };
       console.log("[SearchPage] Cached results for", cacheKey);
-
       console.log("[SearchPage] Search complete:", {
-        resultsCount: resultsWithVenueData.length,
+        resultsCount: results.length,
         pagination: response.pagination,
         paginationTotal: response.pagination.total,
         paginationHasTotal: "total" in response.pagination,

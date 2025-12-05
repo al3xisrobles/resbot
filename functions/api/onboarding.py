@@ -70,7 +70,7 @@ def start_resy_onboarding(req: Request):
     {
         "email": "user@example.com",
         "password": "...",
-        "firebaseUid": "firebase_user_id"
+        "userId": "userId"
     }
 
     Returns:
@@ -97,13 +97,13 @@ def start_resy_onboarding(req: Request):
 
         email = request_json.get('email')
         password = request_json.get('password')
-        firebase_uid = request_json.get('firebaseUid')
+        firebase_uid = request_json.get('userId')
 
         # Validate required fields
         if not email or not password or not firebase_uid:
             return {
                 'success': False,
-                'error': 'Missing required fields: email, password, firebaseUid'
+                'error': 'Missing required fields: email, password, userId'
             }, 400
 
         logger.info(f"Starting Resy onboarding for Firebase user: {firebase_uid}")
@@ -170,18 +170,18 @@ def start_resy_onboarding(req: Request):
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET", "DELETE"]))
 def resy_account(req: Request):
     """
-    GET /resy_account?firebaseUid=<user_id>
+    GET /resy_account?userId=<user_id>
     Check if user has connected their Resy account
 
-    DELETE /resy_account?firebaseUid=<user_id>
+    DELETE /resy_account?userId=<user_id>
     Disconnect Resy account
     """
     try:
-        firebase_uid = req.args.get('firebaseUid')
+        firebase_uid = req.args.get('userId')
         if not firebase_uid:
             return {
                 'success': False,
-                'error': 'firebaseUid is required'
+                'error': 'userId is required'
             }, 400
 
         db = firestore.client()

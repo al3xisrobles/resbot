@@ -75,6 +75,12 @@ import {
 } from "@/services/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 
+const useEmulators =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
+
+console.log("Using Firebase Emulators:", useEmulators);
+
 function renderMarkdownBold(text: string) {
   if (!text) return null;
 
@@ -134,6 +140,8 @@ export function VenueDetailPage() {
   const [reservationScheduled, setReservationScheduled] = useState(false);
 
   const [isBookmarked, setIsBookmarked] = useState(false);
+
+  const [reserveOnEmulation, setReserveOnEmulation] = useState(false);
 
   // Fetch venue data
   useEffect(() => {
@@ -468,6 +476,7 @@ export function VenueDetailPage() {
         dropHour: Number(dropHour),
         dropMinute: Number(dropMinute),
         userId: user?.uid ?? null,
+        actuallyReserve: reserveOnEmulation,
       });
 
       // Show success toast with green background
@@ -509,7 +518,7 @@ export function VenueDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Side - Restaurant Information */}
           <div>
-            <div className="flex flex-col md:flex-row gap-4 w-full overflow-scroll">
+            <div className="flex flex-col md:flex-row gap-4 w-full">
               {/* Restaurant Info Card */}
               <Card className="flex-1 relative pb-20">
                 <CardContent className="space-y-4">
@@ -1183,6 +1192,33 @@ export function VenueDetailPage() {
                     </div>
                   </div>
                 </div>
+
+                {useEmulators && (
+                  <div className="flex flex-row gap-2 items-center">
+                    <Button
+                      size="sm"
+                      variant={reserveOnEmulation ? "default" : "outline"}
+                      onClick={() => setReserveOnEmulation(!reserveOnEmulation)}
+                    >
+                      Actually Reserve Now
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        // Set drop date/time to now
+                        const now = new Date();
+                        setReservationForm({
+                          ...reservationForm,
+                          dropDate: now,
+                          dropTimeSlot: `${now.getHours()}:${now.getMinutes()}`,
+                        });
+                      }}
+                    >
+                      Set time to now
+                    </Button>
+                  </div>
+                )}
 
                 {/* Submit */}
                 <Button

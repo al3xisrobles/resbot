@@ -348,11 +348,14 @@ def venue_photo_proxy(req: Request):
         logger.info(f"[PHOTO-PROXY] Fetching image from Google Maps for {restaurant_name}")
         image_response = requests.get(photo_url, timeout=10)
 
+        print("PHOTO URL:", photo_url)
+
         if image_response.status_code != 200:
             logger.error(f"[PHOTO-PROXY] Failed to fetch image. Status: {image_response.status_code}")
             return {
                 'success': False,
-                'error': 'Failed to fetch image from Google Maps'
+                'error': 'Failed to fetch image from Google Maps',
+                'message': image_response.text
             }, 500
 
         # Get content type from response or default to jpeg

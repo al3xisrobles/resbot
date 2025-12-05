@@ -8,6 +8,7 @@ import datetime as dt
 import logging
 
 from firebase_functions.https_fn import on_request, Request
+from firebase_functions.options import CorsOptions
 from firebase_admin import firestore
 
 from .resy_client.models import ResyConfig, ReservationRequest
@@ -68,7 +69,12 @@ def _make_reservation_for_job(job_data: dict, user_id: str = None) -> str:
     return resy_token
 
 
-@on_request()
+@on_request(
+    cors=CorsOptions(
+        cors_origins="*",
+        cors_methods=["POST", "OPTIONS"],  # allow POST + OPTIONS
+    )
+)
 def run_snipe(req: Request):
     """
     Sniper function called by Cloud Scheduler.
@@ -83,11 +89,23 @@ def run_snipe(req: Request):
       3. Call _make_reservation_for_job()
       4. Update job status in Firestore
     """
+    # 1) Let preflight succeed without touching JSON
+    if req.method == "OPTIONS":
+        # CORS wrapper adds headers; empty 204 is fine
+        return ("", 204)
+
+    # 2) Only process real POSTs
+    if req.method != "POST":
+        print(f"[run_snipe] ✗ Method not allowed: {req.method}")
+        return {"error": "Method not allowed"}, 405
+
     try:
         logger.info("[run_snipe] Received request")
+        logger.info(f"[run_snipe] method={req.method}")
         body = req.get_json(silent=True) or {}
         job_id = body.get("jobId")
         user_id = req.args.get('userId')
+        print(f"[run_snipe] Request body: {body}, userId: {user_id}")
         if not job_id:
             return {"error": "Missing jobId"}, 400
 

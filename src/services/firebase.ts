@@ -1,7 +1,11 @@
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
+import {
+  getAnalytics,
+  isSupported as isAnalyticsSupported,
+} from "firebase/analytics";
 import {
   getFirestore,
+  connectFirestoreEmulator,
   doc,
   getDoc,
   setDoc,
@@ -13,7 +17,13 @@ import {
   query,
   orderBy,
 } from "firebase/firestore";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  connectAuthEmulator,
+} from "firebase/auth";
+import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 import type { TrendingRestaurant } from "@/lib/interfaces";
 
 // Firebase configuration
@@ -29,10 +39,45 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+
+let analytics: ReturnType<typeof getAnalytics> | null = null;
+if (typeof window !== "undefined") {
+  isAnalyticsSupported().then((supported) => {
+    if (supported) {
+      analytics = getAnalytics(app);
+    }
+  });
+}
+
 const db = getFirestore(app);
 const auth = getAuth(app);
+const functions = getFunctions(app);
+const storage = getStorage(app);
 const googleProvider = new GoogleAuthProvider();
+
+// ---- EMULATOR WIRING ----
+
+// Auto-enable on localhost
+const useEmulators =
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
+
+let CLOUD_FUNCTIONS_BASE: string;
+
+if (useEmulators) {
+  console.log("[Firebase] Connecting to emulators…");
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  connectAuthEmulator(auth, "http://127.0.0.1:9099");
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+  connectStorageEmulator(storage, "127.0.0.1", 9199);
+
+  console.log("[Firebase] Connected to emulators");
+  CLOUD_FUNCTIONS_BASE = "http://127.0.0.1:5001/resybot-bd2db/us-central1";
+} else {
+  // Prod Cloud Functions base
+  console.log("[Firebase] Using production Firebase services");
+  CLOUD_FUNCTIONS_BASE = "https://us-central1-resybot-bd2db.cloudfunctions.net";
+}
 
 console.log("[Firebase] Initialized with config:", {
   projectId: firebaseConfig.projectId,
@@ -426,6 +471,7 @@ export interface ReservationSnipeRequest {
   windowHours?: number;
   seatingType?: string;
   userId?: string | null;
+  actuallyReserve?: boolean;
 }
 
 export interface ReservationSnipeResponse {
@@ -443,13 +489,108 @@ export async function scheduleReservationSnipe(
   request: ReservationSnipeRequest
 ): Promise<ReservationSnipeResponse> {
   try {
-    const response = await fetch(CREATE_SNIPE_URL, {
+    const fullRequest = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(request),
-    });
+    };
+
+    let response: Response;
+    if (useEmulators) {
+      console.log("[Firebase Emulator] Scheduling snipe directly in emulator");
+      // In emulator mode, create the Firestore job document directly
+      // This mimics what the backend does in schedule.py
+
+      // Create target datetime in America/New_York timezone
+      const [dropYear, dropMonth, dropDay] = request.dropDate
+        .split("-")
+        .map(Number);
+      const targetDate = new Date(
+        dropYear,
+        dropMonth - 1,
+        dropDay,
+        request.dropHour,
+        request.dropMinute
+      );
+
+      // Format as ISO 8601 with timezone offset for America/New_York
+      // Note: This is a simplified version. In production, the backend handles timezone conversion properly
+      const targetTimeIso = new Date(
+        targetDate.getTime() - targetDate.getTimezoneOffset() * 60000
+      )
+        .toISOString()
+        .replace("Z", "-05:00"); // EST offset (simplified)
+
+      // Create a new job document reference
+      const jobRef = doc(collection(db, "reservationJobs"));
+      const jobId = jobRef.id;
+
+      const jobData = {
+        jobId,
+        userId: request.userId || null,
+        venueId: request.venueId,
+        partySize: request.partySize,
+        // Reservation info
+        date: request.date,
+        hour: request.hour,
+        minute: request.minute,
+        // Drop info
+        dropDate: request.dropDate,
+        dropHour: request.dropHour,
+        dropMinute: request.dropMinute,
+        // Job/meta
+        status: "pending",
+        targetTimeIso,
+        createdAt: Timestamp.now(),
+        lastUpdate: Timestamp.now(),
+        // Extra options
+        windowHours: request.windowHours || 1,
+        seatingType: request.seatingType || null,
+      };
+
+      // Write the job document to Firestore
+      await setDoc(jobRef, jobData);
+
+      console.log(
+        `[Firebase Emulator] Created job document ${jobId} in reservationJobs collection`
+      );
+
+      const user = auth.currentUser;
+
+      // Now call run_snipe to actually run the snipe immediately
+
+      if (request.actuallyReserve) {
+        response = await fetch(
+          `${CLOUD_FUNCTIONS_BASE}/run_snipe?userId=${user!.uid}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ jobId }),
+          }
+        );
+        return {
+          jobId: "EMULATOR: TRUE RUN",
+          targetTimeIso: "Random time",
+        };
+      }
+      return {
+        jobId: "EMULATOR: FALSE RUN",
+        targetTimeIso: "Random time",
+      };
+    } else {
+      response = await fetch(CREATE_SNIPE_URL, fullRequest);
+    }
+
+    console.log(
+      "[Firebase] Requested scheduleReservationSnipe with request:",
+      fullRequest,
+      "at URL:",
+      CREATE_SNIPE_URL
+    );
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
@@ -538,4 +679,4 @@ export async function getUserReservationJobs(
   }
 }
 
-export { db, analytics, auth, googleProvider };
+export { db, analytics, auth, googleProvider, CLOUD_FUNCTIONS_BASE };

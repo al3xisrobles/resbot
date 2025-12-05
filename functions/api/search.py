@@ -153,6 +153,8 @@ def search_map(req: Request):
     try:
         user_id = req.args.get('userId')
 
+        print(f"[MAP SEARCH] Received request with args: {req.args.to_dict()}")
+
         # Get bounding box coordinates
         sw_lat = float(req.args.get('swLat', 0))
         sw_lng = float(req.args.get('swLng', 0))
