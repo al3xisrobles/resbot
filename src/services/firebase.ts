@@ -557,26 +557,23 @@ export async function scheduleReservationSnipe(
         `[Firebase Emulator] Created job document ${jobId} in reservationJobs collection`
       );
 
-      const user = auth.currentUser;
-
       // Now call run_snipe to actually run the snipe immediately
-
       if (request.actuallyReserve) {
-        response = await fetch(
-          `${CLOUD_FUNCTIONS_BASE}/run_snipe?userId=${user!.uid}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ jobId }),
-          }
-        );
+        response = await fetch(`${CLOUD_FUNCTIONS_BASE}/run_snipe`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ jobId }),
+        });
         return {
           jobId: "EMULATOR: TRUE RUN",
           targetTimeIso: "Random time",
         };
       }
+
+      console.log("Full request:", fullRequest);
+
       return {
         jobId: "EMULATOR: FALSE RUN",
         targetTimeIso: "Random time",

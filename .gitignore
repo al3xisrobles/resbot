@@ -25,3 +25,6 @@ dist-ssr
 *.env
 
 todo.txt
+
+# Saved data directory
+saved_data/

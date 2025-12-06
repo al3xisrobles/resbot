@@ -106,8 +106,7 @@ def run_snipe(req: Request):
         logger.info(f"[run_snipe] method={req.method}")
         body = req.get_json(silent=True) or {}
         job_id = body.get("jobId")
-        user_id = req.args.get('userId')
-        print(f"[run_snipe] Request body: {body}, userId: {user_id}")
+        print(f"[run_snipe] Request body: {body}")
         if not job_id:
             return {"error": "Missing jobId"}, 400
 
@@ -118,6 +117,8 @@ def run_snipe(req: Request):
             return {"error": "Job not found"}, 404
 
         job_data = snap.to_dict()
+        user_id = job_data.get('userId')
+        print(f"[run_snipe] Job loaded, userId: {user_id}")
 
         # targetTimeIso stored as ISO 8601 with timezone, e.g. "2025-12-01T00:00:00-05:00"
         target_iso = job_data.get("targetTimeIso")
