@@ -157,18 +157,13 @@ def venue_links(req: Request):
         # Use Google Places API for Google Maps link
         if GOOGLE_MAPS_API_KEY:
             try:
-                # Google Maps search using Places API
-                logger.info(f"[VENUE-LINKS] Searching for Google Maps URL using Places API...")
+                logger.info("[VENUE-LINKS] Searching for Google Maps URL using Places API (New)...")
 
-                # Get detailed address from venue data
-                address_1 = location.get('address_1', '')
-                address_2 = location.get('address_2', '')
-                neighborhood = location.get('neighborhood', '')
-                postal_code = location.get('postal_code', '')
-                state = location.get('region', '')
+                address_1 = location.get("address_1", "")
+                postal_code = location.get("postal_code", "")
+                state = location.get("region", "")
+                city = location.get("locality", "")
 
-                # Build the most complete address possible
-                # Include street address, neighborhood, city, state, zip for best results
                 address_parts = [restaurant_name]
                 if address_1:
                     address_parts.append(address_1)
@@ -179,38 +174,58 @@ def venue_links(req: Request):
                 if postal_code:
                     address_parts.append(postal_code)
 
-                # For type constraint, add "restaurant" to avoid matching law firms, etc.
-                full_address = ', '.join(address_parts) + ' restaurant'
+                full_address = ", ".join(address_parts) + " restaurant"
 
                 logger.info(f"[VENUE-LINKS] Full address data: {location}")
-                logger.info(f"[VENUE-LINKS] Searching for: {full_address}")
+                logger.info(f"[VENUE-LINKS] Searching for (Text Search New): {full_address}")
 
-                # Use Places API Text Search
-                places_url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
-                params = {
-                    'input': full_address,
-                    'inputtype': 'textquery',
-                    'fields': 'place_id,name',
-                    'key': GOOGLE_MAPS_API_KEY
+                places_url = "https://places.googleapis.com/v1/places:searchText"
+
+                # New Places API (New) style: POST + JSON + field mask header
+                payload = {
+                    "textQuery": full_address,
                 }
 
-                places_response = requests.get(places_url, params=params)
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+                    # Ask specifically for the maps link so response is small
+                    "X-Goog-FieldMask": "places.displayName,places.googleMapsLinks.placeUri",
+                }
+
+                places_response = requests.post(places_url, json=payload, headers=headers)
+                logger.info(
+                    f"[VENUE-LINKS] Places API (New) status={places_response.status_code}, body={places_response.text[:300]}"
+                )
 
                 if places_response.status_code == 200:
                     places_data = places_response.json()
 
-                    if places_data.get('status') == 'OK' and places_data.get('candidates'):
-                        place_id = places_data['candidates'][0]['place_id']
-                        # Construct Google Maps URL
-                        links['googleMaps'] = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
-                        logger.info(f"[VENUE-LINKS] ✓ Found Google Maps URL via Places API: {links['googleMaps']}")
+                    places = places_data.get("places", [])
+                    if places:
+                        first = places[0]
+                        links_obj = first.get("googleMapsLinks", {})
+                        place_uri = links_obj.get("placeUri")
+
+                        if place_uri:
+                            links["googleMaps"] = place_uri
+                            logger.info(
+                                f"[VENUE-LINKS] ✓ Found Google Maps URL via Places API (New): {links['googleMaps']}"
+                            )
+                        else:
+                            logger.warning(
+                                "[VENUE-LINKS] ✗ No googleMapsLinks.placeUri in response"
+                            )
                     else:
-                        logger.warning(f"[VENUE-LINKS] ✗ No results from Places API. Status: {places_data.get('status')}")
+                        logger.warning("[VENUE-LINKS] ✗ No places returned from Places API (New)")
                 else:
-                    logger.error(f"[VENUE-LINKS] ✗ Places API request failed. Status: {places_response.status_code}")
+                    logger.error(
+                        f"[VENUE-LINKS] ✗ Places API (New) request failed. "
+                        f"Status: {places_response.status_code}, body={places_response.text[:300]}"
+                    )
 
             except Exception as e:
-                logger.error(f"[VENUE-LINKS] Error searching Google Maps with Places API: {str(e)}")
+                logger.error(f"[VENUE-LINKS] Error searching Google Maps with Places API (New): {str(e)}")
         else:
             logger.warning(f"[VENUE-LINKS] Google Places API key not configured, skipping Google Maps search")
 
