@@ -48,5 +48,13 @@ service cloud.firestore {
     match /resyCredentials/{userId} {
       allow read, write: if isOwner(userId);
     }
+
+    match /searchJobs/{jobId} {
+      // allow any signed-in user to read job progress
+      allow read: if isSignedIn();
+
+      // writes stay server-only (Cloud Functions using Admin SDK bypass rules)
+      allow write: if false;
+    }
   }
 }

@@ -130,6 +130,10 @@ export async function searchRestaurantsByMap(
   params.append("neLat", filters.neLat.toString());
   params.append("neLng", filters.neLng.toString());
 
+  if (filters.jobId) {
+    params.append("jobId", filters.jobId);
+  }
+
   if (filters.query) {
     params.append("query", filters.query);
   }

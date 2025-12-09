@@ -4,11 +4,13 @@ Handles restaurant search by name and by map bounding box
 """
 
 import logging
+import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
+from firebase_admin import firestore as admin_firestore
 
 from .utils import (
     load_credentials,
@@ -19,13 +21,15 @@ from .utils import (
     get_search_cache_key,
     get_cached_search_results,
     save_search_results_to_cache,
-    get_venue_availability
+    get_venue_availability,
+    update_search_progress
 )
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+# TODO: Right now /search doesn’t use job progress at all
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
 def search(req: Request):
     """
@@ -131,19 +135,21 @@ def search(req: Request):
         }, 500
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=120)
 def search_map(req: Request):
     """
     GET /search_map
     Search for restaurants by map bounding box
     Query parameters:
     - userId: Optional Firebase user ID for personalized credentials
+    - jobId: Optional job ID for Firestore progress tracking
     - swLat: Southwest latitude (bottom-left)
     - swLng: Southwest longitude (bottom-left)
     - neLat: Northeast latitude (top-right)
     - neLng: Northeast longitude (top-right)
     - query: Optional restaurant name search
     - available_only: Optional availability-only boolean
+    - not_released_only: Optional filter for "not released yet" venues
     - available_day: Optional day if available_only is true (format: 'YYYY-MM-DD')
     - available_party_size: Optional party size if available_only is true (default: 2)
     - cuisines: Optional comma-separated list of cuisines
@@ -151,10 +157,24 @@ def search_map(req: Request):
     - offset: Optional offset for pagination (default: 0)
     - perPage: Optional results per page (default: 20, max: 50)
     """
+    start_time = time.time()
+    job_id = None
+
     try:
         user_id = req.args.get('userId')
+        job_id = req.args.get('jobId')
 
         print(f"[MAP SEARCH] Received request with args: {req.args.to_dict()}")
+
+        # Initialize job progress if jobId provided
+        if job_id:
+            update_search_progress(job_id, {
+                "status": "started",
+                "stage": "initializing",
+                "createdAt": admin_firestore.SERVER_TIMESTAMP,
+                "filteredCount": 0,
+                "pagesFetched": 0,
+            })
 
         # Get bounding box coordinates
         sw_lat = float(req.args.get('swLat', 0))
@@ -187,17 +207,32 @@ def search_map(req: Request):
             filters.get('available_party_size')
         )
 
+        # Determine if we need to paginate over availability-filtered results
+        # When available_only or not_released_only is enabled, we paginate over the filtered list
+        paginate_over_filtered = (
+            (filters.get('available_only') or filters.get('not_released_only')) and
+            should_fetch_availability
+        )
+
         if should_fetch_availability:
             print(f"[MAP SEARCH] Will fetch availability for date: {filters['available_day']}, party size: {filters['available_party_size']}")
 
-        # Generate cache key (exclude availability params from cache key since we fetch that separately)
-        cache_key = get_search_cache_key(query, filters, geo_config)
+        if paginate_over_filtered:
+            print(f"[MAP SEARCH] Paginating over availability-filtered results (available_only={filters.get('available_only')}, not_released_only={filters.get('not_released_only')})")
+
+        # Generate cache key
+        # When paginating over filtered results, include availability params in cache key
+        cache_key = get_search_cache_key(query, filters, geo_config, include_availability=paginate_over_filtered)
 
         # Try to get from cache
         cached_data = get_cached_search_results(cache_key)
 
         # Check if we have enough cached results for this page
         need_fetch = True
+        all_results = []
+        total_resy_results = 0
+        has_more = False
+
         if cached_data:
             cached_count = len(cached_data['results'])
             required_count = filters['offset'] + filters['per_page']
@@ -236,103 +271,78 @@ def search_map(req: Request):
 
                 return hits, total
 
-            # Fetch enough results - we'll fetch more than requested to have a good cache
-            # Fetch at least 100 results (5 pages worth) to make pagination smooth
-            # NOTE: We do NOT fetch availability here - we'll fetch it only for the current page
+            # Fetch enough results
+            # When paginating over filtered results, we need to fetch with availability
+            # so that filter_and_format_venues can filter by availability status
             target_count = filters['offset'] + filters['per_page']
+
+            # For availability-filtered pagination, limit max_fetches since each page
+            # requires availability API calls (slower). Users can paginate for more.
+            if paginate_over_filtered:
+                max_fetches = 4
+                print(f"[MAP SEARCH] Fetching with availability filtering (max_fetches={max_fetches})")
+            else:
+                max_fetches = 10
+
             all_results, total_resy_results, has_more = fetch_until_enough_results(
                 fetch_resy_page,
                 target_count,
                 filters,
-                max_fetches=10,
+                max_fetches=max_fetches,
                 config=config,
-                fetch_availability=False  # Don't fetch availability during caching
+                fetch_availability=paginate_over_filtered,  # Fetch availability when filtering by it
+                job_id=job_id
             )
 
-            # Save to cache (restaurant data only, no availability)
+            # Save to cache
             save_search_results_to_cache(cache_key, all_results, total_resy_results)
 
-        # Slice results based on offset to get current page
-        results = all_results[filters['offset']:filters['offset'] + filters['per_page']]
+        # Handle pagination based on whether we're filtering by availability
+        if paginate_over_filtered:
+            # ========================================================================
+            # AVAILABILITY-FILTERED PAGINATION
+            # all_results is already filtered by available_only/not_released_only
+            # and each result has availableTimes/availabilityStatus populated
+            # ========================================================================
+            print(f"[MAP SEARCH] Paginating over {len(all_results)} availability-filtered results")
 
-        # Now fetch availability ONLY for the current page results (in parallel)
-        if should_fetch_availability and results:
-            print(f"[MAP SEARCH] Fetching availability for {len(results)} restaurants on current page (parallel)")
+            # Simply slice the already-filtered results
+            results = all_results[filters['offset']:filters['offset'] + filters['per_page']]
 
-            # Use ThreadPoolExecutor to fetch availability in parallel
-            # Max 3 concurrent workers to avoid rate limiting (Resy has strict rate limits)
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                # Submit all availability fetch tasks
-                future_to_result = {
-                    executor.submit(
-                        get_venue_availability,
-                        result['id'],
-                        filters['available_day'],
-                        filters['available_party_size'],
-                        config,
-                        filters.get('desired_time')
-                    ): result
-                    for result in results
-                }
+            # Calculate pagination based on the filtered list
+            filtered_total = len(all_results)
+            end_of_current_page = filters['offset'] + len(results)
 
-                # Process completed tasks as they finish
-                for future in as_completed(future_to_result):
-                    result = future_to_result[future]
-                    try:
-                        availability_data = future.result()
+            # Determine if there are more results
+            if end_of_current_page < filtered_total:
+                next_offset = end_of_current_page
+            elif has_more:
+                # We have more venues in Resy to fetch, so there might be more matches
+                next_offset = end_of_current_page
+            else:
+                next_offset = None
 
-                        # Add availability data to result
-                        if availability_data['times']:
-                            result['availableTimes'] = availability_data['times']
-                        elif availability_data['status']:
-                            result['availabilityStatus'] = availability_data['status']
+            display_total = filtered_total
 
-                        # If available_only filter is enabled and no times available, mark for removal
-                        if filters.get('available_only') and not availability_data['times']:
-                            result['_should_filter'] = True
+            print(f"[MAP SEARCH] Returning {len(results)} results for offset {filters['offset']} (filtered_total={filtered_total}, has_more={has_more})")
 
-                        # If not_released_only filter is enabled and status is not "Not released yet", mark for removal
-                        if filters.get('not_released_only'):
-                            print(f"[NOT_RELEASED_FILTER] Checking {result.get('name')}: status='{availability_data['status']}', times={len(availability_data.get('times', []))}")
-                            if availability_data['status'] != 'Not released yet':
-                                result['_should_filter'] = True
-                                print(f"[NOT_RELEASED_FILTER] ❌ Filtering out {result.get('name')} - status is '{availability_data['status']}'")
-                            else:
-                                print(f"[NOT_RELEASED_FILTER] ✓ Keeping {result.get('name')} - status is 'Not released yet'")
-                    except Exception as e:
-                        print(f"[AVAILABILITY] Error in parallel fetch for venue {result['id']}: {str(e)}")
-                        result['availabilityStatus'] = 'Unable to fetch'
+        else:
+            # ========================================================================
+            # NORMAL PAGINATION (no availability filtering)
+            # Paginate over raw results, then optionally fetch availability for current page
+            # ========================================================================
 
-            # Filter out venues based on availability filters
-            if filters.get('available_only') or filters.get('not_released_only'):
-                original_count = len(results)
-                results = [r for r in results if not r.get('_should_filter')]
-                filtered_count = original_count - len(results)
-                if filtered_count > 0:
-                    filter_type = "without availability" if filters.get('available_only') else "not 'Not released yet'"
-                    print(f"[MAP SEARCH] Filtered out {filtered_count} venues {filter_type}")
+            # Slice results based on offset to get current page
+            results = all_results[filters['offset']:filters['offset'] + filters['per_page']]
 
-        print(f"[MAP SEARCH] Returning {len(results)} results for offset {filters['offset']} (have {len(all_results)} total cached)")
-        print(f"[MAP SEARCH] Resy total (unfiltered): {total_resy_results}")
+            # Now fetch availability ONLY for the current page results (in parallel)
+            if should_fetch_availability and results:
+                print(f"[MAP SEARCH] Fetching availability for {len(results)} restaurants on current page (parallel)")
 
-        # Calculate next offset
-        # When available_only or not_released_only is enabled, we need to check if there are potentially more results
-        # by eagerly checking the NEXT page for any matching restaurants
-        next_offset = None
-        if filters.get('available_only') or filters.get('not_released_only'):
-            # Calculate next page offset
-            potential_next_offset = filters['offset'] + len(results)
-
-            # Check if we have more cached restaurants to check
-            if len(all_results) > potential_next_offset:
-                # We have more cached restaurants - peek at next page to see if any match the filter
-                filter_name = "available" if filters.get('available_only') else "not released yet"
-                print(f"[MAP SEARCH] Checking next page (offset {potential_next_offset}) for {filter_name} restaurants...")
-                next_page_results = all_results[potential_next_offset:potential_next_offset + filters['per_page']]
-
-                # Check availability for next page
-                has_matching_restaurants = False
+                # Use ThreadPoolExecutor to fetch availability in parallel
+                # Max 3 concurrent workers to avoid rate limiting (Resy has strict rate limits)
                 with ThreadPoolExecutor(max_workers=3) as executor:
+                    # Submit all availability fetch tasks
                     future_to_result = {
                         executor.submit(
                             get_venue_availability,
@@ -342,41 +352,41 @@ def search_map(req: Request):
                             config,
                             filters.get('desired_time')
                         ): result
-                        for result in next_page_results
+                        for result in results
                     }
 
+                    # Process completed tasks as they finish
                     for future in as_completed(future_to_result):
+                        result = future_to_result[future]
                         try:
                             availability_data = future.result()
-                            # Check based on active filter
-                            if filters.get('available_only') and availability_data['times']:
-                                has_matching_restaurants = True
-                                break
-                            elif filters.get('not_released_only') and availability_data['status'] == 'Not released yet':
-                                has_matching_restaurants = True
-                                break
-                        except Exception:
-                            pass
 
-                if has_matching_restaurants:
-                    next_offset = potential_next_offset
-                    print(f"[MAP SEARCH] Next page has {filter_name} restaurants - enabling pagination")
-                else:
-                    print(f"[MAP SEARCH] Next page has no {filter_name} restaurants - disabling pagination")
-            else:
-                print(f"[MAP SEARCH] No more cached restaurants - pagination disabled")
-        else:
+                            # Add availability data to result
+                            if availability_data['times']:
+                                result['availableTimes'] = availability_data['times']
+                            elif availability_data['status']:
+                                result['availabilityStatus'] = availability_data['status']
+                        except Exception as e:
+                            print(f"[AVAILABILITY] Error in parallel fetch for venue {result['id']}: {str(e)}")
+                            result['availabilityStatus'] = 'Unable to fetch'
+
+            print(f"[MAP SEARCH] Returning {len(results)} results for offset {filters['offset']} (have {len(all_results)} total cached)")
+            print(f"[MAP SEARCH] Resy total (unfiltered): {total_resy_results}")
+
             # For normal search: show next if there are more results in cache or API
             next_offset = filters['offset'] + len(results) if (len(all_results) > filters['offset'] + filters['per_page'] or has_more) else None
-
-        # For available_only or not_released_only filter, show current offset + results count (not total available)
-        # This is more accurate since we filter by availability AFTER fetching
-        if filters.get('available_only') or filters.get('not_released_only'):
-            # Show cumulative count: offset (already shown) + current page results
-            display_total = filters['offset'] + len(results)
-        else:
-            # Show Resy's total count
             display_total = total_resy_results
+
+        # Mark job as done
+        if job_id:
+            duration_ms = int((time.time() - start_time) * 1000)
+            update_search_progress(job_id, {
+                "status": "done",
+                "stage": "complete",
+                "filteredCount": len(all_results),
+                "returnedCount": len(results),
+                "durationMs": duration_ms,
+            })
 
         return {
             'success': True,
@@ -386,12 +396,20 @@ def search_map(req: Request):
                 'perPage': filters['per_page'],
                 'nextOffset': next_offset,
                 'hasMore': next_offset is not None,
-                'total': display_total  # Cumulative count for available_only, Resy total otherwise
+                'total': display_total
             }
         }
 
     except Exception as e:
         logger.error(f"Error searching venues by map: {str(e)}")
+        # Mark job as error
+        if job_id:
+            duration_ms = int((time.time() - start_time) * 1000)
+            update_search_progress(job_id, {
+                "status": "error",
+                "error": str(e),
+                "durationMs": duration_ms,
+            })
         return {
             'success': False,
             'error': str(e)

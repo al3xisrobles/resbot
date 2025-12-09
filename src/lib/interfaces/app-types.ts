@@ -118,6 +118,7 @@ export interface MapSearchFilters {
   day?: string; // Required if available_only or notReleasedOnly is true
   partySize?: string; // Required if available_only or notReleasedOnly is true
   desiredTime?: string; // Desired time in HH:MM format for sorting available times
+  jobId?: string; // Optional job ID for tracking asynchronous searches
 }
 
 /**

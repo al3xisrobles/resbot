@@ -1,32 +1,13 @@
+// src/pages/HomePage.tsx
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { format } from "date-fns";
 import { TrendingUp, Star, Search } from "lucide-react";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import chooseIllustration from "@/assets/undraw_choose_5kz4.svg";
-import timeManagementIllustration from "@/assets/undraw_time-management_4ss6.svg";
-import mailSentIllustration from "@/assets/undraw_mail-sent_ujev.svg";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+
 import { getTrendingRestaurants, getTopRatedRestaurants } from "@/lib/api";
 import type { TrendingRestaurant } from "@/lib/interfaces";
 import { useVenue } from "@/contexts/VenueContext";
-import { TIME_SLOTS } from "@/lib/time-slots";
-import { cn } from "@/lib/utils";
 import { RestaurantGridCard } from "@/components/RestaurantGridCard";
-import { SearchBar } from "@/components/SearchBar";
 import {
   getTrendingRestaurantsCache,
   saveTrendingRestaurantsCache,
@@ -34,32 +15,7 @@ import {
   saveTopRatedRestaurantsCache,
 } from "@/services/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-
-const HOW_IT_WORKS_STEPS = [
-  {
-    id: 1,
-    title: "Plan Your Snipe",
-    description: "Pick the restaurant, date, time window, and party size.",
-    image: chooseIllustration,
-    alt: "Choose",
-  },
-  {
-    id: 2,
-    title: "We Snipe at Drop Time",
-    description:
-      "At the exact drop time, our bot finds the best slot and races to book it instantly.",
-    image: timeManagementIllustration,
-    alt: "Time Management",
-  },
-  {
-    id: 3,
-    title: "Get Notified",
-    description:
-      "You'll receive an email from Resy if we secure the reservation. If not, we'll explain happened.",
-    image: mailSentIllustration,
-    alt: "Mail Sent",
-  },
-];
+import { Hero } from "@/components/Hero";
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -83,20 +39,16 @@ export function HomePage() {
     const fetchTrending = async () => {
       setLoadingTrending(true);
       try {
-        // Try to get from cache first
         const cachedData = await getTrendingRestaurantsCache();
 
         if (cachedData) {
           console.log("Using cached trending restaurants");
           setTrendingRestaurants(cachedData);
         } else {
-          // Fetch fresh data from API
           console.log("Fetching fresh trending restaurants");
           const user = auth.currentUser;
           const data = await getTrendingRestaurants(user!.uid, 10);
           setTrendingRestaurants(data);
-
-          // Save to cache
           await saveTrendingRestaurantsCache(data);
         }
       } catch (err) {
@@ -107,27 +59,23 @@ export function HomePage() {
     };
 
     fetchTrending();
-  }, []);
+  }, [auth.currentUser]);
 
   // Fetch top-rated restaurants on mount
   useEffect(() => {
     const fetchTopRated = async () => {
       setLoadingTopRated(true);
       try {
-        // Try to get from cache first
         const cachedData = await getTopRatedRestaurantsCache();
 
         if (cachedData) {
           console.log("Using cached top-rated restaurants");
           setTopRatedRestaurants(cachedData);
         } else {
-          // Fetch fresh data from API
           console.log("Fetching fresh top-rated restaurants");
           const user = auth.currentUser;
           const data = await getTopRatedRestaurants(user!.uid, 10);
           setTopRatedRestaurants(data);
-
-          // Save to cache
           await saveTopRatedRestaurantsCache(data);
         }
       } catch (err) {
@@ -143,159 +91,21 @@ export function HomePage() {
       position: "bottom-left",
       icon: <div className="size-2 mx-auto bg-blue-500 rounded-full" />,
     });
+
     fetchTopRated();
-  }, []);
+  }, [auth.currentUser]);
 
   return (
-    <div className="h-screen py-24 overflow-y-auto relative">
-      {/* Animated Mesh Gradient Background */}
-      {/* <div className="fixed inset-0 overflow-hidden pointer-events-none bg-background opacity-0 sm:opacity-20 lg:opacity-50">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-linear-to-br from-orange-300/10 via-red-300/15 to-pink-300/10 rounded-full blur-3xl animate-mesh-1" />
-        <div className="absolute top-1/4 right-1/3 w-lg h-128 bg-linear-to-bl from-amber-300/10 via-orange-300/10 to-red-400/10 rounded-full blur-3xl animate-mesh-2" />
-        <div className="absolute top-1/2 left-1/4 w-md h-112 bg-linear-to-tr from-rose-300/15 via-orange-400/10 to-amber-300/15 rounded-full blur-3xl animate-mesh-3" />
-        <div className="absolute bottom-1/4 left-0 w-80 h-80 bg-linear-to-tl from-red-400/10 via-pink-300/10 to-orange-300/15 rounded-full blur-3xl animate-mesh-4" />
-      </div> */}
+    <div className="min-h-screen py-16 overflow-y-auto relative">
+      <main className="container mx-auto px-4 py-4 relative">
+        {/* HERO */}
+        <Hero
+          reservationForm={reservationForm}
+          setReservationForm={setReservationForm}
+        />
 
-      {/* Main Content - Grid Layout */}
-      <main className="container mx-auto px-4 py-8 relative">
-        <div className="flex flex-col lg:flex-row gap-2 sm:gap-8 mb-2">
-          {/* Left: Search Section */}
-          <div className="max-w-160 w-full lg:pr-16">
-            {/* Title */}
-            <div className="mb-3">
-              <h1 className="text-3xl font-bold tracking-tight mb-2">
-                Restaurant Search
-              </h1>
-              <p className="text-muted-foreground">
-                Search for restaurants by name to snipe a reservation
-              </p>
-            </div>
-
-            {/* Search Bar */}
-            <div className="space-y-2 mb-6">
-              <SearchBar
-                className="relative"
-                inputClassName="min-h-12 pr-10 pl-5 py-8"
-              />
-            </div>
-
-            {/* Reservation Form - One Row */}
-            <div className="mt-10 grid grid-cols-3 gap-4 mb-8">
-              {/* Party Size */}
-              <div className="space-y-2">
-                <Label>Party Size</Label>
-                <Select
-                  value={reservationForm.partySize}
-                  onValueChange={(value) =>
-                    setReservationForm({ ...reservationForm, partySize: value })
-                  }
-                >
-                  <SelectTrigger id="party-size">
-                    <SelectValue placeholder="Select party size" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 6 }, (_, i) => i + 1).map((size) => (
-                      <SelectItem key={size} value={size.toString()}>
-                        {size} {size === 1 ? "person" : "people"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Date */}
-              <div className="space-y-2">
-                <Label>Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      className={cn(
-                        "flex h-9 w-full items-center justify-start rounded-md border bg-background px-3 py-2 text-sm shadow-xs ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer hover:bg-accent/50 transition-colors",
-                        !reservationForm.date && "text-muted-foreground"
-                      )}
-                    >
-                      {reservationForm.date ? (
-                        format(reservationForm.date, "EEE, MMM d")
-                      ) : (
-                        <span>Pick a date</span>
-                      )}
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={reservationForm.date}
-                      onSelect={(date) =>
-                        setReservationForm({ ...reservationForm, date })
-                      }
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* Time */}
-              <div className="space-y-2">
-                <Label>Desired Time</Label>
-                <Select
-                  value={reservationForm.timeSlot}
-                  onValueChange={(value) =>
-                    setReservationForm({ ...reservationForm, timeSlot: value })
-                  }
-                >
-                  <SelectTrigger id="time-slot">
-                    <SelectValue placeholder="Select time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_SLOTS.map((slot) => (
-                      <SelectItem key={slot.value} value={slot.value}>
-                        {slot.display}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {/* Right: How It Works Section */}
-          <div className="mb-8 sm:mb-0 flex w-full items-start justify-center">
-            <div className="w-full space-y-4">
-              <div className="w-full flex justify-center">
-                <p className="text-muted-foreground text-sm">
-                  How Reservation Sniping Works
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {HOW_IT_WORKS_STEPS.map((step) => (
-                  <div
-                    key={step.id}
-                    className="flex flex-row gap-4 sm:gap-0 sm:flex-col items-center sm:text-center p-6 rounded-xl bg-card border border-border hover:border-primary/10 hover:shadow-sm transition-all"
-                  >
-                    <div className="shrink-0 w-24 h-24 sm:w-full sm:h-46 bg-muted/40 rounded-lg flex items-center justify-center mb-0 sm:mb-4 p-2 sm:p-8">
-                      <img
-                        src={step.image}
-                        alt={step.alt}
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2 items-start sm:items-center">
-                      <h3 className="font-semibold text-base">
-                        {step.id}. {step.title}
-                      </h3>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {step.description}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Trending Restaurants Grid */}
-        <div className="">
+        {/* Trending Restaurants */}
+        <section className="mt-10">
           <div className="flex items-center gap-2">
             <TrendingUp className="size-6 text-primary" />
             <h2 className="text-2xl font-bold">Trending Restaurants</h2>
@@ -313,23 +123,10 @@ export function HomePage() {
           ) : trendingRestaurants.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
               {trendingRestaurants.map((restaurant) => {
-                // Determine if we should show placeholder or times
                 const hasAllReservationDetails =
                   reservationForm.date &&
                   reservationForm.timeSlot &&
                   reservationForm.partySize;
-
-                console.log("[HomePage - Trending] Rendering restaurant:", {
-                  id: restaurant.id,
-                  name: restaurant.name,
-                  hasAllReservationDetails,
-                  showPlaceholder: !hasAllReservationDetails,
-                  reservationForm: {
-                    date: reservationForm.date,
-                    timeSlot: reservationForm.timeSlot,
-                    partySize: reservationForm.partySize,
-                  },
-                });
 
                 return (
                   <RestaurantGridCard
@@ -361,10 +158,10 @@ export function HomePage() {
               </div>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Top Rated Restaurants Grid */}
-        <div className="mt-12">
+        {/* Top Rated Restaurants */}
+        <section className="mt-12">
           <div className="flex items-center gap-2">
             <Star className="size-6 text-primary" />
             <h2 className="text-2xl font-bold">Top Rated Restaurants</h2>
@@ -382,7 +179,6 @@ export function HomePage() {
           ) : topRatedRestaurants.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
               {topRatedRestaurants.map((restaurant) => {
-                // Determine if we should show placeholder or times
                 const hasAllReservationDetails =
                   reservationForm.date &&
                   reservationForm.timeSlot &&
@@ -418,7 +214,7 @@ export function HomePage() {
               </div>
             </div>
           )}
-        </div>
+        </section>
       </main>
     </div>
   );

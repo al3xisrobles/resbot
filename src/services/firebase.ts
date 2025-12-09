@@ -16,6 +16,7 @@ import {
   where,
   query,
   orderBy,
+  onSnapshot,
 } from "firebase/firestore";
 import {
   getAuth,
@@ -199,6 +200,52 @@ export async function saveVenueCache(
     });
     return false;
   }
+}
+
+// ===== SEARCH JOB PROGRESS (MAP SEARCH) =====
+
+export interface SearchJobProgress {
+  status?: "started" | "running" | "done" | "error";
+  stage?: string;
+  filteredCount?: number;
+  returnedCount?: number;
+  pagesFetched?: number;
+  totalFromResy?: number;
+  durationMs?: number;
+  error?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/**
+ * Subscribe to a search job progress document.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToSearchJob(
+  jobId: string,
+  callback: (progress: SearchJobProgress | null) => void
+): () => void {
+  const ref = doc(db, "searchJobs", jobId);
+
+  const unsub = onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
+      callback(snap.data() as SearchJobProgress);
+    },
+    (error) => {
+      console.error("[Firebase] Error listening to search job:", {
+        jobId,
+        error,
+      });
+      callback(null);
+    }
+  );
+
+  return unsub;
 }
 
 /**

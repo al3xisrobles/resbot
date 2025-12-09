@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { ChevronRight, MapPin } from "lucide-react";
 
 export interface SearchResultItemProps {
@@ -8,24 +8,23 @@ export interface SearchResultItemProps {
   priceRange: number;
   location?: string;
   imageUrl?: string | null;
-  onClick?: () => void;
-  onMouseEnter?: () => void;
-  onMouseLeave?: () => void;
+  onCardClick?: (id: string) => void;
+  onHover?: (id: string | null) => void;
   availableTimes?: string[]; // Array of available time slots (max 4)
   availabilityStatus?: string; // Status message when no times available
   showPlaceholder?: boolean; // If true, show "TODO: AI Summary" instead of times
   imageSize?: "small" | "large"; // Size of the image thumbnail
 }
 
-export function SearchResultItem({
+export const SearchResultItem = React.memo(function SearchResultItem({
+  id,
   name,
   type,
   priceRange,
   location,
   imageUrl,
-  onClick,
-  onMouseEnter,
-  onMouseLeave,
+  onCardClick,
+  onHover,
   availableTimes,
   availabilityStatus,
   showPlaceholder,
@@ -46,9 +45,9 @@ export function SearchResultItem({
 
   return (
     <button
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      onClick={() => onCardClick?.(id)}
+      onMouseEnter={() => onHover?.(id)}
+      onMouseLeave={() => onHover?.(null)}
       className="w-full text-left px-4 py-3 hover:bg-accent transition-colors border-2 border-background rounded-md"
     >
       <div className="flex flex-row relative items-start gap-3 h-full">
@@ -155,4 +154,4 @@ export function SearchResultItem({
       </div>
     </button>
   );
-}
+});

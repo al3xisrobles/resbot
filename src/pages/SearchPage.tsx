@@ -1,13 +1,13 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import React, {
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useCallback,
+} from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import {
-  Search,
-  Calendar as CalendarIcon,
-  ChevronDown,
-  MapPin,
-  Bookmark,
-} from "lucide-react";
+import { Search, ChevronDown, MapPin, Bookmark } from "lucide-react";
 import {
   Map,
   MapTileLayer,
@@ -17,7 +17,9 @@ import {
   MapZoomControl,
   MapLocateControl,
 } from "@/components/ui/map";
-import { Map as LeafletMap } from "leaflet";
+import { Map as LeafletMap, Marker as LeafletMarkerType } from "leaflet";
+import * as L from "leaflet";
+import { renderToString } from "react-dom/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
@@ -54,6 +56,119 @@ import {
 } from "@/components/ui/pagination";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
+
+export const TIME_SLOT_OPTIONS = TIME_SLOTS.map((slot) => (
+  <SelectItem key={slot.value} value={slot.value}>
+    {slot.display}
+  </SelectItem>
+));
+
+// Pre-create icon instances to avoid recreating on every render
+// These are stable references that Leaflet can reuse
+const createIcon = (isHovered: boolean) =>
+  L.divIcon({
+    html: renderToString(
+      <MapPin
+        className={`size-6 transition-transform duration-300 ease-in-out ${
+          isHovered
+            ? "text-blue-600 fill-blue-600 scale-125"
+            : "text-black fill-black scale-100"
+        }`}
+      />
+    ),
+    iconAnchor: [12, 12],
+    className: "", // Clear default leaflet styles
+  });
+
+// Cache icons to avoid recreating them
+const defaultIcon = createIcon(false);
+const hoveredIcon = createIcon(true);
+
+interface MapViewProps {
+  searchResults: SearchResult[];
+  hoveredVenueIdRef: React.RefObject<string | null>;
+  mapCenter: [number, number];
+  mapRef: React.MutableRefObject<LeafletMap | null>;
+  markerRefsMap: React.MutableRefObject<Map<string, LeafletMarkerType>>;
+}
+
+// MapView is now stable - it does NOT receive hoveredVenueId as a prop
+// This means it won't re-render when hover changes
+const MapView = React.memo(function MapView({
+  searchResults,
+  mapCenter,
+  mapRef,
+  markerRefsMap,
+}: Omit<MapViewProps, "hoveredVenueIdRef">) {
+  const venuePositions = useMemo(() => {
+    const positions: Record<string, [number, number]> = {};
+    searchResults.forEach((result) => {
+      if (result.latitude != null && result.longitude != null) {
+        positions[result.id] = [result.latitude, result.longitude];
+      }
+    });
+    return positions;
+  }, [searchResults]);
+
+  // Callback to store marker ref when it mounts
+  const setMarkerRef = useCallback(
+    (id: string, marker: LeafletMarkerType | null) => {
+      if (marker) {
+        markerRefsMap.current.set(id, marker);
+      } else {
+        markerRefsMap.current.delete(id);
+      }
+    },
+    [markerRefsMap]
+  );
+
+  return (
+    <Map center={mapCenter} zoom={13} className="h-full w-full" ref={mapRef}>
+      <MapTileLayer />
+      {searchResults.map((result) => {
+        const position = venuePositions[result.id];
+
+        if (!position) return null;
+
+        return (
+          <MapMarker
+            key={result.id}
+            position={position}
+            ref={(marker: LeafletMarkerType | null) =>
+              setMarkerRef(result.id, marker)
+            }
+            icon={<MapPin className="size-6 text-black fill-black" />}
+          >
+            <MapTooltip side="top">
+              <div className="font-medium">{result.name}</div>
+              <div className="text-xs text-muted-foreground">
+                {result.neighborhood || "Manhattan"}
+              </div>
+            </MapTooltip>
+            <MapPopup>
+              <div className="flex flex-col gap-2 items-start">
+                <div className="font-semibold text-lg">{result.name}</div>
+                <div className="text-sm text-muted-foreground">
+                  {result.neighborhood || "Manhattan"}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    window.open(`/venue?id=${result.id}`, "_blank")
+                  }
+                >
+                  Reserve
+                </Button>
+              </div>
+            </MapPopup>
+          </MapMarker>
+        );
+      })}
+      <MapZoomControl className="top-auto left-1 bottom-13 right-auto" />
+      <MapLocateControl className="top-auto right-1 bottom-13 left-auto" />
+    </Map>
+  );
+});
 
 // Mock data for filters
 const CUISINES = [
@@ -113,6 +228,39 @@ export function SearchPage() {
   const auth = useAuth();
   const mapRef = useRef<LeafletMap | null>(null);
 
+  // Store marker refs for imperative icon updates (avoids re-rendering MapView on hover)
+  const markerRefsMap = useRef<globalThis.Map<string, LeafletMarkerType>>(
+    new globalThis.Map()
+  );
+  // Track previously hovered venue to reset its icon
+  const prevHoveredIdRef = useRef<string | null>(null);
+
+  // Imperative hover effect: update marker icons directly without re-rendering MapView
+  // This is the key performance optimization - we bypass React entirely for hover updates
+  useEffect(() => {
+    // Reset previous hovered marker to default icon
+    if (
+      prevHoveredIdRef.current &&
+      prevHoveredIdRef.current !== hoveredVenueId
+    ) {
+      const prevMarker = markerRefsMap.current.get(prevHoveredIdRef.current);
+      if (prevMarker) {
+        prevMarker.setIcon(defaultIcon);
+      }
+    }
+
+    // Set new hovered marker to hovered icon
+    if (hoveredVenueId) {
+      const marker = markerRefsMap.current.get(hoveredVenueId);
+      if (marker) {
+        marker.setIcon(hoveredIcon);
+      }
+    }
+
+    // Update the ref for next effect run
+    prevHoveredIdRef.current = hoveredVenueId;
+  }, [hoveredVenueId]);
+
   // Client-side cache for paginated results
   interface CachedPage {
     results: SearchResult[];
@@ -129,18 +277,6 @@ export function SearchPage() {
 
   // Manhattan center coordinates (for Leaflet: [lat, lng])
   const mapCenter = useMemo(() => [40.7589, -73.9851] as [number, number], []);
-
-  // Get positions for each venue - only use real coordinates from API
-  const venuePositions = useMemo(() => {
-    const positions: Record<string, [number, number]> = {};
-    searchResults.forEach((result) => {
-      // Only include venues with real coordinates
-      if (result.latitude != null && result.longitude != null) {
-        positions[result.id] = [result.latitude, result.longitude];
-      }
-    });
-    return positions;
-  }, [searchResults]);
 
   // Handle map movement - re-enable search buttons
   const handleMapMove = () => {
@@ -348,13 +484,13 @@ export function SearchPage() {
   };
 
   // Helper functions
-  const handleCardClick = (venueId: string) => {
+  const handleCardClick = useCallback((venueId: string) => {
     window.open(`/venue?id=${venueId}`, "_blank");
-  };
+  }, []);
 
-  const handleCardHover = (venueId: string | null) => {
+  const handleCardHover = useCallback((venueId: string | null) => {
     setHoveredVenueId(venueId);
-  };
+  }, []);
 
   // Pagination handler - just calls search with new page
   const handlePageChange = (page: number) => {
@@ -484,13 +620,7 @@ export function SearchPage() {
                           <SelectTrigger id="time">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
-                            {TIME_SLOTS.map((slot) => (
-                              <SelectItem key={slot.value} value={slot.value}>
-                                {slot.display}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
+                          <SelectContent>{TIME_SLOT_OPTIONS}</SelectContent>
                         </Select>
                       </div>
                     </div>
@@ -646,13 +776,7 @@ export function SearchPage() {
                           <SelectTrigger id="time-browse">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
-                            {TIME_SLOTS.map((slot) => (
-                              <SelectItem key={slot.value} value={slot.value}>
-                                {slot.display}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
+                          <SelectContent>{TIME_SLOT_OPTIONS}</SelectContent>
                         </Select>
                       </div>
                     </div>
@@ -935,9 +1059,8 @@ export function SearchPage() {
                               .filter((item) => item !== "N/A")
                               .join(", ")}
                             imageUrl={result.imageUrl || null}
-                            onClick={() => handleCardClick(result.id)}
-                            onMouseEnter={() => handleCardHover(result.id)}
-                            onMouseLeave={() => handleCardHover(null)}
+                            onCardClick={handleCardClick}
+                            onHover={handleCardHover}
                             showPlaceholder={!hasAllReservationDetails}
                             availableTimes={
                               hasAvailabilityParams
@@ -1056,68 +1179,12 @@ export function SearchPage() {
               </>
             )}
 
-            <Map
-              center={mapCenter}
-              zoom={13}
-              className="h-full w-full"
-              ref={mapRef}
-            >
-              <MapTileLayer />
-              {searchResults.map((result) => {
-                const position = venuePositions[result.id];
-
-                // Skip venues without coordinates
-                if (!position) return null;
-
-                const isHovered = hoveredVenueId === result.id;
-
-                return (
-                  <MapMarker
-                    key={result.id}
-                    position={position}
-                    icon={
-                      <MapPin
-                        className={`
-                            transition-transform duration-300 ease-in-out
-                            ${
-                              isHovered
-                                ? "text-blue-600 fill-blue-600 scale-125"
-                                : "text-black fill-black scale-100"
-                            }
-                          `}
-                      />
-                    }
-                  >
-                    <MapTooltip side="top">
-                      <div className="font-medium">{result.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {result.neighborhood || "Manhattan"}
-                      </div>
-                    </MapTooltip>
-                    <MapPopup>
-                      <div className="flex flex-col gap-2 items-start">
-                        <div className="font-semibold text-lg">
-                          {result.name}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {result.neighborhood || "Manhattan"}
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            window.open(`/venue?id=${result.id}`, "_blank")
-                          }
-                        >
-                          Reserve
-                        </Button>
-                      </div>
-                    </MapPopup>
-                  </MapMarker>
-                );
-              })}
-              <MapZoomControl className="top-auto left-1 bottom-13 right-auto" />
-              <MapLocateControl className="top-auto right-1 bottom-13 left-auto" />
-            </Map>
+            <MapView
+              searchResults={searchResults}
+              mapCenter={mapCenter}
+              mapRef={mapRef}
+              markerRefsMap={markerRefsMap}
+            />
           </div>
         </div>
       </main>

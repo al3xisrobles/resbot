@@ -23,6 +23,39 @@ from .resy_client.api_access import ResyApiAccess
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# Firestore client for progress updates (lazily initialized)
+_firestore_client = None
+
+
+def _get_firestore_client():
+    """Lazily get Firestore client"""
+    global _firestore_client
+    if _firestore_client is None:
+        _firestore_client = firestore.client()
+    return _firestore_client
+
+
+def update_search_progress(job_id: str | None, data: dict) -> None:
+    """
+    Update Firestore document with search job progress.
+
+    Args:
+        job_id: Optional job ID. If None, this is a no-op.
+        data: Dict of progress data to merge into the document.
+    """
+    if not job_id:
+        print("[PROGRESS] No job_id provided, skipping progress update")
+        return
+
+    print(f"[PROGRESS] Updating job {job_id} with data: {data}")
+    try:
+        db = _get_firestore_client()
+        db.collection("searchJobs").document(job_id).set(data, merge=True)
+    except Exception as e:
+        # Don't let progress updates break the main search flow
+        print(f"[PROGRESS] Error updating job {job_id}: {str(e)}")
+
+
 # Configuration
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')
@@ -432,7 +465,7 @@ def get_resy_headers(config):
     }
 
 
-def get_search_cache_key(query, filters, geo_config):
+def get_search_cache_key(query, filters, geo_config, include_availability=False):
     """
     Generate a unique cache key for a search query
 
@@ -440,6 +473,8 @@ def get_search_cache_key(query, filters, geo_config):
         query: Search query string
         filters: Parsed filters dict
         geo_config: Geo configuration dict
+        include_availability: If True, include availability params in cache key.
+                             Use True when caching availability-filtered results.
 
     Returns:
         str: MD5 hash of the search parameters
@@ -450,12 +485,18 @@ def get_search_cache_key(query, filters, geo_config):
         'query': query,
         'cuisines': sorted(filters.get('cuisines', [])),
         'price_ranges': sorted(filters.get('price_ranges', [])),
-        'available_only': filters.get('available_only', False),
-        'available_day': filters.get('available_day', ''),
-        'available_party_size': filters.get('available_party_size', 2),
-        'desired_time': filters.get('desired_time', ''),
         'geo': str(sorted(geo_config.items()))
     }
+
+    # When caching availability-filtered results, include availability params in the key
+    # so different dates/party sizes get separate cache entries
+    if include_availability:
+        cache_params['available_only'] = filters.get('available_only', False)
+        cache_params['not_released_only'] = filters.get('not_released_only', False)
+        cache_params['available_day'] = filters.get('available_day', '')
+        cache_params['available_party_size'] = filters.get('available_party_size', 2)
+        cache_params['desired_time'] = filters.get('desired_time', '')
+
     cache_str = json.dumps(cache_params, sort_keys=True)
     return md5(cache_str.encode()).hexdigest()
 
@@ -541,7 +582,7 @@ def parse_search_filters(request_args):
     }
 
 
-def fetch_until_enough_results(search_func, target_count, filters, max_fetches=10, config=None, fetch_availability=False):
+def fetch_until_enough_results(search_func, target_count, filters, max_fetches=10, config=None, fetch_availability=False, job_id=None):
     """
     Keep fetching results until we have enough filtered results
 
@@ -552,6 +593,7 @@ def fetch_until_enough_results(search_func, target_count, filters, max_fetches=1
         max_fetches: Maximum number of API calls to make
         config: ResyConfig object (optional, needed for availability fetching)
         fetch_availability: Whether to fetch available times for each venue
+        job_id: Optional job ID for Firestore progress updates
 
     Returns:
         tuple: (results list, total_fetched, has_more)
@@ -560,6 +602,7 @@ def fetch_until_enough_results(search_func, target_count, filters, max_fetches=1
     seen_ids = set()
     resy_page = 1
     total_resy_results = 0
+    hits = []  # Initialize for has_more check
 
     for _ in range(max_fetches):
         print(f"[FETCH] Fetching Resy page {resy_page} (have {len(all_results)}/{target_count} filtered results)")
@@ -578,8 +621,19 @@ def fetch_until_enough_results(search_func, target_count, filters, max_fetches=1
         all_results.extend(page_results)
         total_resy_results = resy_total
 
-        print(f"[FETCH] Page {resy_page}: got {len(hits)} hits, {len(page_results)} passed filters, {len(all_results)} total")
+        log_msg = f"Page {resy_page}: {len(hits)} hits, {len(page_results)} passed filters, {len(all_results)} total"
+        print(f"[FETCH] {log_msg}")
         print(f"[FETCH] Filtered counts: {filtered_count}")
+
+        # Update Firestore progress
+        if job_id:
+            update_search_progress(job_id, {
+                "status": "running",
+                "stage": "fetching_resy",
+                "pagesFetched": resy_page,
+                "filteredCount": len(all_results),
+                "lastLog": log_msg,
+            })
 
         # Check if we have enough
         if len(all_results) >= target_count:

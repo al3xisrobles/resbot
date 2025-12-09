@@ -18,4 +18,10 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    headers: {
+      // Allow Firebase Auth popups to communicate with the parent window
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    },
+  },
 })

@@ -209,7 +209,7 @@ export function SearchBar({ className, inputClassName }: SearchBarProps) {
                     .filter((item) => item !== "N/A")
                     .join(", ")}
                   imageUrl={result.imageUrl || null}
-                  onClick={() => handleSelectVenue(result.id)}
+                  onCardClick={handleSelectVenue}
                   imageSize="small"
                 />
               ))}

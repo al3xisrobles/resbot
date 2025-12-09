@@ -129,7 +129,7 @@ def top_rated(req: Request):
             venue_name = venue.get('name', '')
 
             # Fetch image with comprehensive logging
-            image_url = fetch_venue_image_for_list(venue_id, venue_name, image_data)
+            image_url = fetch_venue_photo(venue_id, venue_name, image_data)
 
             restaurants.append({
                 'id': venue_id,
