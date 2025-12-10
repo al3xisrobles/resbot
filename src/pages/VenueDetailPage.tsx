@@ -518,7 +518,7 @@ export function VenueDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Side - Restaurant Information */}
           <div>
-            <div className="flex flex-col md:flex-row gap-4 w-full">
+            <div className="flex flex-col md:flex-row gap-4 w-full h-max">
               {/* Restaurant Info Card */}
               <Card className="flex-1 relative pb-20">
                 <CardContent className="space-y-4">
@@ -705,6 +705,7 @@ export function VenueDetailPage() {
                 {calendarData && !loadingCalendar && (
                   <Calendar
                     mode="single"
+                    className="w-full sm:w-max rounded-lg border shadow-sm  [--cell-size:--spacing(10.5)]"
                     selected={reservationForm.date}
                     onSelect={(date) =>
                       setReservationForm({ ...reservationForm, date })
@@ -740,7 +741,6 @@ export function VenueDetailPage() {
                         "[&>button]:text-blue-600 [&>button]:font-bold",
                       soldOut: "[&>button]:text-red-600",
                     }}
-                    className="rounded-lg border shadow-sm  [--cell-size:--spacing(10.5)]"
                   />
                 )}
               </div>
