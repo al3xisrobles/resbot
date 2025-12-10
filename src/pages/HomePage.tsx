@@ -96,7 +96,7 @@ export function HomePage() {
   }, [auth.currentUser]);
 
   return (
-    <div className="h-screen py-16 overflow-y-auto relative">
+    <div className="h-screen overflow-y-auto relative">
       <main className="relative">
         {/* HERO */}
         <Hero
