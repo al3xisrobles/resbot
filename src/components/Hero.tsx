@@ -57,7 +57,7 @@ const HOW_IT_WORKS_STEPS = [
 
 export function Hero({ reservationForm, setReservationForm }: HeroProps) {
   return (
-    <section className="min-h-[90vh] relative pt-12 pb-10 sm:pt-32 sm:pb-14">
+    <section className="min-h-[90vh] relative pt-12 pb-10 sm:pt-32 sm:pb-14 px-4 md:px-0">
       {/* Decorative geometric panels */}
       <div className="pointer-events-none absolute inset-0 overflow-y-visible overflow-x-hidden -z-10">
         {/* Right side panel */}
@@ -98,7 +98,7 @@ export function Hero({ reservationForm, setReservationForm }: HeroProps) {
       {/* Search + controls */}
       <div className="mt-8 flex flex-col items-center gap-4 z-20">
         {/* Search bar */}
-        <div className="w-full max-w-2xl px-4 md:px-0">
+        <div className="w-full max-w-2xl md:px-0">
           <SearchBar
             className="relative rounded-full border bg-background"
             inputClassName="h-12 sm:h-14 pl-6 pr-12 rounded-full text-sm sm:text-base"
