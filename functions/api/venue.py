@@ -1,6 +1,6 @@
 """
 Venue-related Cloud Functions for Resy Bot
-Handles venue details, links, and photos
+Handles venue details and links
 """
 
 import logging
@@ -12,8 +12,6 @@ from firebase_functions.options import CorsOptions
 from .utils import (
     load_credentials,
     get_resy_headers,
-    fetch_venue_photo,
-    photo_cache,
     GOOGLE_MAPS_API_KEY
 )
 
@@ -59,8 +57,8 @@ def venue(req: Request):
         venue_data = response.json()
         venue_name = venue_data.get('name')
 
-        # Fetch photo with caching
-        photo_url = fetch_venue_photo(venue_id, venue_name) if venue_name else None
+        # Get photo URLs directly from Resy API
+        photo_urls = venue_data.get('images', [])
 
         return {
             'success': True,
@@ -69,9 +67,10 @@ def venue(req: Request):
                 'venue_id': venue_id,
                 'type': venue_data.get('type', 'N/A'),
                 'address': f"{venue_data.get('location', {}).get('address_1', '')}, {venue_data.get('location', {}).get('locality', '')}, {venue_data.get('location', {}).get('region', '')}" if venue_data.get('location') else 'N/A',
+                'neighborhood': venue_data.get('location', {}).get('neighborhood', ''),
                 'price_range': venue_data.get('price_range_id', 0),
-                'rating': venue_data.get('rating'),
-                'photoUrl': photo_url
+                'rating': venue_data.get('rater', [])[0].get('score') if venue_data.get('rater') else None,
+                'photoUrls': photo_urls,  # List of photo URLs from Resy
             }
         }
 
@@ -257,148 +256,6 @@ def venue_links(req: Request):
 
     except Exception as e:
         logger.error(f"[VENUE-LINKS] ✗ Error getting venue links: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
-
-
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
-def venue_photo(req: Request):
-    """
-    GET /venue_photo?id=<venue_id>&name=<restaurant_name>
-    Get Google Places photo URL for a restaurant with multi-layer caching
-    """
-    try:
-        venue_id = req.args.get('id')
-        restaurant_name = req.args.get('name')
-
-        logger.info(f"[PHOTO] Request for venue_id={venue_id}, name={restaurant_name}")
-
-        if not venue_id:
-            return {
-                'success': False,
-                'error': 'Missing venue_id parameter'
-            }, 400
-
-        if not restaurant_name:
-            logger.warning(f"[PHOTO] Missing restaurant name for venue_id={venue_id}")
-            return {
-                'success': False,
-                'error': 'Missing restaurant name'
-            }, 400
-
-        # Fetch photo with caching
-        photo_url = fetch_venue_photo(venue_id, restaurant_name)
-        logger.info(f"[PHOTO] Fetched photo_url={photo_url} for {restaurant_name}")
-
-        if not photo_url:
-            logger.warning(f"[PHOTO] No photo available for {restaurant_name} (venue_id={venue_id})")
-            return {
-                'success': False,
-                'error': 'No photo available for this restaurant'
-            }, 404
-
-        # Get full metadata from cache
-        cache_key = f"{venue_id}_{restaurant_name}"
-        cached_data = photo_cache.get(cache_key, {
-            'photoUrls': [photo_url],
-            'photoUrl': photo_url,
-            'placeName': restaurant_name,
-            'placeAddress': 'N/A'
-        })
-
-        logger.info(f"[PHOTO] Returning data for {restaurant_name}: photoUrl={cached_data.get('photoUrl', 'N/A')}")
-
-        return {
-            'success': True,
-            'data': cached_data
-        }
-
-    except Exception as e:
-        logger.error(f"[PHOTO] Error fetching venue photo for venue_id={req.args.get('id')}: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
-
-
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
-def venue_photo_proxy(req: Request):
-    """
-    GET /venue_photo_proxy?id=<venue_id>&name=<restaurant_name>
-    Proxy Google Places photo to bypass CORS restrictions
-    """
-    try:
-        venue_id = req.args.get('id')
-        restaurant_name = req.args.get('name')
-
-        logger.info(f"[PHOTO-PROXY] Request for venue_id={venue_id}, name={restaurant_name}")
-
-        if not venue_id:
-            return {
-                'success': False,
-                'error': 'Missing venue_id parameter'
-            }, 400
-
-        if not restaurant_name:
-            logger.warning(f"[PHOTO-PROXY] Missing restaurant name for venue_id={venue_id}")
-            return {
-                'success': False,
-                'error': 'Missing restaurant name'
-            }, 400
-
-        # Fetch photo URL with caching
-        photo_url = fetch_venue_photo(venue_id, restaurant_name)
-        logger.info(f"[PHOTO-PROXY] Fetched photo_url={photo_url} for {restaurant_name}")
-
-        if not photo_url:
-            logger.warning(f"[PHOTO-PROXY] No photo available for {restaurant_name} (venue_id={venue_id})")
-            return {
-                'success': False,
-                'error': 'No photo available for this restaurant'
-            }, 404
-
-        # Fetch the image from Google Maps
-        logger.info(f"[PHOTO-PROXY] Fetching image from Google Maps for {restaurant_name}")
-        image_response = requests.get(photo_url, timeout=10)
-
-        print("PHOTO URL:", photo_url)
-
-        if image_response.status_code != 200:
-            logger.error(f"[PHOTO-PROXY] Failed to fetch image. Status: {image_response.status_code}")
-            return {
-                'success': False,
-                'error': 'Failed to fetch image from Google Maps',
-                'message': image_response.text
-            }, 500
-
-        # Get content type from response or default to jpeg
-        content_type = image_response.headers.get('Content-Type', 'image/jpeg')
-        logger.info(f"[PHOTO-PROXY] Successfully fetched image for {restaurant_name}. Content-Type: {content_type}, Size: {len(image_response.content)} bytes")
-
-        # For Cloud Functions, we need to return the image as a response
-        # Firebase Functions Python SDK handles binary responses
-        from firebase_functions.https_fn import Response
-
-        return Response(
-            response=image_response.content,
-            status=200,
-            headers={
-                'Content-Type': content_type,
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'public, max-age=86400'  # Cache for 24 hours
-            }
-        )
-
-    except requests.Timeout:
-        logger.error(f"[PHOTO-PROXY] Timeout fetching image for venue_id={req.args.get('id')}")
-        return {
-            'success': False,
-            'error': 'Timeout fetching image'
-        }, 504
-    except Exception as e:
-        logger.error(f"[PHOTO-PROXY] Error proxying venue photo for venue_id={req.args.get('id')}: {str(e)}")
         return {
             'success': False,
             'error': str(e)

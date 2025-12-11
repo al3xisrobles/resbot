@@ -9,10 +9,46 @@ import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
 
-from .utils import load_credentials, get_resy_headers, fetch_venue_photo
+from .utils import load_credentials, get_resy_headers
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def _extract_resy_image_url(image_data):
+    """
+    Extract image URL from Resy API responsive_images data.
+
+    Args:
+        image_data: responsive_images dict from Resy API
+
+    Returns:
+        str: Image URL if found, None otherwise
+    """
+    if not image_data:
+        return None
+
+    urls = image_data.get('urls', {})
+    if not urls:
+        return None
+
+    first_file = image_data.get('file_names', [None])[0]
+    if not first_file or first_file not in urls:
+        return None
+
+    aspect_ratios = urls[first_file]
+
+    # Try 1:1 aspect ratio at 400px first
+    if '1:1' in aspect_ratios and '400' in aspect_ratios['1:1']:
+        return aspect_ratios['1:1']['400']
+
+    # Fallback: try any available size
+    for sizes in aspect_ratios.values():
+        for url in sizes.values():
+            if url:
+                return url
+
+    return None
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
@@ -52,15 +88,13 @@ def climbing(req: Request):
         for venue in venues:
             location = venue.get('location', {})
             image_data = venue.get('responsive_images', {})
-            venue_id = str(venue.get('id', {}).get('resy', ''))
-            venue_name = venue.get('name', '')
 
-            # Fetch image with comprehensive logging
-            image_url = fetch_venue_photo(venue_id, venue_name, image_data)
+            # Extract image URL directly from Resy data
+            image_url = _extract_resy_image_url(image_data)
 
             restaurants.append({
-                'id': venue_id,
-                'name': venue_name,
+                'id': str(venue.get('id', {}).get('resy', '')),
+                'name': venue.get('name', ''),
                 'type': venue.get('type', ''),
                 'priceRange': venue.get('price_range_id', 0),
                 'location': {
@@ -125,15 +159,13 @@ def top_rated(req: Request):
         for venue in venues:
             location = venue.get('location', {})
             image_data = venue.get('responsive_images', {})
-            venue_id = str(venue.get('id', {}).get('resy', ''))
-            venue_name = venue.get('name', '')
 
-            # Fetch image with comprehensive logging
-            image_url = fetch_venue_photo(venue_id, venue_name, image_data)
+            # Extract image URL directly from Resy data
+            image_url = _extract_resy_image_url(image_data)
 
             restaurants.append({
-                'id': venue_id,
-                'name': venue_name,
+                'id': str(venue.get('id', {}).get('resy', '')),
+                'name': venue.get('name', ''),
                 'type': venue.get('type', ''),
                 'priceRange': venue.get('price_range_id', 0),
                 'location': {

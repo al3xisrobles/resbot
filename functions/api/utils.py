@@ -1,6 +1,6 @@
 """
 Shared utility functions for Resy Bot Cloud Functions
-Includes credential loading, photo caching, search caching, and Resy API helpers
+Includes credential loading, search caching, and Resy API helpers
 """
 
 import os
@@ -14,7 +14,7 @@ from hashlib import md5
 from google import genai
 from urllib.parse import quote
 
-from firebase_admin import storage, firestore
+from firebase_admin import firestore
 
 from .resy_client.models import FindRequestBody, ResyConfig
 from .resy_client.api_access import ResyApiAccess
@@ -66,16 +66,10 @@ TRANSIENT_STATUS_CODES = {500, 502}
 SEARCH_CACHE = {}
 SEARCH_CACHE_TTL = 300  # 5 minutes in seconds
 
-# In-memory cache for venue photos
-photo_cache = {}
-
 # Initialize Gemini AI client if API key is available
 gemini_client = None
 if GEMINI_API_KEY:
     gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-
-# Firebase Storage bucket (lazily initialized)
-_firebase_bucket = None
 
 def is_emulator() -> bool:
     # Any of these being set basically implies you're in `firebase emulators:start`
@@ -95,306 +89,6 @@ if is_emulator():
 else:
     logger.info("✓ Running in Production mode")
     CLOUD_FUNCTIONS_BASE = "https://us-central1-resybot-bd2db.cloudfunctions.net"
-
-def get_firebase_bucket():
-    """Lazily get Firebase Storage bucket"""
-    global _firebase_bucket
-    if _firebase_bucket is None:
-        try:
-            _firebase_bucket = storage.bucket()
-            logger.info("✓ Firebase Storage initialized successfully")
-        except Exception as e:
-            logger.error(f"✗ Failed to get Firebase bucket: {str(e)}")
-            _firebase_bucket = None
-    return _firebase_bucket
-
-
-def _check_photo_cache(venue_id, restaurant_name):
-    """
-    Check memory and Firebase caches for a venue photo.
-
-    Args:
-        venue_id: Resy venue ID
-        restaurant_name: Name of the restaurant
-
-    Returns:
-        tuple: (cached_data dict or None, cache_key string)
-    """
-    cache_key = f"{venue_id}_{restaurant_name}"
-
-    # 1. Check in-memory cache first (fastest)
-    if cache_key in photo_cache:
-        logger.info(f"✓ [{restaurant_name}] CACHE HIT - Memory")
-        return photo_cache[cache_key], cache_key
-
-    # 2. Check Firebase Storage cache
-    firebase_bucket = get_firebase_bucket()
-    if firebase_bucket:
-        try:
-            blob_name = f"venue_photos/{venue_id}.json"
-            blob = firebase_bucket.blob(blob_name)
-
-            if blob.exists():
-                cached_data = json.loads(blob.download_as_text())
-                logger.info(f"✓ [{restaurant_name}] CACHE HIT - Firebase | Saved to memory")
-
-                # Store in memory cache for next time
-                photo_cache[cache_key] = cached_data
-                return cached_data, cache_key
-        except Exception as e:
-            logger.warning(f"✗ [{restaurant_name}] Firebase cache read failed: {str(e)}")
-
-    return None, cache_key
-
-
-def _save_photo_to_cache(venue_id, restaurant_name, result_data, cache_key):
-    """
-    Save photo data to both memory and Firebase caches.
-
-    Args:
-        venue_id: Resy venue ID
-        restaurant_name: Name of the restaurant
-        result_data: Dict with photoUrl, photoUrls, placeName, placeAddress
-        cache_key: Cache key string
-    """
-    # Store in in-memory cache
-    photo_cache[cache_key] = result_data
-    logger.info(f"✓ [{restaurant_name}] SAVED - Memory cache")
-
-    # Store in Firebase Storage cache (if available)
-    firebase_bucket = get_firebase_bucket()
-    if firebase_bucket:
-        try:
-            blob_name = f"venue_photos/{venue_id}.json"
-            blob = firebase_bucket.blob(blob_name)
-            blob.upload_from_string(
-                json.dumps(result_data),
-                content_type='application/json'
-            )
-            logger.info(f"✓ [{restaurant_name}] SAVED - Firebase Storage (blob: {blob_name})")
-        except Exception as e:
-            logger.warning(f"✗ [{restaurant_name}] Firebase save failed: {str(e)}")
-    else:
-        logger.info(f"⚠ [{restaurant_name}] Firebase not available - memory cache only")
-
-
-def _fetch_photo_from_google_places_v1(restaurant_name):
-    """
-    Fetch photo from Google Places API (New) v1 endpoint.
-
-    Uses the new 2024+ API:
-    1. POST /v1/places:searchText to find the place and get photo references
-    2. GET /v1/{photoName}/media to get the actual photo
-
-    Args:
-        restaurant_name: Name of the restaurant
-
-    Returns:
-        tuple: (photo_url string or None, place_name string or None, place_address string or None)
-    """
-    if not GOOGLE_MAPS_API_KEY:
-        logger.warning(f"✗ [{restaurant_name}] Google Maps API key not configured")
-        return None, None, None
-
-    try:
-        logger.info(f"→ [{restaurant_name}] Fetching from Google Places API (v1)...")
-
-        # Step 1: Use Text Search (New) to find the restaurant and get photo references
-        search_url = 'https://places.googleapis.com/v1/places:searchText'
-        search_headers = {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-            'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.photos'
-        }
-        search_payload = {
-            'textQuery': f"{restaurant_name} restaurant New York",
-            'maxResultCount': 1
-        }
-
-        search_response = requests.post(
-            search_url,
-            headers=search_headers,
-            json=search_payload,
-            timeout=10
-        )
-
-        if search_response.status_code != 200:
-            logger.error(f"✗ [{restaurant_name}] Google Places Text Search error {search_response.status_code}: {search_response.text[:200]}")
-            return None, None, None
-
-        search_data = search_response.json()
-        places = search_data.get('places', [])
-
-        if not places:
-            logger.warning(f"✗ [{restaurant_name}] No Google Places results")
-            return None, None, None
-
-        # Get the first result
-        place = places[0]
-        photos = place.get('photos', [])
-        place_name = place.get('displayName', {}).get('text', restaurant_name)
-        place_address = place.get('formattedAddress', 'N/A')
-
-        if not photos:
-            logger.warning(f"✗ [{restaurant_name}] No photos available in Google Places")
-            return None, place_name, place_address
-
-        # Get the photo resource name (format: places/{placeId}/photos/{photoReference})
-        photo_resource_name = photos[0].get('name')
-
-        if not photo_resource_name:
-            logger.warning(f"✗ [{restaurant_name}] No photo resource name")
-            return None, place_name, place_address
-
-        # Step 2: Construct the photo media URL using v1 API
-        # Format: https://places.googleapis.com/v1/{photoName}/media?maxWidthPx=800&key=API_KEY
-        photo_url = f"https://places.googleapis.com/v1/{photo_resource_name}/media?maxWidthPx=800&key={GOOGLE_MAPS_API_KEY}"
-
-        logger.info(f"✓ [{restaurant_name}] Got photo URL from Google Places API (v1)")
-        return photo_url, place_name, place_address
-
-    except Exception as e:
-        logger.error(f"✗ [{restaurant_name}] Error fetching from Google Places: {str(e)}")
-        return None, None, None
-
-
-def _extract_resy_image_url(image_data, venue_name):
-    """
-    Extract image URL from Resy API responsive_images data.
-
-    Args:
-        image_data: responsive_images dict from Resy API
-        venue_name: Restaurant name (for logging)
-
-    Returns:
-        str: Image URL if found, None otherwise
-    """
-    if not image_data:
-        return None
-
-    urls = image_data.get('urls', {})
-    if not urls:
-        return None
-
-    first_file = image_data.get('file_names', [None])[0]
-    if not first_file or first_file not in urls:
-        return None
-
-    aspect_ratios = urls[first_file]
-
-    # Try 1:1 aspect ratio at 400px first
-    if '1:1' in aspect_ratios and '400' in aspect_ratios['1:1']:
-        logger.info(f"✓ [{venue_name}] Found Resy image (1:1 @ 400px)")
-        return aspect_ratios['1:1']['400']
-
-    # Fallback: try any available size
-    for ratio, sizes in aspect_ratios.items():
-        for size, url in sizes.items():
-            if url:
-                logger.info(f"✓ [{venue_name}] Found Resy image ({ratio} @ {size}px)")
-                return url
-
-    return None
-
-
-def fetch_venue_photo(venue_id, restaurant_name, resy_image_data=None):
-    """
-    Fetch venue photo with three-layer caching and source priority.
-
-    This is the main photo fetching function. It checks sources in this order:
-    1. Memory cache (fastest)
-    2. Firebase Storage cache
-    3. Resy API images (if resy_image_data provided) - FREE, no API cost
-    4. Google Places API (v1) - EXPENSIVE, use as last resort
-
-    Args:
-        venue_id: Resy venue ID
-        restaurant_name: Name of the restaurant
-        resy_image_data: Optional responsive_images dict from Resy API search results.
-                        When provided, Resy images are checked before Google Places.
-
-    Returns:
-        str: Photo URL if found, None otherwise
-    """
-    # Check caches first
-    cached_data, cache_key = _check_photo_cache(venue_id, restaurant_name)
-    if cached_data:
-        return cached_data.get('photoUrl')
-
-    # PRIORITY 1: Check Resy API images (FREE - no API cost)
-    if resy_image_data:
-        resy_url = _extract_resy_image_url(resy_image_data, restaurant_name)
-        if resy_url:
-            result_data = {
-                'photoUrls': [resy_url],
-                'photoUrl': resy_url,
-                'placeName': restaurant_name,
-                'placeAddress': 'N/A',
-                'source': 'resy'
-            }
-            _save_photo_to_cache(venue_id, restaurant_name, result_data, cache_key)
-            logger.info(f"✓ [{restaurant_name}] IMAGE SOURCE - Resy API")
-            return resy_url
-        else:
-            logger.info(f"✗ [{restaurant_name}] No usable image in Resy API response")
-
-    # PRIORITY 2: Fetch from Google Places API (v1) - EXPENSIVE
-    photo_url, place_name, place_address = _fetch_photo_from_google_places_v1(restaurant_name)
-
-    if photo_url:
-        result_data = {
-            'photoUrls': [photo_url],
-            'photoUrl': photo_url,
-            'placeName': place_name or restaurant_name,
-            'placeAddress': place_address or 'N/A',
-            'source': 'google_places_v1'
-        }
-        _save_photo_to_cache(venue_id, restaurant_name, result_data, cache_key)
-        logger.info(f"✓ [{restaurant_name}] IMAGE SOURCE - Google Places API (v1)")
-        return photo_url
-
-    logger.warning(f"✗ [{restaurant_name}] NO IMAGE FOUND from any source")
-    return None
-
-
-def cache_resy_image_if_available(venue_id, venue_name, resy_image_data):
-    """
-    Cache a Resy image immediately when we have it from search results.
-
-    Call this when processing search results to pre-cache Resy images,
-    so that later proxy requests will find them in cache without needing
-    to call Google Places API.
-
-    Args:
-        venue_id: Resy venue ID
-        venue_name: Restaurant name
-        resy_image_data: responsive_images dict from Resy API
-
-    Returns:
-        str: Cached image URL if successful, None otherwise
-    """
-    if not resy_image_data:
-        return None
-
-    # Check if already cached
-    cached_data, cache_key = _check_photo_cache(venue_id, venue_name)
-    if cached_data:
-        return cached_data.get('photoUrl')
-
-    # Extract and cache Resy image
-    resy_url = _extract_resy_image_url(resy_image_data, venue_name)
-    if resy_url:
-        result_data = {
-            'photoUrls': [resy_url],
-            'photoUrl': resy_url,
-            'placeName': venue_name,
-            'placeAddress': 'N/A',
-            'source': 'resy'
-        }
-        _save_photo_to_cache(venue_id, venue_name, result_data, cache_key)
-        return resy_url
-
-    return None
 
 
 def load_credentials(userId=None):
@@ -950,9 +644,9 @@ def filter_and_format_venues(hits, filters, seen_ids=None, config=None, fetch_av
         seen_ids.add(venue_id)
 
         # Apply cuisine filter - check both 'type' field and search if type is empty
-        venue_type = venue.get('type', '')
-        if filters['cuisines'] and venue_type:  # Only filter if type is not empty
-            if not any(cuisine.lower() in venue_type.lower() for cuisine in filters['cuisines']):
+        venue_cuisine = venue.get('cuisine', [])[0] if venue.get('cuisine') else ""
+        if filters['cuisines'] and venue_cuisine:  # Only filter if venue_cuisine is not empty
+            if not any(cuisine.lower() in venue_cuisine.lower() for cuisine in filters['cuisines']):
                 filtered_count['cuisine'] += 1
                 continue
 
@@ -962,33 +656,25 @@ def filter_and_format_venues(hits, filters, seen_ids=None, config=None, fetch_av
             filtered_count['price'] += 1
             continue
 
-        location = venue.get('location', {})
+        neighborhood = venue.get('neighborhood', {})
         geoloc = venue.get('_geoloc', {})
 
         venue_name = venue.get('name', 'Unknown')
 
-        # Pre-cache Resy images when available (FREE - saves Google Places API calls later)
-        # The Resy API search response includes responsive_images for each venue
-        resy_image_data = venue.get('responsive_images', {})
-        if resy_image_data:
-            cache_resy_image_if_available(venue_id, venue_name, resy_image_data)
-
-        # Construct photo proxy URL for lazy loading
-        # The proxy will find the Resy image in cache if we just cached it above
-        image_url = f"{CLOUD_FUNCTIONS_BASE}/venue_photo_proxy?id={venue_id}&name={quote(venue_name)}"
+        # Get image URL directly from Resy API
+        resy_image_url = venue.get('images')[0] if venue.get('images') else None
 
         result = {
             'id': venue_id or 'unknown',
             'name': venue_name,
             'locality': venue.get('locality', 'N/A'),
             'region': venue.get('region', 'N/A'),
-            'type': venue.get('type', 'N/A'),
+            'type': venue_cuisine,
             'price_range': venue_price,
-            'address': f"{location.get('address_1', '')}, {venue.get('locality', '')}, {venue.get('region', '')}" if location.get('address_1') else None,
             'latitude': geoloc.get('lat'),
             'longitude': geoloc.get('lng'),
-            'imageUrl': image_url,
-            'neighborhood': location.get('neighborhood', 'N/A')
+            'imageUrl': resy_image_url,
+            'neighborhood': neighborhood
         }
 
         # Fetch availability if requested

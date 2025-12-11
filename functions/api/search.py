@@ -106,6 +106,10 @@ def search(req: Request):
             max_fetches=10
         )
 
+        print("[SEARCH] Sample result imageUrl:")
+        if all_results:
+            print(all_results[0]['imageUrl'])
+
         # Slice results based on offset
         results = all_results[filters['offset']:filters['offset'] + filters['per_page']]
 
@@ -123,12 +127,12 @@ def search(req: Request):
                 'perPage': filters['per_page'],
                 'nextOffset': next_offset,
                 'hasMore': next_offset is not None,
-                'total': total_resy_results  # Total from Resy API (unfiltered estimate)
+                'total': total_resy_results  # from Resy API (unfiltered estimate)
             }
         }
 
     except Exception as e:
-        logger.error(f"Error searching venues: {str(e)}")
+        logger.exception(f"Error searching venues")
         return {
             'success': False,
             'error': str(e)
