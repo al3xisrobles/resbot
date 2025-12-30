@@ -102,13 +102,12 @@ class ResyApiAccess:
     def find_booking_slots(self, params: FindRequestBody) -> List[Slot]:
         find_url = RESY_BASE_URL + ResyEndpoints.FIND.value
 
-        logger.info(
-            f"{datetime.now().isoformat()} Sending request to find booking slots"
-        )
+        logger.info("Sending request to find booking slots with params :")
+        logger.info(params.model_dump())
 
         resp = self.session.get(find_url, params=params.model_dump())
 
-        logger.info(f"{datetime.now().isoformat()} Received response for ")
+        logger.info("Received response from find booking slots")
 
         if not resp.ok:
             raise HTTPError(

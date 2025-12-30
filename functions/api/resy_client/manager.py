@@ -60,12 +60,12 @@ class ResyManager:
         body = build_find_request_body(reservation_request)
 
         slots = self.api_access.find_booking_slots(body)
-        logger.info(f"Returned: {slots}")
 
         if len(slots) == 0:
+            logger.info(f"No slots found... Returned: {slots}")
             raise NoSlotsError("No Slots Found")
         else:
-            logger.info(len(slots))
+            logger.info(f"Found {len(slots)} slots")
             logger.info(slots)
 
         selected_slot = self.selector.select(slots, reservation_request)
@@ -80,6 +80,7 @@ class ResyManager:
         booking_request = build_book_request_body(token, self.config)
 
         try:
+            logger.info("Attempting to book slot...")
             resy_token = self.api_access.book_slot(booking_request)
             return resy_token
         except HTTPError as e:
@@ -95,9 +96,9 @@ class ResyManager:
             try:
                 return self.make_reservation(reservation_request)
 
-            except NoSlotsError:
+            except NoSlotsError as e:
                 logger.info(
-                    f"no slots, retrying; currently {datetime.now().isoformat()}"
+                    f"no slots ({str(e)}), retrying; currently {datetime.now().isoformat()}"
                 )
 
             except SlotTakenError as e:
