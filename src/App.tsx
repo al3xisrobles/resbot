@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { HomePage } from "@/pages/HomePage";
 import { VenueDetailPage } from "@/pages/VenueDetailPage";
 import { SearchPage } from "@/pages/SearchPage";
@@ -27,18 +28,18 @@ function App() {
             <Header />
 
             <Routes>
+              {/* Public routes */}
+              <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
-              <Route path="/onboarding" element={<OnboardingPage />} />
-              <Route path="/" element={<HomePage />} />
-              <Route path="/venue" element={<VenueDetailPage />} />
-              <Route path="/search" element={<SearchPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route
-                path="/bookmarks"
-                element={<BookmarkedRestaurantsPage />}
-              />
-              <Route path="/reservations" element={<ReservationsPage />} />
+
+              {/* Protected routes - require authentication */}
+              <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
+              <Route path="/venue" element={<ProtectedRoute><VenueDetailPage /></ProtectedRoute>} />
+              <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+              <Route path="/bookmarks" element={<ProtectedRoute><BookmarkedRestaurantsPage /></ProtectedRoute>} />
+              <Route path="/reservations" element={<ProtectedRoute><ReservationsPage /></ProtectedRoute>} />
             </Routes>
 
             {window.location.pathname !== "/search" && <Footer />}

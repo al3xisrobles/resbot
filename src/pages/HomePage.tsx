@@ -179,15 +179,15 @@ export function HomePage() {
               </div>
             ) : topRatedRestaurants.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-                {topRatedRestaurants.map((restaurant) => {
-                  const hasAllReservationDetails =
-                    reservationForm.date &&
-                    reservationForm.timeSlot &&
-                    reservationForm.partySize;
+                {topRatedRestaurants.map((restaurant, index) => {
+                  // const hasAllReservationDetails =
+                  //   reservationForm.date &&
+                  //   reservationForm.timeSlot &&
+                  //   reservationForm.partySize;
 
                   return (
                     <RestaurantGridCard
-                      key={restaurant.id}
+                      key={index}
                       id={restaurant.id}
                       name={restaurant.name}
                       type={restaurant.type}
@@ -200,7 +200,7 @@ export function HomePage() {
                         .join(", ")}
                       imageUrl={restaurant.imageUrl}
                       onClick={() => handleSelectVenue(restaurant.id)}
-                      showPlaceholder={!hasAllReservationDetails}
+                      // showPlaceholder={!hasAllReservationDetails}
                     />
                   );
                 })}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Search, LogIn } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,10 +30,12 @@ export function SearchBar({
   const [loading, setLoading] = useState(false);
   const [searchPopoverOpen, setSearchPopoverOpen] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
+  const [, setShowLoginPrompt] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const currentQueryRef = useRef<string>("");
   const auth = useAuth();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isAuthenticated = !!auth.currentUser;
 
   // Prevent body scroll when popover is open
   useEffect(() => {
@@ -134,6 +136,39 @@ export function SearchBar({
     setInputFocused(false);
     navigate("/search");
   };
+
+  // If not authenticated, show a disabled search bar with login prompt on hover/click
+  if (!isAuthenticated) {
+    return (
+      <div
+        className={`relative group ${className}`}
+        style={{ position: "relative", zIndex: 10001 }}
+      >
+        {/* Login prompt overlay - shows on hover */}
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center bg-red-50/95 dark:bg-red-950/95 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer border border-red-200 dark:border-red-800"
+          onClick={() => navigate("/login")}
+        >
+          <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium">
+            <LogIn className="size-4" />
+            <span>Log in to search</span>
+          </div>
+        </div>
+
+        {/* Disabled input */}
+        <Input
+          placeholder={placeholderText}
+          disabled
+          onClick={() => {
+            setShowLoginPrompt(true);
+            navigate("/login");
+          }}
+          className={`shadow-md bg-background cursor-pointer ${inputClassName}`}
+        />
+        <Search className="absolute right-6 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+      </div>
+    );
+  }
 
   return (
     <>

@@ -1,56 +1,62 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
-import { Separator } from '@/components/ui/separator'
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Separator } from "@/components/ui/separator";
 
 export function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const { login, loginWithGoogle } = useAuth()
-  const navigate = useNavigate()
+  const { login, loginWithGoogle } = useAuth();
+  const navigate = useNavigate();
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
 
     try {
-      setError(null)
-      setLoading(true)
-      await login(email, password)
-      navigate('/')
+      setError(null);
+      setLoading(true);
+      await login(email, password);
+      navigate("/");
     } catch (err) {
-      setError('Failed to sign in. Please check your credentials.')
-      console.error(err)
+      setError("Failed to sign in. Please check your credentials.");
+      console.error(err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function handleGoogleSignIn() {
     try {
-      setError(null)
-      setLoading(true)
-      await loginWithGoogle()
-      navigate('/')
+      setError(null);
+      setLoading(true);
+      await loginWithGoogle();
+      navigate("/");
     } catch (err) {
-      setError('Failed to sign in with Google.')
-      console.error(err)
+      setError("Failed to sign in with Google.");
+      console.error(err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen bg-background flex py-12 md:py-32 lg:py-48 justify-center px-4">
+      <Card className="w-full max-w-md h-max">
         <CardHeader>
           <CardTitle className="text-2xl">Sign In</CardTitle>
           <CardDescription>
@@ -97,7 +103,9 @@ export function LoginPage() {
               <Separator />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+              <span className="bg-card px-2 text-muted-foreground">
+                Or continue with
+              </span>
             </div>
           </div>
 
@@ -126,12 +134,12 @@ export function LoginPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
 
           <div className="text-center text-sm text-muted-foreground">
-            Don't have an account?{' '}
+            Don't have an account?{" "}
             <Link to="/signup" className="text-primary hover:underline">
               Sign up
             </Link>
@@ -139,5 +147,5 @@ export function LoginPage() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

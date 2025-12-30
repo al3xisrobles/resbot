@@ -38,7 +38,7 @@ export function RestaurantGridCard({
       onClick={onClick}
     >
       {/* Image */}
-      <div className="relative aspect-4/3 w-full bg-muted overflow-hidden">
+      <div className="relative aspect-4/3 w-full bg-muted animate-pulse overflow-hidden">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -58,7 +58,7 @@ export function RestaurantGridCard({
       {/* Content */}
       <div className="px-4 pb-2 space-y-1">
         {/* Name and Price */}
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           <h3 className="font-semibold text-base line-clamp-1 group-hover:text-primary transition-colors">
             {name}
           </h3>
@@ -98,7 +98,7 @@ export function RestaurantGridCard({
 
         {/* Reservation Times or Placeholder */}
         {showPlaceholder && (
-          <div className="mt-2 text-xs text-muted-foreground italic">
+          <div className="text-xs text-muted-foreground italic">
             {/* TODO: AI Summary */}
           </div>
         )}
