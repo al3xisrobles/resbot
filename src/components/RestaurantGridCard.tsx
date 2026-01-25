@@ -2,6 +2,7 @@ import { useState } from "react";
 import { MapPin, Bookmark } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Toggle } from "@/components/ui/toggle";
+import { cn } from "@/lib/utils";
 
 export interface RestaurantGridCardProps {
   id: string;
@@ -26,6 +27,7 @@ export function RestaurantGridCard({
   showPlaceholder,
 }: RestaurantGridCardProps) {
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const handleBookmarkClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -38,14 +40,19 @@ export function RestaurantGridCard({
       onClick={onClick}
     >
       {/* Image */}
-      <div className="relative aspect-4/3 w-full bg-muted animate-pulse overflow-hidden">
+      <div className={cn(
+        "relative aspect-4/3 w-full bg-muted overflow-hidden",
+        !imageLoaded && imageUrl && "animate-pulse"
+      )}>
         {imageUrl ? (
           <img
             src={imageUrl}
             alt={name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onLoad={() => setImageLoaded(true)}
             onError={(e) => {
               e.currentTarget.style.display = "none";
+              setImageLoaded(true);
             }}
           />
         ) : (

@@ -12,7 +12,6 @@ from time import time
 from datetime import datetime
 from hashlib import md5
 from google import genai
-from urllib.parse import quote
 
 from firebase_admin import firestore
 

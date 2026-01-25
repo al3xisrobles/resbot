@@ -1,5 +1,4 @@
-from datetime import datetime
-from requests import Session, HTTPError
+from requests import Session
 from typing import Dict, List
 import logging
 
@@ -19,6 +18,10 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
+
+# Timeout in seconds for API requests (connect timeout, read timeout)
+# Keep these aggressive for time-sensitive snipes
+REQUEST_TIMEOUT = (5, 10)  # 5s connect, 10s read
 
 
 def build_session(config: ResyConfig) -> Session:
@@ -61,10 +64,10 @@ class ResyApiAccess:
         """
         search_url = RESY_BASE_URL + ResyEndpoints.VENUE_SEARCH.value
 
-        resp = self.session.get(search_url, params={"query": query})
+        resp = self.session.get(search_url, params={"query": query}, timeout=REQUEST_TIMEOUT)
 
         if not resp.ok:
-            raise HTTPError(f"Failed to search venues: {resp.status_code}, {resp.text}")
+            resp.raise_for_status()  # This properly attaches response to HTTPError
 
         data = resp.json()
 
@@ -92,27 +95,25 @@ class ResyApiAccess:
             auth_url,
             data=body.model_dump(),
             headers={"content-type": "application/x-www-form-urlencoded"},
+            timeout=REQUEST_TIMEOUT,
         )
 
         if not resp.ok:
-            raise HTTPError(f"Failed to get auth: {resp.status_code}, {resp.text}")
+            resp.raise_for_status()
 
         return AuthResponseBody(**resp.json())
 
     def find_booking_slots(self, params: FindRequestBody) -> List[Slot]:
         find_url = RESY_BASE_URL + ResyEndpoints.FIND.value
 
-        logger.info("Sending request to find booking slots with params :")
-        logger.info(params.model_dump())
+        logger.info("Sending request to find booking slots with params: %s", params.model_dump())
 
-        resp = self.session.get(find_url, params=params.model_dump())
+        resp = self.session.get(find_url, params=params.model_dump(), timeout=REQUEST_TIMEOUT)
 
-        logger.info("Received response from find booking slots")
+        logger.info(f"Received response from find booking slots: {resp.text}")
 
         if not resp.ok:
-            raise HTTPError(
-                f"Failed to find booking slots: {resp.status_code}, {resp.text}"
-            )
+            resp.raise_for_status()
 
         parsed_resp = FindResponseBody(**resp.json())
 
@@ -123,12 +124,10 @@ class ResyApiAccess:
     def get_booking_token(self, params: DetailsRequestBody) -> DetailsResponseBody:
         details_url = RESY_BASE_URL + ResyEndpoints.DETAILS.value
 
-        resp = self.session.get(details_url, params=params.model_dump())
+        resp = self.session.get(details_url, params=params.model_dump(), timeout=REQUEST_TIMEOUT)
 
         if not resp.ok:
-            raise HTTPError(
-                f"Failed to get selected slot details: {resp.status_code}, {resp.text}"
-            )
+            resp.raise_for_status()
 
         return DetailsResponseBody(**resp.json())
 
@@ -159,10 +158,11 @@ class ResyApiAccess:
             book_url,
             data=body_dict,
             headers=headers,
+            timeout=REQUEST_TIMEOUT,
         )
 
         if not resp.ok:
-            raise HTTPError(f"Failed to book slot: {resp.status_code}, {resp.text}")
+            resp.raise_for_status()
 
         logger.info(resp.json())
         parsed_resp = BookResponseBody(**resp.json())

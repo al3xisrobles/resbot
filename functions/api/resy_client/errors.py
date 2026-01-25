@@ -1,11 +1,10 @@
 class NoSlotsError(Exception):
-    pass
+    """Raised when no slots are available for the requested time/date."""
 
 
 class ExhaustedRetriesError(Exception):
-    pass
+    """Raised when all retry attempts have been exhausted."""
 
 
 class SlotTakenError(Exception):
-    """Raised when a slot booking fails because it was already taken"""
-    pass
+    """Raised when a slot booking fails because it was already taken."""

@@ -88,8 +88,8 @@ class FindRequestBody(BaseModel):
     def validate_day(cls, day: str) -> str:
         try:
             datetime.strptime(day, "%Y-%m-%d")
-        except ValueError:
-            raise ValueError("Day must be in isoformat")
+        except ValueError as exc:
+            raise ValueError("Day must be in isoformat") from exc
 
         return day
 

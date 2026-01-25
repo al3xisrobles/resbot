@@ -10,6 +10,7 @@ import logging
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
 from firebase_admin import firestore
+from google.cloud import firestore as gc_firestore
 
 from .resy_client.models import ResyConfig, ReservationRequest
 from .resy_client.manager import ResyManager
@@ -59,14 +60,24 @@ def _build_reservation_request_from_dict(data: dict, user_id: str = None) -> tup
     return reservation_request, manager
 
 
-def _make_reservation_for_job(job_data: dict, user_id: str = None) -> str:
+def _make_reservation_for_job(job_data: dict, user_id: str = None, use_parallel: bool = True) -> str:
     """
     Execute the reservation attempt using job_data stored in Firestore.
     Returns the resy_token (or raises on error).
+
+    Args:
+        job_data: Job configuration from Firestore
+        user_id: User ID for loading credentials
+        use_parallel: If True, attempts to book top 3 slots in parallel for speed
     """
     logger.info(f"[run_snipe] Starting reservation for job {job_data.get('jobId')} at {dt.datetime.now().isoformat()}")
     reservation_request, manager = _build_reservation_request_from_dict(job_data, user_id)
-    resy_token = manager.make_reservation_with_retries(reservation_request)
+
+    if use_parallel:
+        logger.info("[run_snipe] Using parallel booking strategy")
+        resy_token = manager.make_reservation_parallel_with_retries(reservation_request, n_slots=3)
+    else:
+        resy_token = manager.make_reservation_with_retries(reservation_request)
     return resy_token
 
 
@@ -162,7 +173,7 @@ def run_snipe(req: Request):
         job_ref.update(
             {
                 "status": status,
-                "lastUpdate": firestore.SERVER_TIMESTAMP,
+                "lastUpdate": gc_firestore.SERVER_TIMESTAMP,
                 "resyToken": resy_token if success else None,
             }
         )
@@ -183,7 +194,7 @@ def run_snipe(req: Request):
                     {
                         "status": "error",
                         "errorMessage": str(e),
-                        "lastUpdate": firestore.SERVER_TIMESTAMP,
+                        "lastUpdate": gc_firestore.SERVER_TIMESTAMP,
                     }
                 )
         except Exception:

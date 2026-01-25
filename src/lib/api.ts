@@ -3,6 +3,52 @@
  * Now using Cloud Functions instead of Flask server
  */
 import { CLOUD_FUNCTIONS_BASE } from "../services/firebase";
+import { triggerSessionExpiredModal } from "../contexts/ResySessionContext";
+
+/**
+ * Custom error class for Resy session expiration (419 error)
+ */
+export class ResySessionExpiredError extends Error {
+  constructor(message = "Resy session expired") {
+    super(message);
+    this.name = "ResySessionExpiredError";
+  }
+}
+
+/**
+ * Check if an API error response indicates a Resy session expiration (419)
+ * and trigger the modal if so
+ */
+async function handleApiResponse(response: Response): Promise<Response> {
+  if (!response.ok) {
+    // Check for 419 or 500 with "Unauthorized" message (backend wraps 419 as 500)
+    if (response.status === 419) {
+      triggerSessionExpiredModal();
+      throw new ResySessionExpiredError();
+    }
+
+    // Try to parse the error response to check for 419-related errors
+    try {
+      const errorData = await response.clone().json();
+      // Backend returns 500 but the error message contains "419" or "Unauthorized"
+      if (
+        errorData.error?.includes("419") ||
+        errorData.error?.includes("Unauthorized") ||
+        (response.status === 500 && errorData.error?.includes("API returned status 419"))
+      ) {
+        triggerSessionExpiredModal();
+        throw new ResySessionExpiredError();
+      }
+    } catch (e) {
+      // If it's already a ResySessionExpiredError, re-throw it
+      if (e instanceof ResySessionExpiredError) {
+        throw e;
+      }
+      // Otherwise, continue with normal error handling
+    }
+  }
+  return response;
+}
 
 const API_ENDPOINTS = {
   search: `${CLOUD_FUNCTIONS_BASE}/search`,
@@ -82,7 +128,8 @@ export async function searchRestaurants(
     params.append("available_only", "true");
   }
 
-  const response = await fetch(`${API_ENDPOINTS.search}?${params.toString()}`);
+  const rawResponse = await fetch(`${API_ENDPOINTS.search}?${params.toString()}`);
+  const response = await handleApiResponse(rawResponse);
 
   if (!response.ok) {
     const error = await response.json();
@@ -182,9 +229,10 @@ export async function searchRestaurantsByMap(
     params.append("not_released_only", "true");
   }
 
-  const response = await fetch(
+  const rawResponse = await fetch(
     `${API_ENDPOINTS.search_map}?${params.toString()}`
   );
+  const response = await handleApiResponse(rawResponse);
 
   if (!response.ok) {
     const error = await response.json();
@@ -221,9 +269,10 @@ export async function searchRestaurant(
   userId: string,
   venueId: string
 ): Promise<VenueData> {
-  const response = await fetch(
+  const rawResponse = await fetch(
     `${API_ENDPOINTS.venue}?id=${venueId}&userId=${userId}`
   );
+  const response = await handleApiResponse(rawResponse);
 
   if (!response.ok) {
     const error = await response.json();
@@ -249,7 +298,7 @@ export async function getGeminiSearch(
   restaurantName: string,
   venueId?: string
 ): Promise<GeminiSearchResponse> {
-  const response = await fetch(
+  const rawResponse = await fetch(
     `${API_ENDPOINTS.gemini_search}?userId=${userId}`,
     {
       method: "POST",
@@ -259,6 +308,7 @@ export async function getGeminiSearch(
       body: JSON.stringify({ restaurantName, venueId }),
     }
   );
+  const response = await handleApiResponse(rawResponse);
 
   if (!response.ok) {
     const error = await response.json();
@@ -289,7 +339,8 @@ export async function getCalendar(
     params.append("partySize", partySize);
   }
   const url = `${API_ENDPOINTS.calendar}?${params.toString()}`;
-  const response = await fetch(url);
+  const rawResponse = await fetch(url);
+  const response = await handleApiResponse(rawResponse);
 
   if (!response.ok) {
     const error = await response.json();
@@ -334,7 +385,8 @@ export async function getTrendingRestaurants(
   const url = `${API_ENDPOINTS.climbing}${
     params.toString() ? "?" + params.toString() : ""
   }`;
-  const response = await fetch(url);
+  const rawResponse = await fetch(url);
+  const response = await handleApiResponse(rawResponse);
 
   if (!response.ok) {
     const error = await response.json();
@@ -366,7 +418,8 @@ export async function getTopRatedRestaurants(
   const url = `${API_ENDPOINTS.top_rated}${
     params.toString() ? "?" + params.toString() : ""
   }`;
-  const response = await fetch(url);
+  const rawResponse = await fetch(url);
+  const response = await handleApiResponse(rawResponse);
 
   if (!response.ok) {
     const error = await response.json();
@@ -393,9 +446,10 @@ export async function getVenueLinks(
   const startTime = performance.now();
 
   try {
-    const response = await fetch(
+    const rawResponse = await fetch(
       `${API_ENDPOINTS.venue_links}?id=${venueId}&userId=${userId}`
     );
+    const response = await handleApiResponse(rawResponse);
 
     if (!response.ok) {
       console.error(

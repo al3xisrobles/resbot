@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   Card,
@@ -24,8 +24,15 @@ export function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const { signup, loginWithGoogle } = useAuth();
+  const { signup, loginWithGoogle, currentUser } = useAuth();
   const navigate = useNavigate();
+
+  // Navigate to onboarding when user becomes authenticated (for Google sign-in)
+  useEffect(() => {
+    if (currentUser && loading) {
+      navigate("/onboarding");
+    }
+  }, [currentUser, loading, navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,11 +73,10 @@ export function SignupPage() {
       setError(null);
       setLoading(true);
       await loginWithGoogle();
-      navigate("/onboarding");
+      // Navigation happens via useEffect when currentUser is set
     } catch (err) {
       setError("Failed to sign in with Google.");
       console.error(err);
-    } finally {
       setLoading(false);
     }
   }

@@ -16,6 +16,11 @@ class AbstractSelector(ABC):
     def select(self, slots: List[Slot], request: ReservationRequest) -> Slot:
         pass
 
+    def select_top_n(self, slots: List[Slot], request: ReservationRequest, n: int = 3) -> List[Slot]:  # pylint: disable=unused-argument
+        """Return the top N candidates, ordered by preference. Default impl returns single best."""
+        # Note: n is intentionally unused in base implementation - subclasses should override
+        return [self.select(slots, request)]
+
 class SimpleSelector:
     def select(self, slots, request):
         ideal = datetime(
@@ -98,3 +103,43 @@ class SimpleSelector:
         if best_slot is None:
             raise NoSlotsError("No acceptable slots found")
         return best_slot
+
+    def select_top_n(self, slots: List[Slot], request: ReservationRequest, n: int = 3) -> List[Slot]:
+        """
+        Return the top N slots ordered by preference (closest to ideal time first).
+        Useful for parallel booking attempts.
+        """
+        ideal = datetime(
+            request.target_date.year,
+            request.target_date.month,
+            request.target_date.day,
+            request.ideal_hour,
+            request.ideal_minute,
+        )
+        window = timedelta(hours=request.window_hours)
+        min_time = ideal - window
+        max_time = ideal + window
+
+        def ok(s):
+            if request.preferred_type is not None and s.config.type != request.preferred_type:
+                return False
+            return True
+
+        # Filter to acceptable slots within window
+        candidates = [
+            s for s in slots
+            if min_time <= s.date.start <= max_time and ok(s)
+        ]
+
+        if not candidates:
+            raise NoSlotsError("No acceptable slots found")
+
+        # Sort by distance from ideal, then by preference (early vs late)
+        def sort_key(s):
+            diff = abs(s.date.start - ideal)
+            # Tie-breaker: prefer earlier or later based on request
+            tie_breaker = s.date.start if request.prefer_early else -s.date.start.timestamp()
+            return (diff, tie_breaker)
+
+        candidates.sort(key=sort_key)
+        return candidates[:n]
