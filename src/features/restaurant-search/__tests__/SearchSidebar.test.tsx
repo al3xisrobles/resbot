@@ -30,7 +30,7 @@ vi.mock('jotai', async (importOriginal) => {
 })
 
 vi.mock('@/components/SearchResultItem', () => ({
-    SearchResultItem: ({ name, onCardClick }: any) => (
+    SearchResultItem: ({ name, onCardClick }: { name: string; onCardClick: (id: string) => void }) => (
         <div onClick={() => onCardClick('123')}>{name}</div>
     ),
 }))

@@ -63,6 +63,8 @@ import {
     useEffect,
     useRef,
     useState,
+    useCallback,
+    useMemo,
     type ReactNode,
     type Ref,
 } from "react"
@@ -189,7 +191,7 @@ function MapTileLayer({
                 attribution: resolvedAttribution,
             })
         }
-    }, [context, name, url, attribution])
+    }, [context, name, url, attribution, resolvedUrl, resolvedAttribution])
 
     if (context && context.selectedTileLayer !== name) {
         return null
@@ -286,6 +288,8 @@ function MapLayers({
         })
     }
 
+    // Initialize selected tile layer once when tile layers are available
+    const hasInitializedRef = useRef(false)
     useEffect(() => {
         // Error: Invalid defaultValue
         if (
@@ -298,14 +302,18 @@ function MapLayers({
             )
         }
 
-        // Set initial selected tile layer
-        if (tileLayers.length > 0 && !selectedTileLayer) {
+        // Set initial selected tile layer only once
+        if (tileLayers.length > 0 && !selectedTileLayer && !hasInitializedRef.current) {
             const validDefaultValue =
                 defaultTileLayer &&
                 tileLayers.some((layer) => layer.name === defaultTileLayer)
                     ? defaultTileLayer
                     : tileLayers[0].name
-            setSelectedTileLayer(validDefaultValue)
+            // Defer state update to avoid synchronous setState in effect
+            setTimeout(() => {
+                setSelectedTileLayer(validDefaultValue)
+            }, 0)
+            hasInitializedRef.current = true
         }
 
         // Error: Invalid defaultActiveLayerGroups
@@ -702,17 +710,17 @@ function MapLocateControl({
         })
     }
 
-    function stopLocating() {
+    const stopLocating = useCallback(() => {
         map.stopLocate()
         map.off("locationfound")
         map.off("locationerror")
         setPosition(null)
         setIsLocating(false)
-    }
+    }, [map, setPosition, setIsLocating])
 
     useEffect(() => {
         return () => stopLocating()
-    }, [])
+    }, [stopLocating])
 
     return (
         <>
@@ -784,20 +792,21 @@ function MapDrawControl({
     const editControlRef = useRef<EditToolbar.Edit | null>(null)
     const deleteControlRef = useRef<EditToolbar.Delete | null>(null)
     const [activeMode, setActiveMode] = useState<MapDrawMode>(null)
+    const [featureGroup, setFeatureGroup] = useState<L.FeatureGroup | null>(null)
 
-    function handleDrawCreated(event: DrawEvents.Created) {
+    const handleDrawCreated = useCallback((event: DrawEvents.Created) => {
         if (!featureGroupRef.current) return
         const { layer } = event
         featureGroupRef.current.addLayer(layer)
         onLayersChange?.(featureGroupRef.current)
         setActiveMode(null)
-    }
+    }, [onLayersChange])
 
-    function handleDrawEditedOrDeleted() {
+    const handleDrawEditedOrDeleted = useCallback(() => {
         if (!featureGroupRef.current) return
         onLayersChange?.(featureGroupRef.current)
         setActiveMode(null)
-    }
+    }, [onLayersChange])
 
     useEffect(() => {
         if (!L || !LeafletDraw) return
@@ -817,18 +826,24 @@ function MapDrawControl({
             map.off(L.Draw.Event.EDITED, handleDrawEditedOrDeleted)
             map.off(L.Draw.Event.DELETED, handleDrawEditedOrDeleted)
         }
-    }, [L, LeafletDraw, map, onLayersChange])
+    }, [L, LeafletDraw, map, handleDrawCreated, handleDrawEditedOrDeleted])
+
+    const handleFeatureGroupRef = useCallback((instance: L.FeatureGroup | null) => {
+        featureGroupRef.current = instance
+        setFeatureGroup(instance)
+    }, [])
+
+    const contextValue = useMemo(() => ({
+        featureGroup,
+        activeMode,
+        setActiveMode,
+        editControlRef,
+        deleteControlRef,
+    }), [featureGroup, activeMode])
 
     return (
-        <MapDrawContext.Provider
-            value={{
-                featureGroup: featureGroupRef.current,
-                activeMode,
-                setActiveMode,
-                editControlRef,
-                deleteControlRef,
-            }}>
-            <LeafletFeatureGroup ref={featureGroupRef} />
+        <MapDrawContext.Provider value={contextValue}>
+            <LeafletFeatureGroup ref={handleFeatureGroupRef} />
             <ButtonGroup
                 orientation="vertical"
                 className={cn("absolute bottom-1 left-1 z-1000", className)}
@@ -1068,7 +1083,7 @@ function MapDrawActionButton<T extends EditToolbar.Edit | EditToolbar.Delete>({
             control.disable?.()
             controlRef.current = null
         }
-    }, [L, map, isActive, featureGroup, createDrawTool])
+    }, [L, map, isActive, featureGroup, createDrawTool, controlRef])
 
     function handleClick() {
         controlRef.current?.save()
@@ -1121,6 +1136,8 @@ function MapDrawEdit({
             touchMoveIcon: mapDrawHandleIcon,
             touchResizeIcon: mapDrawHandleIcon,
         })
+        // Modify global Leaflet draw localization (necessary side effect)
+        // eslint-disable-next-line react-hooks/immutability
         L.drawLocal.edit.handlers.edit.tooltip = {
             text: "Drag handles or markers to edit.",
             subtext: "",
@@ -1128,7 +1145,7 @@ function MapDrawEdit({
         L.drawLocal.edit.handlers.remove.tooltip = {
             text: "Click on a shape to remove.",
         }
-    }, [mapDrawHandleIcon])
+    }, [L, mapDrawHandleIcon])
 
     return (
         <MapDrawActionButton
@@ -1223,9 +1240,14 @@ function useDebounceLoadingState(delay = 200) {
     const [isLoading, setIsLoading] = useState(false)
     const [showLoading, setShowLoading] = useState(false)
     const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
     useEffect(() => {
         if (isLoading) {
+            if (hideTimeoutRef.current) {
+                clearTimeout(hideTimeoutRef.current)
+                hideTimeoutRef.current = null
+            }
             timeoutRef.current = setTimeout(() => {
                 setShowLoading(true)
             }, delay)
@@ -1234,12 +1256,18 @@ function useDebounceLoadingState(delay = 200) {
                 clearTimeout(timeoutRef.current)
                 timeoutRef.current = null
             }
-            setShowLoading(false)
+            // Use setTimeout to defer state update
+            hideTimeoutRef.current = setTimeout(() => {
+                setShowLoading(false)
+            }, 0)
         }
 
         return () => {
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current)
+            }
+            if (hideTimeoutRef.current) {
+                clearTimeout(hideTimeoutRef.current)
             }
         }
     }, [isLoading, delay])
@@ -1273,5 +1301,4 @@ export {
     MapTileLayer,
     MapTooltip,
     MapZoomControl,
-    useLeaflet,
 }

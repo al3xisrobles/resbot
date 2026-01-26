@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { setGlobalSessionExpiredHandler } from "./ResySessionContext.utils";
 
 interface ResySessionContextType {
   isSessionExpired: boolean;
@@ -24,6 +25,11 @@ export function ResySessionProvider({ children }: { children: ReactNode }) {
     setIsSessionExpired(false);
   }, []);
 
+  // Set up global handler for non-React code
+  useEffect(() => {
+    setGlobalSessionExpiredHandler(showSessionExpiredModal);
+  }, [showSessionExpiredModal]);
+
   return (
     <ResySessionContext.Provider
       value={{
@@ -38,23 +44,11 @@ export function ResySessionProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useResySession() {
   const context = useContext(ResySessionContext);
   if (!context) {
     throw new Error("useResySession must be used within a ResySessionProvider");
   }
   return context;
-}
-
-// Global reference for use in non-React code (like api.ts)
-let globalShowSessionExpiredModal: (() => void) | null = null;
-
-export function setGlobalSessionExpiredHandler(handler: () => void) {
-  globalShowSessionExpiredModal = handler;
-}
-
-export function triggerSessionExpiredModal() {
-  if (globalShowSessionExpiredModal) {
-    globalShowSessionExpiredModal();
-  }
 }

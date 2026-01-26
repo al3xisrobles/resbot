@@ -10,10 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
-import {
-  useResySession,
-  setGlobalSessionExpiredHandler,
-} from "@/contexts/ResySessionContext";
+import { useResySession } from "@/contexts/ResySessionContext";
+import { setGlobalSessionExpiredHandler } from "@/contexts/ResySessionContext.utils";
 
 export function ResySessionExpiredModal() {
   const navigate = useNavigate();

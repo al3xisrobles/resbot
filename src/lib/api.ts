@@ -3,7 +3,7 @@
  * Now using Cloud Functions instead of Flask server
  */
 import { CLOUD_FUNCTIONS_BASE } from "../services/firebase";
-import { triggerSessionExpiredModal } from "../contexts/ResySessionContext";
+import { triggerSessionExpiredModal } from "../contexts/ResySessionContext.utils";
 
 /**
  * Custom error class for Resy session expiration (419 error)
@@ -404,22 +404,58 @@ export async function getSlots(
     params.append("partySize", partySize);
   }
   const url = `${API_ENDPOINTS.slots}?${params.toString()}`;
-  const rawResponse = await fetch(url);
-  const response = await handleApiResponse(rawResponse);
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch slots");
+  console.log("[getSlots] Making request:", {
+    url,
+    venueId,
+    date,
+    partySize,
+    userId,
+  });
+
+  try {
+    const rawResponse = await fetch(url);
+    console.log("[getSlots] Raw response:", {
+      status: rawResponse.status,
+      statusText: rawResponse.statusText,
+      ok: rawResponse.ok,
+    });
+
+    const response = await handleApiResponse(rawResponse);
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("[getSlots] Response not OK:", {
+        status: response.status,
+        error,
+      });
+      throw new Error(error.error || "Failed to fetch slots");
+    }
+
+    const result: ApiResponse<{ times: string[]; status: string | null }> =
+      await response.json();
+
+    if (!result.success || !result.data) {
+      console.error("[getSlots] Result not successful:", result);
+      throw new Error(result.error || "Failed to fetch slots");
+    }
+
+    console.log("[getSlots] Success:", result.data);
+    return result.data;
+  } catch (err) {
+    console.error("[getSlots] Exception caught:", {
+      error: err,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      errorStack: err instanceof Error ? err.stack : undefined,
+      errorName: err instanceof Error ? err.name : typeof err,
+      url,
+      venueId,
+      date,
+      partySize,
+      userId,
+    });
+    throw err;
   }
-
-  const result: ApiResponse<{ times: string[]; status: string | null }> =
-    await response.json();
-
-  if (!result.success || !result.data) {
-    throw new Error(result.error || "Failed to fetch slots");
-  }
-
-  return result.data;
 }
 
 /**
