@@ -12,6 +12,8 @@ import { useVenue } from "@/contexts/VenueContext";
 import { searchRestaurants } from "@/lib/api";
 import { SearchResultItem } from "@/components/SearchResultItem";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAtom } from "jotai";
+import { cityAtom } from "@/atoms/cityAtom";
 
 interface SearchBarProps {
   className?: string;
@@ -36,6 +38,7 @@ export function SearchBar({
   const auth = useAuth();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isAuthenticated = !!auth.currentUser;
+  const [selectedCity] = useAtom(cityAtom);
 
   // Prevent body scroll when popover is open
   useEffect(() => {
@@ -74,7 +77,7 @@ export function SearchBar({
         };
 
         const user = auth.currentUser;
-        const results = (await searchRestaurants(user!.uid, searchFilter))
+        const results = (await searchRestaurants(user!.uid, searchFilter, selectedCity))
           .results;
 
         // Check if this query is still current
@@ -271,7 +274,7 @@ export function SearchBar({
                 onClick={handleViewAll}
               >
                 <Search className="mr-2 size-4" />
-                View all NYC restaurants
+                View all restaurants
               </Button>
             </div>
           )}

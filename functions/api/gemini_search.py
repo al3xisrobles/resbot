@@ -12,6 +12,7 @@ from firebase_functions.options import CorsOptions
 
 from google.genai import types
 from .utils import load_credentials, get_resy_headers, gemini_client
+from .cities import get_city_config
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -25,6 +26,7 @@ def gemini_search(req: Request):
     Body should include:
     - restaurantName: Name of the restaurant (required)
     - venueId: Resy venue ID (optional, but recommended for better results)
+    - city: Optional city ID (default: 'nyc')
     Query parameters:
     - userId: User ID (optional) - if provided, loads credentials from Firestore
     """
@@ -32,7 +34,12 @@ def gemini_search(req: Request):
         data = req.get_json(silent=True) or {}
         restaurant_name = data.get('restaurantName')
         venue_id = data.get('venueId')
+        city_id = data.get('city', 'nyc')
         user_id = req.args.get('userId')
+
+        # Get city configuration
+        city_config = get_city_config(city_id)
+        city_name = city_config['name']
 
         if not restaurant_name:
             return {
@@ -125,7 +132,7 @@ def gemini_search(req: Request):
                 resy_findings = ""
 
         # Create search query
-        search_query = f"When do {restaurant_name} reservations open in NYC? What time and how many days in advance?"
+        search_query = f"When do {restaurant_name} reservations open in {city_name}? What time and how many days in advance?"
 
         # Configure Google Search grounding tool
         grounding_tool = types.Tool(
@@ -217,7 +224,7 @@ If Resy API context is provided above, use it to confirm or verify the booking w
         # Generate suggested follow-ups
         suggested_follow_ups = [
             f"What are the best times to try booking at {restaurant_name}?",
-            f"Are there alternatives to {restaurant_name} in NYC?",
+            f"Are there alternatives to {restaurant_name} in {city_name}?",
             f"What should I know before dining at {restaurant_name}?"
         ]
 

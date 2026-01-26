@@ -83,10 +83,15 @@ import type {
  */
 export async function searchRestaurants(
   userId: string,
-  filters: SearchFilters
+  filters: SearchFilters,
+  cityId?: string
 ): Promise<SearchResponse> {
   const params = new URLSearchParams();
   params.append("userId", userId);
+
+  // Get city from parameter or localStorage (for backward compatibility)
+  const city = cityId || (typeof window !== "undefined" ? localStorage.getItem("resbot_selected_city") || "nyc" : "nyc");
+  params.append("city", city);
 
   if (filters.query) {
     params.append("query", filters.query);
@@ -298,8 +303,11 @@ export async function searchRestaurant(
 export async function getGeminiSearch(
   userId: string,
   restaurantName: string,
-  venueId?: string
+  venueId?: string,
+  cityId?: string
 ): Promise<GeminiSearchResponse> {
+  // Get city from parameter or localStorage (for backward compatibility)
+  const city = cityId || (typeof window !== "undefined" ? localStorage.getItem("resbot_selected_city") || "nyc" : "nyc");
   const rawResponse = await fetch(
     `${API_ENDPOINTS.gemini_search}?userId=${userId}`,
     {
@@ -307,7 +315,7 @@ export async function getGeminiSearch(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ restaurantName, venueId }),
+      body: JSON.stringify({ restaurantName, venueId, city }),
     }
   );
   const response = await handleApiResponse(rawResponse);

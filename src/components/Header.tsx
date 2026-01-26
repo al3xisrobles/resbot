@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/navigation-menu";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { SearchBar } from "@/components/SearchBar";
+import { CitySelector } from "@/common/components/CitySelector";
 
 export function Header() {
   const { currentUser, logout } = useAuth();
@@ -100,8 +101,9 @@ export function Header() {
               </NavigationMenu>
             </div>
 
-            {/* Right: User Menu or Login Button */}
-            <div className="flex justify-end z-9998">
+            {/* Right: City Selector, User Menu or Login Button */}
+            <div className="flex items-center justify-end gap-4 z-9998">
+              <CitySelector />
               {currentUser ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -193,8 +195,9 @@ export function Header() {
               </NavigationMenu>
             </div>
 
-            {/* Right: User Menu or Login Button */}
-            <div className="flex shrink-0">
+            {/* Right: City Selector, User Menu or Login Button */}
+            <div className="flex items-center shrink-0 gap-4">
+              <CitySelector />
               {currentUser ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -255,8 +258,11 @@ export function Header() {
             <h1 className="text-xl font-bold text-foreground">Resbot</h1>
           </div>
 
-          {/* Right: Menu and User */}
+          {/* Right: City Selector, Menu and User */}
           <div className="flex items-center gap-2">
+            <div className="hidden sm:block">
+              <CitySelector />
+            </div>
             {/* Mobile Navigation Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

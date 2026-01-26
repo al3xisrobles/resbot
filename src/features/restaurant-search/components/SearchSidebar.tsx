@@ -22,6 +22,7 @@ import { TIME_SLOTS } from "@/lib/time-slots";
 import { SearchResultItem } from "@/components/SearchResultItem";
 import { useAtom } from "jotai";
 import { reservationFormAtom } from "@/atoms/reservationAtoms";
+import { cityConfigAtom } from "@/atoms/cityAtom";
 import {
     Pagination,
     PaginationContent,
@@ -64,6 +65,7 @@ export function SearchSidebar({
     onModeChange,
 }: SearchSidebarProps) {
     const [reservationForm, setReservationForm] = useAtom(reservationFormAtom);
+    const cityConfig = useAtom(cityConfigAtom)[0];
     const selectedCuisines = React.useMemo(() => {
         if (filters.cuisines.length === 0) return "All Cuisines";
         if (filters.cuisines.length === 1) {
@@ -521,7 +523,7 @@ export function SearchSidebar({
                                         </h3>
                                         <p className="text-sm text-muted-foreground max-w-[280px] text-center">
                                             Enter a restaurant name and customize your filters to find
-                                            the perfect dining experience in NYC
+                                            the perfect dining experience in {cityConfig.name}
                                         </p>
                                     </Stack>
                                 </Stack>

@@ -13,6 +13,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { searchRestaurants } from "@/lib/api";
 import { useVenue } from "@/contexts/VenueContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAtom } from "jotai";
+import { cityAtom } from "@/atoms/cityAtom";
 
 export function SearchTab({
   onTabChange,
@@ -22,6 +24,7 @@ export function SearchTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const auth = useAuth();
+  const [selectedCity] = useAtom(cityAtom);
   const {
     setSelectedVenueId,
     searchResults,
@@ -44,7 +47,7 @@ export function SearchTab({
       const user = auth.currentUser;
       const response = await searchRestaurants(user!.uid, {
         query: searchQuery,
-      });
+      }, selectedCity);
       setSearchResults(response.results);
 
       if (response.results.length === 0) {

@@ -24,6 +24,7 @@ from .utils import (
     get_venue_availability,
     update_search_progress
 )
+from .cities import get_city_config
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -34,10 +35,11 @@ logger.setLevel(logging.INFO)
 def search(req: Request):
     """
     GET /search
-    Search for restaurants by name (NYC only)
+    Search for restaurants by name
     Query parameters:
     - userId: Optional Firebase user ID for personalized credentials
     - query: Optional restaurant name search
+    - city: Optional city ID (default: 'nyc')
     - available_only: Optional availability-only boolean
     - available_day: Optional day if available_only is true (format: 'YYYY-MM-DD')
     - available_party_size: Optional party size if available_only is true (default: 2)
@@ -70,10 +72,16 @@ def search(req: Request):
         config = load_credentials(user_id)
         headers = get_resy_headers(config)
 
-        # Default to Times Square with large radius
-        geo_center = {'lat': 40.758896, 'lng': -73.985130, 'radius': 16100}  # Times Square, ~10 miles
+        # Get city configuration (default to NYC if not provided)
+        city_id = req.args.get('city', 'nyc')
+        city_config = get_city_config(city_id)
+        geo_center = {
+            'lat': city_config['center']['lat'],
+            'lng': city_config['center']['lng'],
+            'radius': city_config['radius']
+        }
         print(
-            f"[SEARCH] Using default NYC geo center: lat={geo_center['lat']}, "
+            f"[SEARCH] Using {city_config['name']} geo center: lat={geo_center['lat']}, "
             f"lng={geo_center['lng']}, radius={geo_center['radius']}m"
         )
 

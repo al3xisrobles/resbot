@@ -16,6 +16,7 @@ import type { SearchPagination, SearchResult } from "@/lib/interfaces";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAtom } from "jotai";
 import { reservationFormAtom } from "@/atoms/reservationAtoms";
+import { cityConfigAtom } from "@/atoms/cityAtom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Stack } from "@/components/ui/layout";
 import { SearchSidebar } from "./SearchSidebar";
@@ -44,6 +45,7 @@ const hoveredIcon = createIcon(true);
 
 export function RestaurantSearchContainer() {
     const [reservationForm] = useAtom(reservationFormAtom);
+    const cityConfig = useAtom(cityConfigAtom)[0];
 
     const [filters, setFilters] = useState<SearchFilters>({
         query: "",
@@ -103,7 +105,10 @@ export function RestaurantSearchContainer() {
         return pagination?.hasMore ?? false;
     }, [pagination]);
 
-    const mapCenter = useMemo(() => [40.7589, -73.9851] as [number, number], []);
+    const mapCenter = useMemo(
+        () => cityConfig.center as [number, number],
+        [cityConfig.center]
+    );
 
     const handleMapMove = () => {
         setInputsHaveChanged(true);
@@ -115,6 +120,19 @@ export function RestaurantSearchContainer() {
         pageCache.current = {};
         currentSearchKey.current = "";
     }, [filters, reservationForm]);
+
+    // Recenter map when city changes
+    useEffect(() => {
+        const mapInstance = mapRef.current;
+        if (mapInstance) {
+            mapInstance.setView(cityConfig.center, mapInstance.getZoom());
+            // Clear search results when city changes
+            setSearchResults([]);
+            setHasSearched(false);
+            pageCache.current = {};
+            currentSearchKey.current = "";
+        }
+    }, [cityConfig]);
 
     useEffect(() => {
         let mapInstance: LeafletMap | null = null;
@@ -177,10 +195,10 @@ export function RestaurantSearchContainer() {
 
         if (sw.lat === ne.lat && sw.lng === ne.lng) {
             console.log(
-                "[MAP SEARCH] Detected identical coordinates (mobile), using default NYC bounds"
+                `[MAP SEARCH] Detected identical coordinates (mobile), using default ${cityConfig.name} bounds`
             );
-            sw = { lat: 40.7, lng: -74.02 } as L.LatLng;
-            ne = { lat: 40.8, lng: -73.93 } as L.LatLng;
+            sw = { lat: cityConfig.bounds.sw[0], lng: cityConfig.bounds.sw[1] } as L.LatLng;
+            ne = { lat: cityConfig.bounds.ne[0], lng: cityConfig.bounds.ne[1] } as L.LatLng;
         }
 
         const offset = (page - 1) * 20;

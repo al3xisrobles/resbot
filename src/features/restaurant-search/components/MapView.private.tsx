@@ -12,6 +12,8 @@ import {
 import { Map as LeafletMap, Marker as LeafletMarkerType } from "leaflet";
 import { Button } from "@/components/ui/button";
 import type { SearchResult } from "@/lib/interfaces";
+import { useAtom } from "jotai";
+import { cityConfigAtom } from "@/atoms/cityAtom";
 
 interface MapViewProps {
     searchResults: SearchResult[];
@@ -26,6 +28,7 @@ export const MapView = React.memo(function MapView({
     mapRef,
     markerRefsMap,
 }: MapViewProps) {
+    const cityConfig = useAtom(cityConfigAtom)[0];
     const venuePositions = useMemo(() => {
         const positions: Record<string, [number, number]> = {};
         searchResults.forEach((result) => {
@@ -66,16 +69,20 @@ export const MapView = React.memo(function MapView({
                     >
                         <MapTooltip side="top">
                             <div className="font-medium">{result.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                                {result.neighborhood || "Manhattan"}
-                            </div>
+                            {result.neighborhood && (
+                                <div className="text-xs text-muted-foreground">
+                                    {result.neighborhood}
+                                </div>
+                            )}
                         </MapTooltip>
                         <MapPopup>
                             <div className="flex flex-col gap-2 items-start">
                                 <div className="font-semibold text-lg">{result.name}</div>
-                                <div className="text-sm text-muted-foreground">
-                                    {result.neighborhood || "Manhattan"}
-                                </div>
+                                {result.neighborhood && (
+                                    <div className="text-sm text-muted-foreground">
+                                        {result.neighborhood}
+                                    </div>
+                                )}
                                 <Button
                                     size="sm"
                                     onClick={() =>
