@@ -23,8 +23,9 @@ import { renderToString } from "react-dom/server";
 import { Button } from "@/components/ui/button";
 import { searchRestaurantsByMap } from "@/lib/api";
 import type { SearchPagination, SearchResult } from "@/lib/interfaces";
-import { useVenue } from "@/contexts/VenueContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAtom } from "jotai";
+import { reservationFormAtom } from "@/atoms/reservationAtoms";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { SearchSidebar, type SearchFilters } from "@/components/SearchSidebar";
 
@@ -33,11 +34,10 @@ const createIcon = (isHovered: boolean) =>
   L.divIcon({
     html: renderToString(
       <MapPin
-        className={`size-6 transition-transform duration-300 ease-in-out ${
-          isHovered
-            ? "text-blue-600 fill-blue-600 scale-125"
-            : "text-black fill-black scale-100"
-        }`}
+        className={`size-6 transition-transform duration-300 ease-in-out ${isHovered
+          ? "text-blue-600 fill-blue-600 scale-125"
+          : "text-black fill-black scale-100"
+          }`}
       />
     ),
     iconAnchor: [12, 12],
@@ -131,7 +131,7 @@ const MapView = React.memo(function MapView({
 });
 
 export function SearchPage() {
-  const { reservationForm, setReservationForm } = useVenue();
+  const [reservationForm] = useAtom(reservationFormAtom);
 
   const [filters, setFilters] = useState<SearchFilters>({
     query: "",
@@ -408,8 +408,6 @@ export function SearchPage() {
       <SearchSidebar
         filters={filters}
         setFilters={setFilters}
-        reservationForm={reservationForm}
-        setReservationForm={setReservationForm}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         searchResults={searchResults}

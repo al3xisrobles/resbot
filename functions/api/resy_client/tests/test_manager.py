@@ -9,7 +9,8 @@ Tests cover:
 - Configuration options (retry_on_taken_slot)
 """
 import pytest
-from unittest.mock import Mock
+import time
+from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
 from requests.exceptions import HTTPError, Timeout, ConnectionError as RequestsConnectionError
 
@@ -21,7 +22,7 @@ from resy_client.models import (
     DetailsResponseBody,
     BookToken,
 )
-from resy_client.errors import NoSlotsError, SlotTakenError, ExhaustedRetriesError
+from resy_client.errors import NoSlotsError, SlotTakenError, ExhaustedRetriesError, RateLimitError
 from resy_client.constants import N_RETRIES
 
 
@@ -275,6 +276,105 @@ class TestMakeReservationWithRetries:
 
         # Should only try once
         assert mock_api.book_slot.call_count == 1
+
+    def test_retries_on_rate_limit_with_exponential_backoff(
+        self,
+        resy_config,
+        reservation_request_dinner,
+        sample_dinner_slots,
+    ):
+        """Should retry on RateLimitError with exponential backoff."""
+        mock_api = Mock(spec=ResyApiAccess)
+        # First call rate limited, second succeeds
+        mock_api.find_booking_slots.side_effect = [
+            RateLimitError("Rate limit exceeded", retry_after=None),
+            sample_dinner_slots,
+        ]
+        mock_api.get_booking_token.return_value = DetailsResponseBody(
+            book_token=BookToken(
+                value="test_book_token",
+                date_expires=datetime.now() + timedelta(minutes=5),
+            )
+        )
+        mock_api.book_slot.return_value = "resy_confirmation_123"
+
+        manager = ResyManager(
+            config=resy_config,
+            api_access=mock_api,
+            slot_selector=SimpleSelector(),
+            retry_config=ReservationRetriesConfig(seconds_between_retries=0.001, n_retries=5),
+        )
+
+        start_time = time.time()
+        result = manager.make_reservation_with_retries(reservation_request_dinner)
+        elapsed = time.time() - start_time
+
+        assert result == "resy_confirmation_123"
+        assert mock_api.find_booking_slots.call_count == 2
+        # Should have waited at least 1 second (base wait time)
+        assert elapsed >= 1.0
+
+    def test_retries_on_rate_limit_uses_retry_after_header(
+        self,
+        resy_config,
+        reservation_request_dinner,
+        sample_dinner_slots,
+    ):
+        """Should use Retry-After header value when provided."""
+        mock_api = Mock(spec=ResyApiAccess)
+        # First call rate limited with Retry-After: 3, second succeeds
+        mock_api.find_booking_slots.side_effect = [
+            RateLimitError("Rate limit exceeded", retry_after=3.0),
+            sample_dinner_slots,
+        ]
+        mock_api.get_booking_token.return_value = DetailsResponseBody(
+            book_token=BookToken(
+                value="test_book_token",
+                date_expires=datetime.now() + timedelta(minutes=5),
+            )
+        )
+        mock_api.book_slot.return_value = "resy_confirmation_123"
+
+        manager = ResyManager(
+            config=resy_config,
+            api_access=mock_api,
+            slot_selector=SimpleSelector(),
+            retry_config=ReservationRetriesConfig(seconds_between_retries=0.001, n_retries=5),
+        )
+
+        start_time = time.time()
+        result = manager.make_reservation_with_retries(reservation_request_dinner)
+        elapsed = time.time() - start_time
+
+        assert result == "resy_confirmation_123"
+        # Should have waited approximately 3 seconds (from Retry-After header)
+        assert elapsed >= 2.9  # Allow small margin for test execution time
+
+    def test_retries_on_rate_limit_exponential_backoff_caps_at_max(
+        self,
+        resy_config,
+        reservation_request_dinner,
+    ):
+        """Exponential backoff should cap at RATE_LIMIT_MAX_WAIT."""
+        mock_api = Mock(spec=ResyApiAccess)
+        # Always rate limited
+        mock_api.find_booking_slots.side_effect = RateLimitError("Rate limit exceeded", retry_after=None)
+
+        manager = ResyManager(
+            config=resy_config,
+            api_access=mock_api,
+            slot_selector=SimpleSelector(),
+            retry_config=ReservationRetriesConfig(seconds_between_retries=0.001, n_retries=3),
+        )
+
+        start_time = time.time()
+        with pytest.raises(ExhaustedRetriesError):
+            manager.make_reservation_with_retries(reservation_request_dinner)
+        elapsed = time.time() - start_time
+
+        # Should have waited: ~1s + ~2s + ~4s (capped at 8s) = ~7s minimum
+        # But we only do 3 retries, so: ~1s + ~2s = ~3s minimum
+        assert elapsed >= 2.5  # Allow margin for test execution
 
     def test_retries_on_timeout(
         self,
@@ -647,6 +747,78 @@ class TestMakeReservationParallelWithRetries:
             manager.make_reservation_parallel_with_retries(reservation_request_dinner, n_slots=3)
 
         assert "parallel booking" in str(exc_info.value)
+
+    def test_parallel_retries_on_rate_limit_with_backoff(
+        self,
+        resy_config,
+        reservation_request_dinner,
+        sample_dinner_slots,
+    ):
+        """Parallel with retries should handle rate limits with exponential backoff."""
+        mock_api = Mock(spec=ResyApiAccess)
+        # First call rate limited, second succeeds
+        mock_api.find_booking_slots.side_effect = [
+            RateLimitError("Rate limit exceeded", retry_after=None),
+            sample_dinner_slots,
+        ]
+        mock_api.get_booking_token.return_value = DetailsResponseBody(
+            book_token=BookToken(
+                value="test_book_token",
+                date_expires=datetime.now() + timedelta(minutes=5),
+            )
+        )
+        mock_api.book_slot.return_value = "resy_confirmation_123"
+
+        manager = ResyManager(
+            config=resy_config,
+            api_access=mock_api,
+            slot_selector=SimpleSelector(),
+            retry_config=ReservationRetriesConfig(seconds_between_retries=0.001, n_retries=5),
+        )
+
+        start_time = time.time()
+        result = manager.make_reservation_parallel_with_retries(reservation_request_dinner, n_slots=3)
+        elapsed = time.time() - start_time
+
+        assert result == "resy_confirmation_123"
+        assert mock_api.find_booking_slots.call_count == 2
+        # Should have waited at least 1 second (base wait time)
+        assert elapsed >= 1.0
+
+    def test_parallel_retries_on_rate_limit_uses_retry_after(
+        self,
+        resy_config,
+        reservation_request_dinner,
+        sample_dinner_slots,
+    ):
+        """Parallel with retries should use Retry-After header value."""
+        mock_api = Mock(spec=ResyApiAccess)
+        mock_api.find_booking_slots.side_effect = [
+            RateLimitError("Rate limit exceeded", retry_after=2.5),
+            sample_dinner_slots,
+        ]
+        mock_api.get_booking_token.return_value = DetailsResponseBody(
+            book_token=BookToken(
+                value="test_book_token",
+                date_expires=datetime.now() + timedelta(minutes=5),
+            )
+        )
+        mock_api.book_slot.return_value = "resy_confirmation_123"
+
+        manager = ResyManager(
+            config=resy_config,
+            api_access=mock_api,
+            slot_selector=SimpleSelector(),
+            retry_config=ReservationRetriesConfig(seconds_between_retries=0.001, n_retries=5),
+        )
+
+        start_time = time.time()
+        result = manager.make_reservation_parallel_with_retries(reservation_request_dinner, n_slots=3)
+        elapsed = time.time() - start_time
+
+        assert result == "resy_confirmation_123"
+        # Should have waited approximately 2.5 seconds
+        assert elapsed >= 2.4  # Allow small margin
 
 
 class TestTryBookSlot:

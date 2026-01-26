@@ -15,6 +15,7 @@ export interface VenueData {
   price_range: number;
   rating: number | null;
   photoUrls: string[]; // List of photo URLs from Resy API
+  description?: string; // Description from metadata
 }
 
 /**
@@ -209,4 +210,6 @@ export interface Reservation {
   status: "Scheduled" | "Succeeded" | "Failed";
   attemptedAt?: number;
   note?: string;
+  snipeTime?: string; // ISO timestamp when snipe runs
+  aiSummary?: string; // AI-generated summary of what happened
 }

@@ -18,10 +18,9 @@ service cloud.firestore {
       allow write: if isSignedIn();  // Only authenticated users can cache data
     }
 
-    // Cache collection - read by all, write only by authenticated users
+    // Cache collection - read and write by all (public data cache)
     match /cache/{cacheId} {
-      allow read: if true;  // Anyone can read trending/topRated cache
-      allow write: if isSignedIn();  // Only authenticated users can update cache
+      allow read, write: if true;  // Anyone can read/write public cache (trending/topRated)
     }
 
     // Users collection

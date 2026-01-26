@@ -22,6 +22,7 @@ from resy_client.models import (
     PaymentMethod,
 )
 from resy_client.constants import RESY_BASE_URL, ResyEndpoints
+from resy_client.errors import RateLimitError
 
 
 class TestBuildSession:
@@ -283,12 +284,12 @@ class TestFindBookingSlots:
 
     @responses.activate
     def test_find_slots_http_error(self, resy_config):
-        """Find should raise HTTPError on server error."""
+        """Find should raise HTTPError on server error (non-429)."""
         responses.add(
             responses.GET,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
-            json={"error": "Rate limited"},
-            status=429,
+            json={"error": "Internal Server Error"},
+            status=500,
         )
 
         api = ResyApiAccess.build(resy_config)
@@ -297,7 +298,44 @@ class TestFindBookingSlots:
         with pytest.raises(HTTPError) as exc_info:
             api.find_booking_slots(params)
 
-        assert exc_info.value.response.status_code == 429
+        assert exc_info.value.response.status_code == 500
+
+    @responses.activate
+    def test_find_slots_rate_limit_raises_rate_limit_error(self, resy_config):
+        """Find should raise RateLimitError (not HTTPError) on 429."""
+        responses.add(
+            responses.GET,
+            f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
+            json={"status": 429, "message": "Rate Limit Exceeded"},
+            status=429,
+        )
+
+        api = ResyApiAccess.build(resy_config)
+        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+
+        with pytest.raises(RateLimitError) as exc_info:
+            api.find_booking_slots(params)
+
+        assert "Rate limit exceeded" in str(exc_info.value)
+
+    @responses.activate
+    def test_find_slots_rate_limit_with_retry_after_header(self, resy_config):
+        """Find should capture Retry-After header from 429 response."""
+        responses.add(
+            responses.GET,
+            f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
+            json={"status": 429, "message": "Rate Limit Exceeded"},
+            status=429,
+            headers={"Retry-After": "5"},
+        )
+
+        api = ResyApiAccess.build(resy_config)
+        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+
+        with pytest.raises(RateLimitError) as exc_info:
+            api.find_booking_slots(params)
+
+        assert exc_info.value.retry_after == 5.0
 
     @responses.activate
     def test_find_slots_parses_slot_times_correctly(self, resy_config):
@@ -406,6 +444,26 @@ class TestGetBookingToken:
             api.get_booking_token(params)
 
         assert exc_info.value.response.status_code == 410
+
+    @responses.activate
+    def test_get_token_rate_limit_raises_rate_limit_error(self, resy_config):
+        """Get token should raise RateLimitError on 429."""
+        responses.add(
+            responses.GET,
+            f"{RESY_BASE_URL}{ResyEndpoints.DETAILS.value}",
+            json={"status": 429, "message": "Rate Limit Exceeded"},
+            status=429,
+        )
+
+        api = ResyApiAccess.build(resy_config)
+        params = DetailsRequestBody(
+            config_id="test_config_token",
+            party_size=2,
+            day="2026-02-14",
+        )
+
+        with pytest.raises(RateLimitError):
+            api.get_booking_token(params)
 
 
 class TestBookSlot:
@@ -535,6 +593,25 @@ class TestBookSlot:
             api.book_slot(body)
 
         assert exc_info.value.response.status_code == 500
+
+    @responses.activate
+    def test_book_slot_rate_limit_raises_rate_limit_error(self, resy_config):
+        """Book should raise RateLimitError on 429."""
+        responses.add(
+            responses.POST,
+            f"{RESY_BASE_URL}{ResyEndpoints.BOOK.value}",
+            json={"status": 429, "message": "Rate Limit Exceeded"},
+            status=429,
+        )
+
+        api = ResyApiAccess.build(resy_config)
+        body = BookRequestBody(
+            book_token="test_book_token",
+            struct_payment_method=PaymentMethod(id=12345),
+        )
+
+        with pytest.raises(RateLimitError):
+            api.book_slot(body)
 
 
 class TestTimeouts:

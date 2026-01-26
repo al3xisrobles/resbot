@@ -24,7 +24,8 @@ import { cn } from "@/lib/utils";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { SearchResultItem } from "@/components/SearchResultItem";
 import type { SearchPagination, SearchResult } from "@/lib/interfaces";
-import type { ReservationFormState } from "@/contexts/VenueContext";
+import { useAtom } from "jotai";
+import { reservationFormAtom } from "@/atoms/reservationAtoms";
 import {
   Pagination,
   PaginationContent,
@@ -86,8 +87,6 @@ export interface SearchFilters {
 interface SearchSidebarProps {
   filters: SearchFilters;
   setFilters: React.Dispatch<React.SetStateAction<SearchFilters>>;
-  reservationForm: ReservationFormState;
-  setReservationForm: (form: ReservationFormState) => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
   searchResults: SearchResult[];
@@ -106,8 +105,6 @@ interface SearchSidebarProps {
 export function SearchSidebar({
   filters,
   setFilters,
-  reservationForm,
-  setReservationForm,
   activeTab,
   setActiveTab,
   searchResults,
@@ -122,6 +119,7 @@ export function SearchSidebar({
   onCardClick,
   onCardHover,
 }: SearchSidebarProps) {
+  const [reservationForm, setReservationForm] = useAtom(reservationFormAtom);
   const selectedCuisines = React.useMemo(() => {
     if (filters.cuisines.length === 0) return "All Cuisines";
     if (filters.cuisines.length === 1) {

@@ -6,7 +6,8 @@ import { toast } from "sonner";
 
 import { getTrendingRestaurants, getTopRatedRestaurants } from "@/lib/api";
 import type { TrendingRestaurant } from "@/lib/interfaces";
-import { useVenue } from "@/contexts/VenueContext";
+import { useAtom } from "jotai";
+import { reservationFormAtom } from "@/atoms/reservationAtoms";
 import { RestaurantGridCard } from "@/components/RestaurantGridCard";
 import {
   getTrendingRestaurantsCache,
@@ -28,7 +29,7 @@ export function HomePage() {
     TrendingRestaurant[]
   >([]);
   const [loadingTopRated, setLoadingTopRated] = useState(false);
-  const { reservationForm, setReservationForm } = useVenue();
+  const [reservationForm] = useAtom(reservationFormAtom);
 
   const handleSelectVenue = (venueId: string) => {
     navigate(`/venue?id=${venueId}`);
@@ -46,8 +47,8 @@ export function HomePage() {
           setTrendingRestaurants(cachedData);
         } else {
           console.log("Fetching fresh trending restaurants");
-          const user = auth.currentUser;
-          const data = await getTrendingRestaurants(user!.uid, 10);
+          const userId = auth.currentUser?.uid ?? null;
+          const data = await getTrendingRestaurants(userId, 10);
           setTrendingRestaurants(data);
           await saveTrendingRestaurantsCache(data);
         }
@@ -73,8 +74,8 @@ export function HomePage() {
           setTopRatedRestaurants(cachedData);
         } else {
           console.log("Fetching fresh top-rated restaurants");
-          const user = auth.currentUser;
-          const data = await getTopRatedRestaurants(user!.uid, 10);
+          const userId = auth.currentUser?.uid ?? null;
+          const data = await getTopRatedRestaurants(userId, 10);
           setTopRatedRestaurants(data);
           await saveTopRatedRestaurantsCache(data);
         }
@@ -99,10 +100,7 @@ export function HomePage() {
     <div className="h-screen overflow-y-auto relative">
       <main className="relative">
         {/* HERO */}
-        <Hero
-          reservationForm={reservationForm}
-          setReservationForm={setReservationForm}
-        />
+        <Hero />
 
         {/* Trending Restaurants */}
         <div className="container mx-auto px-4 py-4">
@@ -200,7 +198,7 @@ export function HomePage() {
                         .join(", ")}
                       imageUrl={restaurant.imageUrl}
                       onClick={() => handleSelectVenue(restaurant.id)}
-                      // showPlaceholder={!hasAllReservationDetails}
+                    // showPlaceholder={!hasAllReservationDetails}
                     />
                   );
                 })}

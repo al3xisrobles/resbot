@@ -60,6 +60,10 @@ def venue(req: Request):
         # Get photo URLs directly from Resy API
         photo_urls = venue_data.get('images', [])
 
+        # Get description from metadata
+        metadata = venue_data.get('metadata', {})
+        description = metadata.get('description', '')
+
         return {
             'success': True,
             'data': {
@@ -71,6 +75,7 @@ def venue(req: Request):
                 'price_range': venue_data.get('price_range_id', 0),
                 'rating': venue_data.get('rater', [])[0].get('score') if venue_data.get('rater') else None,
                 'photoUrls': photo_urls,  # List of photo URLs from Resy
+                'description': description,  # Description from metadata
             }
         }
 

@@ -14,10 +14,10 @@ from firebase_admin import initialize_app
 # Import all Cloud Functions from other modules so Firebase can discover them
 from api.search import search, search_map  # noqa: F401
 from api.venue import venue, venue_links  # noqa: F401
-from api.reservations import calendar, reservation  # noqa: F401
+from api.reservations import calendar, reservation, slots  # noqa: F401
 from api.featured import climbing, top_rated  # noqa: F401
 from api.gemini_search import gemini_search  # noqa: F401
-from api.snipe import run_snipe  # noqa: F401
+from api.snipe import run_snipe, summarize_snipe_logs  # noqa: F401
 from api.schedule import create_snipe  # noqa: F401
 from api.onboarding import start_resy_onboarding, resy_account  # noqa: F401
 

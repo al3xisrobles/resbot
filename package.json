@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "emulators": "OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES firebase emulators:start --import=./saved_data --export-on-exit"
+    "emulators": "OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES firebase emulators:start --import=./saved_data --export-on-exit=./saved_data",
+    "emulators-debug": "OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES firebase emulators:start --import=./saved_data --export-on-exit=./saved_data --debug"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",
@@ -34,6 +35,7 @@
     "embla-carousel-react": "^8.6.0",
     "firebase": "^12.6.0",
     "flake8": "^0.0.1",
+    "jotai": "^2.16.2",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
     "lucide-react": "^0.555.0",

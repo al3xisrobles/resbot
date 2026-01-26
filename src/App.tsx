@@ -5,7 +5,7 @@ import { Footer } from "@/components/Footer";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { HomePage } from "@/pages/HomePage";
-import { VenueDetailPage } from "@/pages/VenueDetailPage";
+import { VenueDetailPage } from "@/pages/routes/venue/VenueDetailPage";
 import { SearchPage } from "@/pages/SearchPage";
 import { BookmarkedRestaurantsPage } from "@/pages/BookmarkedRestaurantsPage";
 import { ReservationsPage } from "@/pages/ReservationsPage";
@@ -45,7 +45,7 @@ function App() {
                 <Route path="/reservations" element={<ProtectedRoute><ReservationsPage /></ProtectedRoute>} />
               </Routes>
 
-              {window.location.pathname !== "/search" && <Footer />}
+              {!["/search", "/venue"].includes(window.location.pathname) && <Footer />}
             </div>
             <ResySessionExpiredModal />
             <Toaster position="top-left" />

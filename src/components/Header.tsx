@@ -58,7 +58,7 @@ export function Header() {
   const showHeaderSearch = !isHomePage && isLoggedIn;
 
   return (
-    <header className="sticky top-0 left-0 right-0 z-9998 border-b bg-card">
+    <header className="border-b bg-card">
       <div className="container mx-auto px-4 py-4">
         {/* Desktop Layout */}
         {!showHeaderSearch ? (
@@ -80,26 +80,22 @@ export function Header() {
               <NavigationMenu>
                 <NavigationMenuList>
                   <NavigationMenuItem>
-                    <Link to="/">
-                      <NavigationMenuLink
-                        className={`${navigationMenuTriggerStyle()} ${
-                          location.pathname === "/" ? "bg-accent" : ""
+                    <NavigationMenuLink
+                      asChild
+                      className={`${navigationMenuTriggerStyle()} ${location.pathname === "/" ? "bg-accent" : ""
                         }`}
-                      >
-                        Home
-                      </NavigationMenuLink>
-                    </Link>
+                    >
+                      <Link to="/">Home</Link>
+                    </NavigationMenuLink>
                   </NavigationMenuItem>
                   <NavigationMenuItem>
-                    <Link to="/search">
-                      <NavigationMenuLink
-                        className={`${navigationMenuTriggerStyle()} ${
-                          location.pathname === "/search" ? "bg-accent" : ""
+                    <NavigationMenuLink
+                      asChild
+                      className={`${navigationMenuTriggerStyle()} ${location.pathname === "/search" ? "bg-accent" : ""
                         }`}
-                      >
-                        All Restaurants
-                      </NavigationMenuLink>
-                    </Link>
+                    >
+                      <Link to="/search">All Restaurants</Link>
+                    </NavigationMenuLink>
                   </NavigationMenuItem>
                 </NavigationMenuList>
               </NavigationMenu>
@@ -177,26 +173,22 @@ export function Header() {
               <NavigationMenu>
                 <NavigationMenuList>
                   <NavigationMenuItem>
-                    <Link to="/">
-                      <NavigationMenuLink
-                        className={`${navigationMenuTriggerStyle()} ${
-                          location.pathname === "/" ? "bg-accent" : ""
+                    <NavigationMenuLink
+                      asChild
+                      className={`${navigationMenuTriggerStyle()} ${location.pathname === "/" ? "bg-accent" : ""
                         }`}
-                      >
-                        Home
-                      </NavigationMenuLink>
-                    </Link>
+                    >
+                      <Link to="/">Home</Link>
+                    </NavigationMenuLink>
                   </NavigationMenuItem>
                   <NavigationMenuItem>
-                    <Link to="/search">
-                      <NavigationMenuLink
-                        className={`${navigationMenuTriggerStyle()} ${
-                          location.pathname === "/search" ? "bg-accent" : ""
+                    <NavigationMenuLink
+                      asChild
+                      className={`${navigationMenuTriggerStyle()} ${location.pathname === "/search" ? "bg-accent" : ""
                         }`}
-                      >
-                        All Restaurants
-                      </NavigationMenuLink>
-                    </Link>
+                    >
+                      <Link to="/search">All Restaurants</Link>
+                    </NavigationMenuLink>
                   </NavigationMenuItem>
                 </NavigationMenuList>
               </NavigationMenu>

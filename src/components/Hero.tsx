@@ -3,6 +3,8 @@ import { format } from "date-fns";
 import { SearchBar } from "@/components/SearchBar";
 import { cn } from "@/lib/utils";
 import { TIME_SLOTS } from "@/lib/time-slots";
+import { useAtom } from "jotai";
+import { reservationFormAtom } from "@/atoms/reservationAtoms";
 import {
   Select,
   SelectContent,
@@ -21,13 +23,6 @@ import timeManagementIllustration from "@/assets/undraw_time-management_4ss6.svg
 import mailSentIllustration from "@/assets/undraw_mail-sent_ujev.svg";
 import GeometricPanelRight from "@/assets/GeometricPanelRight.svg";
 import GeometricPanelLeft from "@/assets/GeometricPanelLeft.svg";
-
-type HeroProps = {
-  reservationForm: import("@/contexts/VenueContext").ReservationFormState;
-  setReservationForm: (
-    next: import("@/contexts/VenueContext").ReservationFormState
-  ) => void;
-};
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -55,7 +50,8 @@ const HOW_IT_WORKS_STEPS = [
   },
 ];
 
-export function Hero({ reservationForm, setReservationForm }: HeroProps) {
+export function Hero() {
+  const [reservationForm, setReservationForm] = useAtom(reservationFormAtom);
   return (
     <section className="min-h-[90vh] relative pt-12 pb-10 sm:pt-32 sm:pb-14 px-4 md:px-0">
       {/* Decorative geometric panels */}

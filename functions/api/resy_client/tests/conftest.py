@@ -237,7 +237,7 @@ def empty_slots() -> List[Slot]:
 # =============================================================================
 
 @pytest.fixture
-def find_response_with_slots(sample_dinner_slots_list) -> Dict[str, Any]:
+def find_response_with_slots(sample_dinner_slots) -> Dict[str, Any]:
     """Mock API response for find endpoint with slots."""
     slots_data = [
         {
@@ -251,7 +251,7 @@ def find_response_with_slots(sample_dinner_slots_list) -> Dict[str, Any]:
                 "end": s.date.end.isoformat(),
             },
         }
-        for s in sample_dinner_slots_list
+        for s in sample_dinner_slots
     ]
 
     return {

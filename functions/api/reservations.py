@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
 
-from .utils import load_credentials, get_resy_headers
+from .utils import load_credentials, get_resy_headers, get_venue_availability
 from .resy_client.models import ResyConfig, TimedReservationRequest
 from .resy_client.manager import ResyManager
 
@@ -169,6 +169,64 @@ def reservation(req: Request):
 
     except Exception as e:
         logger.error(f"Error making reservation: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
+
+
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
+def slots(req: Request):
+    """
+    GET /slots?venueId=<venue_id>&date=<date>&partySize=<party_size>&userId=<user_id>
+    Get available time slots for a specific venue and date
+    Query parameters:
+    - venueId: Venue ID (required)
+    - date: Date in YYYY-MM-DD format (required)
+    - partySize: Party size (default: 2)
+    - userId: User ID (optional) - if provided, loads credentials from Firestore
+    """
+    try:
+        venue_id = req.args.get('venueId')
+        date_str = req.args.get('date')
+        user_id = req.args.get('userId')
+
+        if not venue_id:
+            return {
+                'success': False,
+                'error': 'Missing venueId parameter'
+            }, 400
+
+        if not date_str:
+            return {
+                'success': False,
+                'error': 'Missing date parameter'
+            }, 400
+
+        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        config = load_credentials(user_id)
+
+        # Get party size from query params (default to 2)
+        party_size = req.args.get('partySize', '2')
+
+        # Fetch availability using the existing utility function
+        availability_data = get_venue_availability(
+            venue_id=venue_id,
+            day=date_str,
+            party_size=party_size,
+            config=config
+        )
+
+        return {
+            'success': True,
+            'data': {
+                'times': availability_data.get('times', []),
+                'status': availability_data.get('status')
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching slots: {str(e)}")
         return {
             'success': False,
             'error': str(e)

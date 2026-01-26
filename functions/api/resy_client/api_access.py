@@ -3,6 +3,7 @@ from typing import Dict, List
 import logging
 
 from .constants import RESY_BASE_URL, ResyEndpoints
+from .errors import RateLimitError
 from .models import (
     ResyConfig,
     AuthRequestBody,
@@ -18,6 +19,19 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
+
+
+def _check_rate_limit(resp) -> None:
+    """Check if response is a rate limit error and raise RateLimitError if so."""
+    if resp.status_code == 429:
+        # Try to get retry-after header if available
+        retry_after = resp.headers.get('Retry-After')
+        retry_seconds = float(retry_after) if retry_after else None
+        logger.warning(f"Rate limited by Resy API (429). Retry-After: {retry_after}")
+        raise RateLimitError(
+            f"Rate limit exceeded: {resp.text[:200] if resp.text else 'No details'}",
+            retry_after=retry_seconds
+        )
 
 # Timeout in seconds for API requests (connect timeout, read timeout)
 # Keep these aggressive for time-sensitive snipes
@@ -113,6 +127,7 @@ class ResyApiAccess:
         logger.info(f"Received response from find booking slots: {resp.text}")
 
         if not resp.ok:
+            _check_rate_limit(resp)  # Check for 429 before generic error
             resp.raise_for_status()
 
         parsed_resp = FindResponseBody(**resp.json())
@@ -127,6 +142,7 @@ class ResyApiAccess:
         resp = self.session.get(details_url, params=params.model_dump(), timeout=REQUEST_TIMEOUT)
 
         if not resp.ok:
+            _check_rate_limit(resp)  # Check for 429 before generic error
             resp.raise_for_status()
 
         return DetailsResponseBody(**resp.json())
@@ -162,6 +178,7 @@ class ResyApiAccess:
         )
 
         if not resp.ok:
+            _check_rate_limit(resp)  # Check for 429 before generic error
             resp.raise_for_status()
 
         logger.info(resp.json())

@@ -95,6 +95,7 @@ export interface VenueCacheData {
   neighborhood?: string;
   priceRange?: number;
   rating?: number;
+  description?: string; // Description from metadata
 
   // Links
   googleMapsLink?: string;
@@ -180,10 +181,15 @@ export async function saveVenueCache(
     const snapshot = await getDoc(venueDoc);
     const existingData = snapshot.exists() ? snapshot.data() : {};
 
+    // Filter out undefined values (Firestore doesn't allow undefined)
+    const filteredData = Object.fromEntries(
+      Object.entries(data).filter(([, value]) => value !== undefined)
+    );
+
     // Merge and save
     const updatedData = {
       ...existingData,
-      ...data,
+      ...filteredData,
       lastUpdated: Date.now(),
     };
 
@@ -688,6 +694,13 @@ export interface ReservationJob {
   seatingType?: string;
   resyToken?: string;
   errorMessage?: string;
+  executionLogs?: Array<{
+    timestamp: string;
+    status: string;
+    message: string;
+    elapsed_seconds?: number;
+  }>;
+  aiSummary?: string;
 }
 
 /**

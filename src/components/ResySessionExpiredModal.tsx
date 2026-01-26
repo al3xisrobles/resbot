@@ -36,7 +36,7 @@ export function ResySessionExpiredModal() {
 
   return (
     <Dialog open={isSessionExpired} onOpenChange={handleDismiss}>
-      <DialogContent showCloseButton={false}>
+      <DialogContent showCloseButton={false} className="z-99999!">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">

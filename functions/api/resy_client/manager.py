@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 import logging
 from requests import HTTPError
 from requests.exceptions import Timeout, ConnectionError as RequestsConnectionError
-from .errors import NoSlotsError, ExhaustedRetriesError, SlotTakenError
+from .errors import NoSlotsError, ExhaustedRetriesError, SlotTakenError, RateLimitError
 from .constants import (
     N_RETRIES,
     SECONDS_TO_WAIT_BETWEEN_RETRIES,
@@ -25,6 +26,11 @@ from .selectors import AbstractSelector, SimpleSelector
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
+
+# Rate limit backoff configuration
+RATE_LIMIT_BASE_WAIT = .05  # Start with 50ms wait
+RATE_LIMIT_MAX_WAIT = 4.0   # Cap at 4 seconds (to not waste snipe window)
+RATE_LIMIT_MULTIPLIER = 2.0  # Double wait time each consecutive rate limit
 
 
 class ResyManager:
@@ -153,9 +159,12 @@ class ResyManager:
     def make_reservation_with_retries(
         self, reservation_request: ReservationRequest
     ) -> str:
+        rate_limit_wait = RATE_LIMIT_BASE_WAIT
+        
         for attempt in range(self.retry_config.n_retries):
             try:
-                return self.make_reservation(reservation_request)
+                result = self.make_reservation(reservation_request)
+                return result
 
             except NoSlotsError as e:
                 logger.info(
@@ -170,6 +179,19 @@ class ResyManager:
                 else:
                     # If retry_on_taken_slot is False, propagate the error immediately
                     raise
+
+            except RateLimitError as rate_err:
+                # Use retry_after from API if available, otherwise use exponential backoff
+                wait_time = rate_err.retry_after if rate_err.retry_after else rate_limit_wait
+                wait_time = min(wait_time, RATE_LIMIT_MAX_WAIT)
+                logger.warning(
+                    f"Rate limited (attempt {attempt + 1}/{self.retry_config.n_retries}), "
+                    f"waiting {wait_time:.1f}s before retry; currently {datetime.now().isoformat()}"
+                )
+                time.sleep(wait_time)
+                # Increase wait time for next rate limit (exponential backoff)
+                rate_limit_wait = min(rate_limit_wait * RATE_LIMIT_MULTIPLIER, RATE_LIMIT_MAX_WAIT)
+                continue  # Don't count rate limits against normal retry sleep
 
             except (Timeout, RequestsConnectionError) as net_err:
                 logger.warning(
@@ -186,6 +208,8 @@ class ResyManager:
         """
         Like make_reservation_with_retries but uses parallel booking for each attempt.
         """
+        rate_limit_wait = RATE_LIMIT_BASE_WAIT
+        
         for attempt in range(self.retry_config.n_retries):
             try:
                 return self.make_reservation_parallel(reservation_request, n_slots=n_slots)
@@ -202,6 +226,19 @@ class ResyManager:
                     )
                 else:
                     raise
+
+            except RateLimitError as rate_err:
+                # Use retry_after from API if available, otherwise use exponential backoff
+                wait_time = rate_err.retry_after if rate_err.retry_after else rate_limit_wait
+                wait_time = min(wait_time, RATE_LIMIT_MAX_WAIT)
+                logger.warning(
+                    f"Rate limited (attempt {attempt + 1}/{self.retry_config.n_retries}), "
+                    f"waiting {wait_time:.1f}s before retry; currently {datetime.now().isoformat()}"
+                )
+                time.sleep(wait_time)
+                # Increase wait time for next rate limit (exponential backoff)
+                rate_limit_wait = min(rate_limit_wait * RATE_LIMIT_MULTIPLIER, RATE_LIMIT_MAX_WAIT)
+                continue  # Don't count rate limits against normal retry sleep
 
             except (Timeout, RequestsConnectionError) as net_err:
                 logger.warning(

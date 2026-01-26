@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode, type Dispatch, type SetStateAction } from "react";
 import type { SearchResult, GeminiSearchResponse } from "@/lib/interfaces";
 
 export interface ReservationFormState {
@@ -18,10 +18,8 @@ interface VenueContextType {
   setSearchResults: (results: SearchResult[]) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  reservationForm: ReservationFormState;
-  setReservationForm: (form: ReservationFormState) => void;
   aiSummaryCache: Record<string, GeminiSearchResponse>;
-  setAiSummaryCache: (cache: Record<string, GeminiSearchResponse>) => void;
+  setAiSummaryCache: Dispatch<SetStateAction<Record<string, GeminiSearchResponse>>>;
 }
 
 const VenueContext = createContext<VenueContextType | undefined>(undefined);
@@ -30,15 +28,6 @@ export function VenueProvider({ children }: { children: ReactNode }) {
   const [selectedVenueId, setSelectedVenueId] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [reservationForm, setReservationForm] = useState<ReservationFormState>({
-    partySize: "2",
-    date: undefined,
-    timeSlot: "19:0", // Default to 7:00 PM
-    windowHours: "1",
-    seatingType: "any",
-    dropTimeSlot: "9:0", // Default to 9:00 AM
-    dropDate: undefined,
-  });
   const [aiSummaryCache, setAiSummaryCache] = useState<
     Record<string, GeminiSearchResponse>
   >({});
@@ -52,8 +41,6 @@ export function VenueProvider({ children }: { children: ReactNode }) {
         setSearchResults,
         searchQuery,
         setSearchQuery,
-        reservationForm,
-        setReservationForm,
         aiSummaryCache,
         setAiSummaryCache,
       }}

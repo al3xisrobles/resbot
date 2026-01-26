@@ -56,8 +56,10 @@ const API_ENDPOINTS = {
   venue: `${CLOUD_FUNCTIONS_BASE}/venue`,
   venue_links: `${CLOUD_FUNCTIONS_BASE}/venue_links`,
   calendar: `${CLOUD_FUNCTIONS_BASE}/calendar`,
+  slots: `${CLOUD_FUNCTIONS_BASE}/slots`,
   reservation: `${CLOUD_FUNCTIONS_BASE}/reservation`,
   gemini_search: `${CLOUD_FUNCTIONS_BASE}/gemini_search`,
+  summarize_snipe_logs: `${CLOUD_FUNCTIONS_BASE}/summarize_snipe_logs`,
   climbing: `${CLOUD_FUNCTIONS_BASE}/climbing`,
   top_rated: `${CLOUD_FUNCTIONS_BASE}/top_rated`,
   health: "https://health-hypomglm7a-uc.a.run.app",
@@ -325,6 +327,35 @@ export async function getGeminiSearch(
 }
 
 /**
+ * Get AI-powered summary of reservation attempt logs using Gemini
+ */
+export async function getSnipeLogsSummary(
+  jobId: string
+): Promise<string> {
+  const rawResponse = await fetch(API_ENDPOINTS.summarize_snipe_logs, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ jobId }),
+  });
+  const response = await handleApiResponse(rawResponse);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to get log summary");
+  }
+
+  const result: ApiResponse<{ summary: string }> = await response.json();
+
+  if (!result.success || !result.data) {
+    throw new Error(result.error || "Failed to get log summary");
+  }
+
+  return result.data.summary;
+}
+
+/**
  * Get restaurant availability calendar
  */
 export async function getCalendar(
@@ -357,6 +388,41 @@ export async function getCalendar(
 }
 
 /**
+ * Get available time slots for a specific venue and date
+ */
+export async function getSlots(
+  userId: string,
+  venueId: string,
+  date: string,
+  partySize?: string
+): Promise<{ times: string[]; status: string | null }> {
+  const params = new URLSearchParams();
+  params.append("venueId", venueId);
+  params.append("date", date);
+  params.append("userId", userId);
+  if (partySize) {
+    params.append("partySize", partySize);
+  }
+  const url = `${API_ENDPOINTS.slots}?${params.toString()}`;
+  const rawResponse = await fetch(url);
+  const response = await handleApiResponse(rawResponse);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to fetch slots");
+  }
+
+  const result: ApiResponse<{ times: string[]; status: string | null }> =
+    await response.json();
+
+  if (!result.success || !result.data) {
+    throw new Error(result.error || "Failed to fetch slots");
+  }
+
+  return result.data;
+}
+
+/**
  * Check server health
  */
 export async function healthCheck(): Promise<boolean> {
@@ -373,18 +439,19 @@ export async function healthCheck(): Promise<boolean> {
  * Get trending/climbing restaurants
  */
 export async function getTrendingRestaurants(
-  userId: string,
+  userId?: string | null,
   limit?: number
 ): Promise<TrendingRestaurant[]> {
   const params = new URLSearchParams();
-  params.append("userId", userId);
+  if (userId) {
+    params.append("userId", userId);
+  }
   if (limit) {
     params.append("limit", limit.toString());
   }
 
-  const url = `${API_ENDPOINTS.climbing}${
-    params.toString() ? "?" + params.toString() : ""
-  }`;
+  const url = `${API_ENDPOINTS.climbing}${params.toString() ? "?" + params.toString() : ""
+    }`;
   const rawResponse = await fetch(url);
   const response = await handleApiResponse(rawResponse);
 
@@ -406,18 +473,19 @@ export async function getTrendingRestaurants(
  * Get top-rated restaurants
  */
 export async function getTopRatedRestaurants(
-  userId: string,
+  userId?: string | null,
   limit?: number
 ): Promise<TrendingRestaurant[]> {
   const params = new URLSearchParams();
-  params.append("userId", userId);
+  if (userId) {
+    params.append("userId", userId);
+  }
   if (limit) {
     params.append("limit", limit.toString());
   }
 
-  const url = `${API_ENDPOINTS.top_rated}${
-    params.toString() ? "?" + params.toString() : ""
-  }`;
+  const url = `${API_ENDPOINTS.top_rated}${params.toString() ? "?" + params.toString() : ""
+    }`;
   const rawResponse = await fetch(url);
   const response = await handleApiResponse(rawResponse);
 

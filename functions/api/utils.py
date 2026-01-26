@@ -92,10 +92,11 @@ else:
 
 def load_credentials(userId=None):
     """
-    Load Resy credentials from Firestore
+    Load Resy credentials from Firestore or environment variables
 
     Args:
-        user_id: Firebase user ID. Required.
+        userId: Firebase user ID. If provided, loads from Firestore.
+                If None, loads from environment variables (for public endpoints).
 
     Returns:
         dict: Credentials containing api_key, token, etc.
@@ -104,51 +105,74 @@ def load_credentials(userId=None):
         The Firestore document uses camelCase field names (apiKey, paymentMethodId)
         but this function returns snake_case for backwards compatibility
     """
-    if not userId:
-        logger.error("✗ userId not provided for loading credentials from Firestore")
-        raise ValueError("userId is required to load credentials from Firestore")
+    # If userId is provided, load from Firestore
+    if userId:
+        try:
+            db = firestore.client()
+            doc = db.collection('resyCredentials').document(userId).get()
 
-    try:
-        db = firestore.client()
-        doc = db.collection('resyCredentials').document(userId).get()
+            if not doc.exists:
+                logger.warning(f"✗ No Resy credentials found in Firestore for user {userId}")
+                raise ValueError(f"User {userId} has not connected their Resy account")
 
-        if not doc.exists:
-            logger.warning(f"✗ No Resy credentials found in Firestore for user {userId}")
-            raise ValueError(f"User {userId} has not connected their Resy account")
+            # Get the Firestore data (uses camelCase)
+            data = doc.to_dict()
 
-        # Get the Firestore data (uses camelCase)
-        data = doc.to_dict()
+            # Transform to snake_case for backwards compatibility with existing code
+            credentials = {
+                'api_key': data.get('apiKey'),
+                'token': data.get('token'),
+                'payment_method_id': data.get('paymentMethodId'),
+                'email': data.get('email'),
+                'password': None,  # Never stored
+                'guest_id': data.get('guestId'),
+                'user_id': data.get('userId'),
+                'first_name': data.get('firstName'),
+                'last_name': data.get('lastName'),
+                'mobile_number': data.get('mobileNumber'),
+                'payment_methods': data.get('paymentMethods', []),
+                'legacy_token': data.get('legacyToken')
+            }
 
-        # Transform to snake_case for backwards compatibility with existing code
-        credentials = {
-            'api_key': data.get('apiKey'),
-            'token': data.get('token'),
-            'payment_method_id': data.get('paymentMethodId'),
-            'email': data.get('email'),
-            'password': None,  # Never stored
-            'guest_id': data.get('guestId'),
-            'user_id': data.get('userId'),
-            'first_name': data.get('firstName'),
-            'last_name': data.get('lastName'),
-            'mobile_number': data.get('mobileNumber'),
-            'payment_methods': data.get('paymentMethods', []),
-            'legacy_token': data.get('legacyToken')
-        }
+            logger.info(f"✓ Loaded Resy credentials from Firestore for user {userId}")
+            return credentials
 
-        logger.info(f"✓ Loaded Resy credentials from Firestore for user {userId}")
-        return credentials
-
-    except Exception as e:
-        logger.error(f"✗ Error loading credentials from Firestore: {str(e)}")
-        raise
+        except Exception as e:
+            logger.error(f"✗ Error loading credentials from Firestore: {str(e)}")
+            raise
+    
+    # If userId is not provided, try to load from environment variables
+    # This allows public endpoints to work without user authentication
+    # Use the same default API key as in onboarding.py
+    api_key = os.getenv('RESY_API_KEY', 'VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5')
+    token = os.getenv('RESY_TOKEN', '')
+    
+    if not token:
+        logger.info("ℹ No RESY_TOKEN provided, using API key only (suitable for public endpoints)")
+    
+    credentials = {
+        'api_key': api_key,
+        'token': token,  # Empty string if not provided
+        'payment_method_id': None,
+        'email': None,
+        'password': None,
+        'guest_id': None,
+        'user_id': None,
+        'first_name': None,
+        'last_name': None,
+        'mobile_number': None,
+        'payment_methods': [],
+        'legacy_token': None
+    }
+    
+    logger.info("✓ Loaded Resy credentials from environment variables (default API key)")
+    return credentials
 
 
 def get_resy_headers(config):
     """Build Resy API headers"""
-    return {
+    headers = {
         'Authorization': f'ResyAPI api_key="{config["api_key"]}"',
-        'X-Resy-Auth-Token': config['token'],
-        'X-Resy-Universal-Auth': config['token'],
         'Origin': 'https://resy.com',
         'X-origin': 'https://resy.com',
         'Referer': 'https://resy.com/',
@@ -156,6 +180,14 @@ def get_resy_headers(config):
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Content-Type': 'application/json'
     }
+    
+    # Only add auth token headers if token is provided
+    token = config.get('token')
+    if token:
+        headers['X-Resy-Auth-Token'] = token
+        headers['X-Resy-Universal-Auth'] = token
+    
+    return headers
 
 
 def get_search_cache_key(query, filters, geo_config, include_availability=False):
@@ -444,7 +476,7 @@ def _fetch_calendar(headers, params):
     return response
 
 
-def get_venue_availability(venue_id, day, party_size, config, desired_time=None):
+def get_venue_availability(venue_id, day, party_size, config):
     """
     Fetch available time slots for a specific venue
 
@@ -453,7 +485,6 @@ def get_venue_availability(venue_id, day, party_size, config, desired_time=None)
         day: Date in YYYY-MM-DD format
         party_size: Number of people
         config: ResyConfig object or dict
-        desired_time: Optional desired time in HH:MM format (24-hour) to sort by proximity
 
     Returns:
         Dict with 'times' (list of time strings) and 'status' (reason if no times available)
@@ -567,35 +598,16 @@ def get_venue_availability(venue_id, day, party_size, config, desired_time=None)
             print(f"[AVAILABILITY] No slots returned for venue {venue_id} on {day}")
             return {'times': [], 'status': 'Sold out'}
 
-        # If desired_time is provided, sort by proximity to desired time
-        if desired_time:
-            try:
-                # Parse desired time (format: "19:00")
-                desired_hour, desired_minute = map(int, desired_time.split(':'))
-                desired_minutes_from_midnight = desired_hour * 60 + desired_minute
+        # Sort slots chronologically for display
+        sorted_slots = sorted(slots, key=lambda slot: slot.date.start)
 
-                # Sort slots by proximity to desired time
-                def time_distance(slot):
-                    slot_time = slot.date.start
-                    slot_minutes = slot_time.hour * 60 + slot_time.minute
-                    return abs(slot_minutes - desired_minutes_from_midnight)
-
-                sorted_slots = sorted(slots, key=time_distance)
-            except Exception as e:
-                print(f"[AVAILABILITY] Error sorting by desired time: {str(e)}")
-                sorted_slots = slots
-        else:
-            sorted_slots = slots
-
-        # Get the 8 closest slots
-        closest_slots = sorted_slots[:8]
-
-        # Sort them chronologically for display
-        closest_slots.sort(key=lambda slot: slot.date.start)
+        # If desired_time is provided, we could prioritize those times,
+        # but for now we'll just return all slots in chronological order
+        # The frontend will handle deduplication of times with different seating types
 
         # Format the slots into time strings
         available_times = []
-        for slot in closest_slots:
+        for slot in sorted_slots:
             # Format the time nicely
             time_str = slot.date.start.strftime("%-I:%M %p")
             available_times.append(time_str)
@@ -682,8 +694,7 @@ def filter_and_format_venues(hits, filters, seen_ids=None, config=None, fetch_av
                 venue_id,
                 filters['available_day'],
                 filters['available_party_size'],
-                config,
-                filters.get('desired_time')
+                config
             )
             # availability_data is a dict with 'times' and 'status'
             if availability_data['times']:
