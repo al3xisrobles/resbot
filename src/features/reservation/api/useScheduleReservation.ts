@@ -54,7 +54,7 @@ export function useScheduleReservation(
       );
       const dropDateFormatted = format(dropDateInEst, "yyyy-MM-dd");
 
-      const { jobId, targetTimeIso } = await scheduleReservationSnipe({
+      const { jobId } = await scheduleReservationSnipe({
         venueId,
         partySize: Number(reservationForm.partySize),
         date: format(reservationForm.date, "yyyy-MM-dd"),
