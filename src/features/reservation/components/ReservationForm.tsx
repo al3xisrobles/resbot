@@ -129,7 +129,7 @@ export function ReservationForm({
 
         {/* Time */}
         <Stack itemsSpacing={8} className="flex-1">
-          <Label htmlFor="time-slot">Desired Time</Label>
+          <Label htmlFor="time-slot">Desired Time (EST)</Label>
           <Select
             value={reservationForm.timeSlot}
             onValueChange={(value) =>
@@ -213,7 +213,7 @@ export function ReservationForm({
       <Separator />
 
       {/* Drop Time */}
-      <Stack itemsSpacing={8}>
+      <Stack itemsSpacing={16}>
         <Stack itemsSpacing={4}>
           <h3 className="text-lg">Reservation Drop Time</h3>
           <p className="text-sm text-muted-foreground">
@@ -256,10 +256,7 @@ export function ReservationForm({
           </Stack>
           <Stack itemsSpacing={8} className="flex-1">
             <Label className="flex flex-row gap-2 items-center">
-              <p>Drop Time</p>
-              <p className="text-xs text-muted-foreground">
-                Time is in EST (America/New_York)
-              </p>
+              <p>Drop Time (EST)</p>
             </Label>
             <Select
               value={reservationForm.dropTimeSlot}
