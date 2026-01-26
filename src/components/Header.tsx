@@ -44,8 +44,7 @@ export function Header() {
   const isAuthPage =
     location.pathname === "/login" || location.pathname === "/signup";
 
-  const isHomePage =
-    location.pathname === "/" || location.pathname === "/search";
+  const isHomePage = location.pathname === "/";
 
   const isLoggedIn = !!currentUser;
 
