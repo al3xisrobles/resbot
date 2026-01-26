@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from requests.exceptions import HTTPError, Timeout, ConnectionError as RequestsConnectionError
 
 from resy_client.manager import ResyManager
+from resy_client.manager import RATE_LIMIT_BASE_WAIT, RATE_LIMIT_MAX_WAIT, RATE_LIMIT_MULTIPLIER
 from resy_client.api_access import ResyApiAccess
 from resy_client.selectors import SimpleSelector
 from resy_client.models import (
@@ -311,8 +312,8 @@ class TestMakeReservationWithRetries:
 
         assert result == "resy_confirmation_123"
         assert mock_api.find_booking_slots.call_count == 2
-        # Should have waited at least 1 second (base wait time)
-        assert elapsed >= 1.0
+        # Should have waited at least the base wait time
+        assert elapsed >= RATE_LIMIT_BASE_WAIT
 
     def test_retries_on_rate_limit_uses_retry_after_header(
         self,
@@ -372,9 +373,15 @@ class TestMakeReservationWithRetries:
             manager.make_reservation_with_retries(reservation_request_dinner)
         elapsed = time.time() - start_time
 
-        # Should have waited: ~1s + ~2s + ~4s (capped at 8s) = ~7s minimum
-        # But we only do 3 retries, so: ~1s + ~2s = ~3s minimum
-        assert elapsed >= 2.5  # Allow margin for test execution
+        # Should have waited: BASE_WAIT + (BASE_WAIT * MULTIPLIER) + (BASE_WAIT * MULTIPLIER^2)
+        # With 3 retries: wait1 = BASE_WAIT, wait2 = BASE_WAIT * MULTIPLIER, wait3 = BASE_WAIT * MULTIPLIER^2
+        # All capped at MAX_WAIT
+        expected_min_wait = (
+            min(RATE_LIMIT_BASE_WAIT, RATE_LIMIT_MAX_WAIT) +
+            min(RATE_LIMIT_BASE_WAIT * RATE_LIMIT_MULTIPLIER, RATE_LIMIT_MAX_WAIT) +
+            min(RATE_LIMIT_BASE_WAIT * RATE_LIMIT_MULTIPLIER ** 2, RATE_LIMIT_MAX_WAIT)
+        )
+        assert elapsed >= expected_min_wait * 0.9  # Allow 10% margin for test execution
 
     def test_retries_on_timeout(
         self,
@@ -782,8 +789,8 @@ class TestMakeReservationParallelWithRetries:
 
         assert result == "resy_confirmation_123"
         assert mock_api.find_booking_slots.call_count == 2
-        # Should have waited at least 1 second (base wait time)
-        assert elapsed >= 1.0
+        # Should have waited at least the base wait time
+        assert elapsed >= RATE_LIMIT_BASE_WAIT
 
     def test_parallel_retries_on_rate_limit_uses_retry_after(
         self,

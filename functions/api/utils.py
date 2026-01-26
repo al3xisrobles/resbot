@@ -329,6 +329,10 @@ def fetch_until_enough_results(search_func, target_count, filters, max_fetches=1
     total_resy_results = 0
     hits = []  # Initialize for has_more check
 
+    # If target_count is 0, return immediately
+    if target_count == 0:
+        return [], 0, False
+
     for _ in range(max_fetches):
         print(f"[FETCH] Fetching Resy page {resy_page} (have {len(all_results)}/{target_count} filtered results)")
 
@@ -371,7 +375,15 @@ def fetch_until_enough_results(search_func, target_count, filters, max_fetches=1
 
         resy_page += 1
 
-    has_more = len(all_results) > target_count or (len(hits) == 20 and resy_page <= max_fetches)
+    # Calculate has_more:
+    # - If we got more results than target, definitely more available
+    # - If we got exactly 20 hits on the last page, might be more
+    # - If we reached max_fetches without getting enough results, assume more might exist
+    has_more = (
+        len(all_results) > target_count or
+        (len(hits) == 20 and resy_page <= max_fetches) or
+        (len(all_results) < target_count and resy_page > max_fetches)
+    )
 
     return all_results, total_resy_results, has_more
 
