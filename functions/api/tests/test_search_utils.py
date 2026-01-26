@@ -6,16 +6,19 @@ Tests cover:
 - filter_and_format_venues: Venue filtering and formatting logic
 - get_search_cache_key: Cache key generation
 """
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+import time
+from unittest.mock import Mock
+
+from api.tests.conftest import VenueFactory
 from api.utils import (
+    SEARCH_CACHE,
+    SEARCH_CACHE_TTL,
     parse_search_filters,
     filter_and_format_venues,
     get_search_cache_key,
     get_cached_search_results,
     save_search_results_to_cache,
 )
-from api.tests.conftest import VenueFactory, AvailabilityFactory
 
 
 class TestParseSearchFilters:
@@ -23,12 +26,11 @@ class TestParseSearchFilters:
 
     def test_empty_filters(self):
         """Parse empty request args."""
-        from unittest.mock import Mock
         args = Mock()
         args.get = Mock(side_effect=lambda key, default='': default)
-        
+
         filters = parse_search_filters(args)
-        
+
         assert filters['cuisines'] == []
         assert filters['price_ranges'] == []
         assert filters['available_only'] is False
@@ -38,7 +40,6 @@ class TestParseSearchFilters:
 
     def test_cuisines_parsing(self):
         """Parse cuisine filter from comma-separated string."""
-        from unittest.mock import Mock
         args = Mock()
         args.get = Mock(side_effect=lambda key, default='': {
             'cuisines': 'Italian,Japanese,French',
@@ -51,14 +52,13 @@ class TestParseSearchFilters:
             'offset': '0',
             'perPage': '20',
         }.get(key, default))
-        
+
         filters = parse_search_filters(args)
-        
+
         assert filters['cuisines'] == ['Italian', 'Japanese', 'French']
 
     def test_price_ranges_parsing(self):
         """Parse price ranges from comma-separated string."""
-        from unittest.mock import Mock
         args = Mock()
         args.get = Mock(side_effect=lambda key, default='': {
             'cuisines': '',
@@ -71,14 +71,13 @@ class TestParseSearchFilters:
             'offset': '0',
             'perPage': '20',
         }.get(key, default))
-        
+
         filters = parse_search_filters(args)
-        
+
         assert filters['price_ranges'] == [1, 2, 4]
 
     def test_available_only_flag(self):
         """Parse available_only boolean flag."""
-        from unittest.mock import Mock
         args = Mock()
         args.get = Mock(side_effect=lambda key, default='': {
             'cuisines': '',
@@ -91,16 +90,15 @@ class TestParseSearchFilters:
             'offset': '0',
             'perPage': '20',
         }.get(key, default))
-        
+
         filters = parse_search_filters(args)
-        
+
         assert filters['available_only'] is True
         assert filters['available_day'] == '2026-02-14'
         assert filters['available_party_size'] == 4
 
     def test_not_released_only_flag(self):
         """Parse not_released_only boolean flag."""
-        from unittest.mock import Mock
         args = Mock()
         args.get = Mock(side_effect=lambda key, default='': {
             'cuisines': '',
@@ -113,14 +111,13 @@ class TestParseSearchFilters:
             'offset': '0',
             'perPage': '20',
         }.get(key, default))
-        
+
         filters = parse_search_filters(args)
-        
+
         assert filters['not_released_only'] is True
 
     def test_pagination_params(self):
         """Parse offset and perPage parameters."""
-        from unittest.mock import Mock
         args = Mock()
         args.get = Mock(side_effect=lambda key, default='': {
             'cuisines': '',
@@ -133,15 +130,14 @@ class TestParseSearchFilters:
             'offset': '40',
             'perPage': '50',
         }.get(key, default))
-        
+
         filters = parse_search_filters(args)
-        
+
         assert filters['offset'] == 40
         assert filters['per_page'] == 50
 
     def test_per_page_capped_at_50(self):
         """Per page should be capped at 50."""
-        from unittest.mock import Mock
         args = Mock()
         args.get = Mock(side_effect=lambda key, default='': {
             'cuisines': '',
@@ -154,9 +150,9 @@ class TestParseSearchFilters:
             'offset': '0',
             'perPage': '100',
         }.get(key, default))
-        
+
         filters = parse_search_filters(args)
-        
+
         assert filters['per_page'] == 50
 
 
@@ -166,11 +162,11 @@ class TestFilterAndFormatVenues:
     def test_basic_formatting(self, empty_filters):
         """Format venues without filters."""
         hits = VenueFactory.create_batch(3)
-        
-        results, filtered_count, seen_ids = filter_and_format_venues(
+
+        results, _filtered_count, _seen_ids = filter_and_format_venues(
             hits, empty_filters
         )
-        
+
         assert len(results) == 3
         assert all('id' in r for r in results)
         assert all('name' in r for r in results)
@@ -185,11 +181,11 @@ class TestFilterAndFormatVenues:
             VenueFactory.with_cuisine("Japanese", 3) +
             VenueFactory.with_cuisine("French", 2)
         )
-        
-        results, filtered_count, seen_ids = filter_and_format_venues(
+
+        results, filtered_count, _seen_ids = filter_and_format_venues(
             hits, cuisine_filter
         )
-        
+
         assert len(results) == 5
         assert all(r['type'] == 'Italian' for r in results)
         assert filtered_count['cuisine'] == 5  # 3 Japanese + 2 French
@@ -201,11 +197,11 @@ class TestFilterAndFormatVenues:
             VenueFactory.with_price_range(4, 4) +
             VenueFactory.with_price_range(2, 6)
         )
-        
-        results, filtered_count, seen_ids = filter_and_format_venues(
+
+        results, filtered_count, _seen_ids = filter_and_format_venues(
             hits, price_filter
         )
-        
+
         assert len(results) == 4
         assert all(r['price_range'] == 4 for r in results)
         assert filtered_count['price'] == 6
@@ -216,13 +212,13 @@ class TestFilterAndFormatVenues:
         venue1 = VenueFactory.create(venue_id=100, name="Restaurant A")
         venue2 = VenueFactory.create(venue_id=100, name="Restaurant A Duplicate")
         venue3 = VenueFactory.create(venue_id=200, name="Restaurant B")
-        
+
         hits = [venue1, venue2, venue3]
-        
+
         results, filtered_count, seen_ids = filter_and_format_venues(
             hits, empty_filters
         )
-        
+
         assert len(results) == 2
         assert filtered_count['duplicate'] == 1
         assert 100 in seen_ids
@@ -241,7 +237,7 @@ class TestFilterAndFormatVenues:
             'offset': 0,
             'per_page': 20,
         }
-        
+
         # Create: 3 Italian/$$$$, 2 Italian/$$, 2 Japanese/$$$$, 1 Japanese/$$
         hits = (
             VenueFactory.create_batch(3, cuisine="Italian", price_range_id=4) +
@@ -249,11 +245,11 @@ class TestFilterAndFormatVenues:
             VenueFactory.create_batch(2, cuisine="Japanese", price_range_id=4) +
             VenueFactory.create_batch(1, cuisine="Japanese", price_range_id=2)
         )
-        
-        results, filtered_count, seen_ids = filter_and_format_venues(
+
+        results, filtered_count, _seen_ids = filter_and_format_venues(
             hits, filters
         )
-        
+
         assert len(results) == 3  # Only Italian/$$$$
         assert filtered_count['cuisine'] == 3  # 2 Japanese/$$$$ + 1 Japanese/$$
         assert filtered_count['price'] == 2  # 2 Italian/$$
@@ -263,13 +259,13 @@ class TestFilterAndFormatVenues:
         venue1 = VenueFactory.create(name="Valid Restaurant")
         venue2 = VenueFactory.create(name="")
         venue3 = {"_source": {"id": {"resy": 999}}}  # No name field
-        
+
         hits = [venue1, venue2, venue3]
-        
-        results, filtered_count, seen_ids = filter_and_format_venues(
+
+        results, _filtered_count, _seen_ids = filter_and_format_venues(
             hits, empty_filters
         )
-        
+
         assert len(results) == 1
         assert results[0]['name'] == "Valid Restaurant"
 
@@ -277,17 +273,17 @@ class TestFilterAndFormatVenues:
         """seen_ids set should be preserved across calls."""
         hits1 = VenueFactory.create_batch(2)
         hits2 = VenueFactory.create_batch(2)
-        
+
         # First call
         results1, _, seen_ids = filter_and_format_venues(
             hits1, empty_filters
         )
-        
+
         # Second call with same seen_ids
-        results2, _, seen_ids = filter_and_format_venues(
+        results2, _, _seen_ids = filter_and_format_venues(
             hits2, empty_filters, seen_ids=seen_ids
         )
-        
+
         # Should have 4 total results
         assert len(results1) == 2
         assert len(results2) == 2
@@ -308,10 +304,10 @@ class TestGetSearchCacheKey:
             'available_only': False,
             'not_released_only': False,
         }
-        
+
         key1 = get_search_cache_key(query, filters, geo_config_nyc)
         key2 = get_search_cache_key(query, filters, geo_config_nyc)
-        
+
         # Same params should generate same key
         assert key1 == key2
         assert len(key1) == 32  # MD5 hash length
@@ -331,10 +327,10 @@ class TestGetSearchCacheKey:
             'available_party_size': 2,
             'desired_time': '19:00',
         }
-        
+
         key1 = get_search_cache_key(query, filters1, geo_config_nyc, include_availability=True)
         key2 = get_search_cache_key(query, filters2, geo_config_nyc, include_availability=True)
-        
+
         # Different days should generate different keys
         assert key1 != key2
 
@@ -351,10 +347,10 @@ class TestGetSearchCacheKey:
             'available_day': '2026-02-15',  # Different day
             'available_party_size': 2,
         }
-        
+
         key1 = get_search_cache_key(query, filters1, geo_config_nyc, include_availability=False)
         key2 = get_search_cache_key(query, filters2, geo_config_nyc, include_availability=False)
-        
+
         # Same key when not including availability
         assert key1 == key2
 
@@ -369,10 +365,10 @@ class TestGetSearchCacheKey:
             'cuisines': ['Japanese', 'Italian'],  # Different order
             'price_ranges': [4, 2],  # Different order
         }
-        
+
         key1 = get_search_cache_key(query, filters1, geo_config_nyc)
         key2 = get_search_cache_key(query, filters2, geo_config_nyc)
-        
+
         # Should generate same key despite different order
         assert key1 == key2
 
@@ -382,17 +378,16 @@ class TestCacheOperations:
 
     def test_save_and_get_cache(self):
         """Save and retrieve from cache."""
-        from api.utils import SEARCH_CACHE
         SEARCH_CACHE.clear()  # Clear cache before test
-        
+
         cache_key = "test_key_123"
         results = VenueFactory.create_batch(5)
         total = 100
-        
+
         save_search_results_to_cache(cache_key, results, total)
-        
+
         cached = get_cached_search_results(cache_key)
-        
+
         assert cached is not None
         assert len(cached['results']) == 5
         assert cached['total'] == 100
@@ -400,29 +395,25 @@ class TestCacheOperations:
 
     def test_cache_miss(self):
         """Get None for non-existent cache key."""
-        from api.utils import SEARCH_CACHE
         SEARCH_CACHE.clear()
-        
+
         cached = get_cached_search_results("nonexistent_key")
-        
+
         assert cached is None
 
     def test_cache_expiration(self):
         """Cache should expire after TTL."""
-        from api.utils import SEARCH_CACHE, SEARCH_CACHE_TTL
-        import time
-        
         SEARCH_CACHE.clear()
-        
+
         cache_key = "test_key_expire"
         results = VenueFactory.create_batch(2)
-        
+
         save_search_results_to_cache(cache_key, results, 50)
-        
+
         # Manually set timestamp to past
         SEARCH_CACHE[cache_key]['timestamp'] = time.time() - SEARCH_CACHE_TTL - 1
-        
+
         cached = get_cached_search_results(cache_key)
-        
+
         assert cached is None
         assert cache_key not in SEARCH_CACHE

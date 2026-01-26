@@ -4,9 +4,9 @@ Handles AI-powered restaurant reservation information using Google Gemini with G
 """
 
 import logging
-import requests
 from datetime import date, timedelta
 
+import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
 
@@ -58,7 +58,7 @@ def gemini_search(req: Request):
                 today = date.today()
                 end_date = today + timedelta(days=90)  # Check up to 90 days out
 
-                logger.info(f"Checking booking window for venue {venue_id} using calendar API")
+                logger.info("Checking booking window for venue %s using calendar API", venue_id)
 
                 # Query calendar API
                 params = {
@@ -92,26 +92,36 @@ def gemini_search(req: Request):
                                 entry_date_obj = date.fromisoformat(entry_date)
                                 days_ahead = (entry_date_obj - today).days
 
-                                if days_ahead > max_booking_window:
-                                    max_booking_window = days_ahead
+                                max_booking_window = max(max_booking_window, days_ahead)
 
-                        logger.info(f"Final booking window from calendar: {max_booking_window} days (furthest scheduled date)")
+                        logger.info(
+                            f"Final booking window from calendar: {max_booking_window} days "
+                            "(furthest scheduled date)"
+                        )
                     else:
-                        logger.warning(f"Calendar API returned status {resp.status_code}")
+                        logger.warning("Calendar API returned status %s", resp.status_code)
                         max_booking_window = 0
 
                 except Exception as e:
-                    logger.warning(f"Calendar API request failed: {str(e)}")
+                    logger.warning("Calendar API request failed: %s", e)
                     max_booking_window = 0
 
                 # Generate findings
                 if max_booking_window > 0:
-                    resy_findings = f"\n\nIMPORTANT CONTEXT from Resy API: Based on checking the Resy calendar API directly, {restaurant_name} currently has reservations available up to {max_booking_window} days in advance. This suggests the booking window is approximately {max_booking_window} days."
+                    resy_findings = (
+                        f"\n\nIMPORTANT CONTEXT from Resy API: Based on checking the Resy "
+                        f"calendar API directly, {restaurant_name} currently has reservations "
+                        f"available up to {max_booking_window} days in advance. This suggests "
+                        f"the booking window is approximately {max_booking_window} days."
+                    )
                 else:
-                    resy_findings = f"\n\nNote: Checked Resy calendar API but no available reservation dates found in the next 90 days (restaurant may be fully booked or closed)."
+                    resy_findings = (
+                        "\n\nNote: Checked Resy calendar API but no available reservation dates "
+                        "found in the next 90 days (restaurant may be fully booked or closed)."
+                    )
 
             except Exception as e:
-                logger.warning(f"Failed to query Resy API for booking window: {str(e)}")
+                logger.warning("Failed to query Resy API for booking window: %s", e)
                 resy_findings = ""
 
         # Create search query
@@ -222,7 +232,11 @@ If Resy API context is provided above, use it to confirm or verify the booking w
             'groundingSupports': grounding_supports,
             'rawGroundingMetadata': {
                 'retrievalQueries': web_search_queries,
-                'searchEntryPoint': grounding_metadata.search_entry_point.rendered_content if grounding_metadata and grounding_metadata.search_entry_point else None
+                'searchEntryPoint': (
+                    grounding_metadata.search_entry_point.rendered_content
+                    if grounding_metadata and grounding_metadata.search_entry_point
+                    else None
+                )
             },
             'suggestedFollowUps': suggested_follow_ups[:3]
         }
@@ -233,7 +247,7 @@ If Resy API context is provided above, use it to confirm or verify the booking w
         }
 
     except Exception as e:
-        logger.error(f"Error calling Gemini API: {str(e)}")
+        logger.error("Error calling Gemini API: %s", e)
         return {
             'success': False,
             'error': str(e)

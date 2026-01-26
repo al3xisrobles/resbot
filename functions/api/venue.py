@@ -45,7 +45,8 @@ def venue(req: Request):
         response = requests.get(
             'https://api.resy.com/3/venue',
             params={'id': venue_id},
-            headers=headers
+            headers=headers,
+            timeout=30
         )
 
         if response.status_code != 200:
@@ -70,7 +71,13 @@ def venue(req: Request):
                 'name': venue_name,
                 'venue_id': venue_id,
                 'type': venue_data.get('type', 'N/A'),
-                'address': f"{venue_data.get('location', {}).get('address_1', '')}, {venue_data.get('location', {}).get('locality', '')}, {venue_data.get('location', {}).get('region', '')}" if venue_data.get('location') else 'N/A',
+                'address': (
+                    f"{venue_data.get('location', {}).get('address_1', '')}, "
+                    f"{venue_data.get('location', {}).get('locality', '')}, "
+                    f"{venue_data.get('location', {}).get('region', '')}"
+                    if venue_data.get('location')
+                    else 'N/A'
+                ),
                 'neighborhood': venue_data.get('location', {}).get('neighborhood', ''),
                 'price_range': venue_data.get('price_range_id', 0),
                 'rating': venue_data.get('rater', [])[0].get('score') if venue_data.get('rater') else None,
@@ -80,7 +87,7 @@ def venue(req: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error fetching venue: {str(e)}")
+        logger.error("Error fetching venue: %s", e)
         return {
             'success': False,
             'error': str(e)
@@ -106,10 +113,10 @@ def venue_links(req: Request):
                 'error': 'Missing venue_id parameter'
             }, 400
 
-        logger.info(f"[VENUE-LINKS] Starting link search for venue_id: {venue_id}")
+        logger.info("[VENUE-LINKS] Starting link search for venue_id: %s", venue_id)
 
         # First get venue details to get the restaurant name
-        logger.info(f"[VENUE-LINKS] Fetching venue details from Resy API...")
+        logger.info("[VENUE-LINKS] Fetching venue details from Resy API...")
         credentials = load_credentials(user_id)
         headers = get_resy_headers(credentials)
 
@@ -117,11 +124,15 @@ def venue_links(req: Request):
         venue_response = requests.get(
             'https://api.resy.com/3/venue',
             params={'id': venue_id},
-            headers=headers
+            headers=headers,
+            timeout=30
         )
 
         if venue_response.status_code != 200:
-            logger.error(f"[VENUE-LINKS] Failed to fetch venue details. Status: {venue_response.status_code}")
+            logger.error(
+                "[VENUE-LINKS] Failed to fetch venue details. Status: %s",
+                venue_response.status_code
+            )
             return {
                 'success': False,
                 'error': 'Failed to fetch venue details'
@@ -132,10 +143,10 @@ def venue_links(req: Request):
         location = venue_data.get('location', {})
         city = location.get('locality', '')
 
-        logger.info(f"[VENUE-LINKS] Found restaurant: '{restaurant_name}' in {city}")
+        logger.info("[VENUE-LINKS] Found restaurant: '%s' in %s", restaurant_name, city)
 
         if not restaurant_name:
-            logger.error(f"[VENUE-LINKS] Restaurant name not found in venue data")
+            logger.error("[VENUE-LINKS] Restaurant name not found in venue data")
             return {
                 'success': False,
                 'error': 'Restaurant name not found'
@@ -151,7 +162,10 @@ def venue_links(req: Request):
         # Convert to Resy URL format: lowercase, spaces to hyphens, & to "and"
         resy_slug = clean_name.lower().replace(" ", "-").replace("&", "and")
         resy_link = f'https://resy.com/cities/ny/{resy_slug}'
-        logger.info(f"[VENUE-LINKS] Generated Resy link from '{restaurant_name}' -> '{clean_name}' -> {resy_link}")
+        logger.info(
+            "[VENUE-LINKS] Generated Resy link from '%s' -> '%s' -> %s",
+            restaurant_name, clean_name, resy_link
+        )
 
         links = {
             'googleMaps': None,
@@ -180,8 +194,8 @@ def venue_links(req: Request):
 
                 full_address = ", ".join(address_parts) + " restaurant"
 
-                logger.info(f"[VENUE-LINKS] Full address data: {location}")
-                logger.info(f"[VENUE-LINKS] Searching for (Text Search New): {full_address}")
+                logger.info("[VENUE-LINKS] Full address data: %s", location)
+                logger.info("[VENUE-LINKS] Searching for (Text Search New): %s", full_address)
 
                 places_url = "https://places.googleapis.com/v1/places:searchText"
 
@@ -197,9 +211,13 @@ def venue_links(req: Request):
                     "X-Goog-FieldMask": "places.displayName,places.googleMapsLinks.placeUri",
                 }
 
-                places_response = requests.post(places_url, json=payload, headers=headers)
+                places_response = requests.post(
+                    places_url, json=payload, headers=headers, timeout=30
+                )
                 logger.info(
-                    f"[VENUE-LINKS] Places API (New) status={places_response.status_code}, body={places_response.text[:300]}"
+                    "[VENUE-LINKS] Places API (New) status=%s, body=%s",
+                    places_response.status_code,
+                    places_response.text[:300]
                 )
 
                 if places_response.status_code == 200:
@@ -229,20 +247,28 @@ def venue_links(req: Request):
                     )
 
             except Exception as e:
-                logger.error(f"[VENUE-LINKS] Error searching Google Maps with Places API (New): {str(e)}")
+                logger.error(
+                    "[VENUE-LINKS] Error searching Google Maps with Places API (New): %s", e
+                )
         else:
-            logger.warning(f"[VENUE-LINKS] Google Places API key not configured, skipping Google Maps search")
+            logger.warning(
+                "[VENUE-LINKS] Google Places API key not configured, "
+                "skipping Google Maps search"
+            )
 
         # Log final results
         found_count = sum(1 for link in links.values() if link is not None)
-        logger.info(f"[VENUE-LINKS] ✓ Completed. Found {found_count}/2 links for '{restaurant_name}'")
+        logger.info(
+            "[VENUE-LINKS] ✓ Completed. Found %s/2 links for '%s'",
+            found_count, restaurant_name
+        )
 
         # Debug: Log what we're getting from the API
-        logger.info(f"[VENUE-LINKS] Venue type: {venue_data.get('type')}")
-        logger.info(f"[VENUE-LINKS] Location address_1: {location.get('address_1')}")
-        logger.info(f"[VENUE-LINKS] Location neighborhood: {location.get('neighborhood')}")
-        logger.info(f"[VENUE-LINKS] Price range ID: {venue_data.get('price_range_id')}")
-        logger.info(f"[VENUE-LINKS] Rating: {venue_data.get('rating')}")
+        logger.info("[VENUE-LINKS] Venue type: %s", venue_data.get('type'))
+        logger.info("[VENUE-LINKS] Location address_1: %s", location.get('address_1'))
+        logger.info("[VENUE-LINKS] Location neighborhood: %s", location.get('neighborhood'))
+        logger.info("[VENUE-LINKS] Price range ID: %s", venue_data.get('price_range_id'))
+        logger.info("[VENUE-LINKS] Rating: %s", venue_data.get('rating'))
 
         response_data = {
             'success': True,
@@ -260,7 +286,7 @@ def venue_links(req: Request):
         return response_data
 
     except Exception as e:
-        logger.error(f"[VENUE-LINKS] ✗ Error getting venue links: {str(e)}")
+        logger.error("[VENUE-LINKS] ✗ Error getting venue links: %s", e)
         return {
             'success': False,
             'error': str(e)

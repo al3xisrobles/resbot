@@ -5,9 +5,9 @@ Handles restaurant search by name and by map bounding box
 
 import logging
 import time
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
 from firebase_admin import firestore as admin_firestore
@@ -53,7 +53,10 @@ def search(req: Request):
         # Parse filters using helper function
         filters = parse_search_filters(req.args)
 
-        print(f"[SEARCH] Raw params - query: '{query}', available_only: {filters['available_only']}, offset: {filters['offset']}, perPage: {filters['per_page']}")
+        print(
+            f"[SEARCH] Raw params - query: '{query}', available_only: {filters['available_only']}, "
+            f"offset: {filters['offset']}, perPage: {filters['per_page']}"
+        )
         print(f"[SEARCH] Parsed filters - cuisines: {filters['cuisines']}, priceRanges: {filters['price_ranges']}")
 
         # At least one filter must be provided
@@ -69,7 +72,10 @@ def search(req: Request):
 
         # Default to Times Square with large radius
         geo_center = {'lat': 40.758896, 'lng': -73.985130, 'radius': 16100}  # Times Square, ~10 miles
-        print(f"[SEARCH] Using default NYC geo center: lat={geo_center['lat']}, lng={geo_center['lng']}, radius={geo_center['radius']}m")
+        print(
+            f"[SEARCH] Using default NYC geo center: lat={geo_center['lat']}, "
+            f"lng={geo_center['lng']}, radius={geo_center['radius']}m"
+        )
 
         # Build geo config for payload
         geo_config = {
@@ -85,7 +91,8 @@ def search(req: Request):
             response = requests.post(
                 'https://api.resy.com/3/venuesearch/search',
                 json=payload,
-                headers=headers
+                headers=headers,
+                timeout=30
             )
 
             if response.status_code != 200:
@@ -113,11 +120,18 @@ def search(req: Request):
         # Slice results based on offset
         results = all_results[filters['offset']:filters['offset'] + filters['per_page']]
 
-        print(f"[SEARCH] Fetched {len(all_results)} total filtered results, returning {len(results)} for offset {filters['offset']}")
+        print(
+            f"[SEARCH] Fetched {len(all_results)} total filtered results, "
+            f"returning {len(results)} for offset {filters['offset']}"
+        )
         print(f"[SEARCH] Resy total (unfiltered): {total_resy_results}")
 
         # Calculate next offset
-        next_offset = filters['offset'] + len(results) if (len(all_results) > filters['offset'] + filters['per_page'] or has_more) else None
+        next_offset = (
+            filters['offset'] + len(results)
+            if (len(all_results) > filters['offset'] + filters['per_page'] or has_more)
+            else None
+        )
 
         return {
             'success': True,
@@ -132,7 +146,7 @@ def search(req: Request):
         }
 
     except Exception as e:
-        logger.exception(f"Error searching venues")
+        logger.exception("Error searching venues")
         return {
             'success': False,
             'error': str(e)
@@ -192,7 +206,11 @@ def search_map(req: Request):
         filters = parse_search_filters(req.args)
 
         print(f"[MAP SEARCH] Bounding box: SW({sw_lat}, {sw_lng}) to NE({ne_lat}, {ne_lng})")
-        print(f"[MAP SEARCH] Params - query: '{query}', available_only: {filters['available_only']}, not_released_only: {filters.get('not_released_only', False)}, offset: {filters['offset']}, perPage: {filters['per_page']}")
+        print(
+            f"[MAP SEARCH] Params - query: '{query}', available_only: {filters['available_only']}, "
+            f"not_released_only: {filters.get('not_released_only', False)}, "
+            f"offset: {filters['offset']}, perPage: {filters['per_page']}"
+        )
         print(f"[MAP SEARCH] Parsed filters - cuisines: {filters['cuisines']}, priceRanges: {filters['price_ranges']}")
 
         # Load credentials (from Firestore if userId provided, else from credentials.json)
@@ -219,10 +237,17 @@ def search_map(req: Request):
         )
 
         if should_fetch_availability:
-            print(f"[MAP SEARCH] Will fetch availability for date: {filters['available_day']}, party size: {filters['available_party_size']}")
+            print(
+                f"[MAP SEARCH] Will fetch availability for date: {filters['available_day']}, "
+                f"party size: {filters['available_party_size']}"
+            )
 
         if paginate_over_filtered:
-            print(f"[MAP SEARCH] Paginating over availability-filtered results (available_only={filters.get('available_only')}, not_released_only={filters.get('not_released_only')})")
+            print(
+                f"[MAP SEARCH] Paginating over availability-filtered results "
+                f"(available_only={filters.get('available_only')}, "
+                f"not_released_only={filters.get('not_released_only')})"
+            )
 
         # Generate cache key
         # When paginating over filtered results, include availability params in cache key
@@ -254,7 +279,7 @@ def search_map(req: Request):
 
         if need_fetch:
             # Cache miss - fetch from API
-            print(f"[MAP SEARCH] Cache miss - fetching from Resy API")
+            print("[MAP SEARCH] Cache miss - fetching from Resy API")
 
             # Create fetch function for Resy API
             def fetch_resy_page(page_num):
@@ -263,7 +288,8 @@ def search_map(req: Request):
                 response = requests.post(
                     'https://api.resy.com/3/venuesearch/search',
                     json=payload,
-                    headers=headers
+                    headers=headers,
+                    timeout=30
                 )
 
                 if response.status_code != 200:
@@ -328,7 +354,10 @@ def search_map(req: Request):
 
             display_total = filtered_total
 
-            print(f"[MAP SEARCH] Returning {len(results)} results for offset {filters['offset']} (filtered_total={filtered_total}, has_more={has_more})")
+            print(
+                f"[MAP SEARCH] Returning {len(results)} results for offset {filters['offset']} "
+                f"(filtered_total={filtered_total}, has_more={has_more})"
+            )
 
         else:
             # ========================================================================
@@ -374,11 +403,18 @@ def search_map(req: Request):
                             print(f"[AVAILABILITY] Error in parallel fetch for venue {result['id']}: {str(e)}")
                             result['availabilityStatus'] = 'Unable to fetch'
 
-            print(f"[MAP SEARCH] Returning {len(results)} results for offset {filters['offset']} (have {len(all_results)} total cached)")
+            print(
+                f"[MAP SEARCH] Returning {len(results)} results for offset {filters['offset']} "
+                f"(have {len(all_results)} total cached)"
+            )
             print(f"[MAP SEARCH] Resy total (unfiltered): {total_resy_results}")
 
             # For normal search: show next if there are more results in cache or API
-            next_offset = filters['offset'] + len(results) if (len(all_results) > filters['offset'] + filters['per_page'] or has_more) else None
+            next_offset = (
+                filters['offset'] + len(results)
+                if (len(all_results) > filters['offset'] + filters['per_page'] or has_more)
+                else None
+            )
             display_total = total_resy_results
 
         # Mark job as done
@@ -405,7 +441,7 @@ def search_map(req: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error searching venues by map: {str(e)}")
+        logger.error("Error searching venues by map: %s", e)
         # Mark job as error
         if job_id:
             duration_ms = int((time.time() - start_time) * 1000)

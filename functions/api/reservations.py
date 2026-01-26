@@ -4,9 +4,10 @@ Handles calendar availability and reservation creation
 """
 
 import logging
-import requests
+import traceback
 from datetime import date, timedelta
 
+import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
 
@@ -82,7 +83,7 @@ def calendar(req: Request):
             availability.append({
                 'date': date_str,
                 'available': reservation_status == 'available',
-                'soldOut': reservation_status == 'sold-out' or reservation_status == 'not available',
+                'soldOut': reservation_status in ('sold-out', 'not available'),
                 'closed': reservation_status == 'closed'
             })
 
@@ -96,7 +97,7 @@ def calendar(req: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error fetching calendar: {str(e)}")
+        logger.error("Error fetching calendar: %s", e)
         return {
             'success': False,
             'error': str(e)
@@ -168,7 +169,7 @@ def reservation(req: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error making reservation: {str(e)}")
+        logger.error("Error making reservation: %s", e)
         return {
             'success': False,
             'error': str(e)
@@ -190,6 +191,11 @@ def slots(req: Request):
         venue_id = req.args.get('venueId')
         date_str = req.args.get('date')
         user_id = req.args.get('userId')
+
+        logger.info(
+            f"[SLOTS] Request received: venueId={venue_id}, date={date_str}, "
+            f"userId={user_id}, partySize={req.args.get('partySize', '2')}"
+        )
 
         if not venue_id:
             return {
@@ -226,7 +232,17 @@ def slots(req: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error fetching slots: {str(e)}")
+        error_details = {
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'error_args': getattr(e, 'args', None),
+            'venue_id': venue_id,
+            'date': date_str,
+            'user_id': user_id,
+            'party_size': req.args.get('partySize', '2'),
+        }
+        logger.error("Error fetching slots: %s", error_details)
+        logger.error("Full traceback:\n%s", traceback.format_exc())
         return {
             'success': False,
             'error': str(e)

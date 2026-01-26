@@ -5,11 +5,14 @@ Handles direct API authentication with Resy
 
 import logging
 import os
-import requests
+import traceback
 from urllib.parse import urlencode
+
+import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
 from firebase_admin import firestore
+from google.cloud import firestore as gc_firestore
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -45,20 +48,20 @@ def authenticate_with_resy(email: str, password: str) -> dict:
     # Form-encoded body - do NOT log this as it contains the password
     body = urlencode({"email": email, "password": password})
 
-    logger.info(f"Authenticating with Resy for email: {email}")
+    logger.info("Authenticating with Resy for email: %s", email)
 
     try:
         response = requests.post(url, headers=headers, data=body, timeout=10)
 
         if response.status_code != 200:
-            logger.error(f"Resy authentication failed with status {response.status_code}")
+            logger.error("Resy authentication failed with status %s", response.status_code)
             raise Exception("Invalid Resy login")
 
         return response.json()
 
     except requests.exceptions.RequestException as e:
-        logger.error(f"Request to Resy API failed: {str(e)}")
-        raise Exception("Failed to connect to Resy")
+        logger.error("Request to Resy API failed: %s", e)
+        raise Exception("Failed to connect to Resy") from e
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
@@ -106,7 +109,7 @@ def start_resy_onboarding(req: Request):
                 'error': 'Missing required fields: email, password, userId'
             }, 400
 
-        logger.info(f"Starting Resy onboarding for Firebase user: {firebase_uid}")
+        logger.info("Starting Resy onboarding for Firebase user: %s", firebase_uid)
 
         # Authenticate with Resy API
         auth_data = authenticate_with_resy(email, password)
@@ -132,17 +135,36 @@ def start_resy_onboarding(req: Request):
             'mobileNumber': auth_data.get('mobile_number'),
             'paymentMethods': payment_methods,
             'legacyToken': auth_data.get('legacy_token'),
-            'updatedAt': firestore.SERVER_TIMESTAMP
+            'updatedAt': gc_firestore.SERVER_TIMESTAMP
         }
 
         # Store credentials in Firestore
         db = firestore.client()
-        db.collection('resyCredentials').document(firebase_uid).set(credentials)
+        doc_ref = db.collection('resyCredentials').document(firebase_uid)
 
-        logger.info(
-            f"✓ Stored Resy credentials for Firebase user {firebase_uid} "
-            f"(Resy user: {credentials['userId']}, has payment: {has_payment_method})"
-        )
+        try:
+            doc_ref.set(credentials)
+            logger.info("[ONBOARDING] Firestore write initiated for user %s", firebase_uid)
+
+            # Verify the write succeeded by reading it back
+            verify_doc = doc_ref.get()
+            if not verify_doc.exists:
+                error_msg = (
+                    f"Failed to verify Firestore write for user {firebase_uid} - "
+                    f"document does not exist after write"
+                )
+                logger.error("[ONBOARDING] %s", error_msg)
+                raise Exception(error_msg)
+
+            logger.info(
+                f"✓ Stored Resy credentials for Firebase user {firebase_uid} "
+                f"(Resy user: {credentials['userId']}, has payment: {has_payment_method})"
+            )
+        except Exception as firestore_error:
+            error_msg = f"Failed to store credentials in Firestore: {str(firestore_error)}"
+            logger.error("[ONBOARDING] %s", error_msg)
+            logger.error(f"[ONBOARDING] Full traceback:\n{traceback.format_exc()}")
+            raise Exception(error_msg) from firestore_error
 
         return {
             'success': True,
@@ -152,7 +174,7 @@ def start_resy_onboarding(req: Request):
 
     except Exception as e:
         error_message = str(e)
-        logger.error(f"Error during Resy onboarding: {error_message}")
+        logger.error("Error during Resy onboarding: %s", error_message)
 
         # Return appropriate error response
         if "Invalid Resy login" in error_message:
@@ -160,11 +182,10 @@ def start_resy_onboarding(req: Request):
                 'success': False,
                 'error': 'Invalid Resy login'
             }, 400
-        else:
-            return {
-                'success': False,
-                'error': 'Failed to connect Resy account'
-            }, 502
+        return {
+            'success': False,
+            'error': 'Failed to connect Resy account'
+        }, 502
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET", "DELETE"]))
@@ -199,23 +220,22 @@ def resy_account(req: Request):
                     'email': data.get('email'),
                     'name': f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
                 }, 200
-            else:
-                return {
-                    'success': True,
-                    'connected': False
-                }, 200
+            return {
+                'success': True,
+                'connected': False
+            }, 200
 
-        elif req.method == 'DELETE':
+        if req.method == 'DELETE':
             # Delete credentials
             doc_ref.delete()
-            logger.info(f"Deleted Resy credentials for Firebase user {firebase_uid}")
+            logger.info("Deleted Resy credentials for Firebase user %s", firebase_uid)
             return {
                 'success': True,
                 'message': 'Resy account disconnected'
             }, 200
 
     except Exception as e:
-        logger.error(f"Error in resy_account endpoint: {str(e)}")
+        logger.error("Error in resy_account endpoint: %s", e)
         return {
             'success': False,
             'error': str(e)

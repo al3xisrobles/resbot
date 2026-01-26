@@ -70,7 +70,7 @@ def climbing(req: Request):
 
         # Query the climbing endpoint
         url = f'https://api.resy.com/3/cities/new-york-ny/list/climbing?limit={limit}'
-        logger.info(f"Fetching climbing restaurants from: {url}")
+        logger.info("Fetching climbing restaurants from: %s", url)
 
         response = requests.get(url, headers=headers, timeout=10)
 
@@ -107,7 +107,7 @@ def climbing(req: Request):
                 'rating': venue.get('rater', [{}])[0].get('score') if venue.get('rater') else None
             })
 
-        logger.info(f"Fetched {len(restaurants)} climbing restaurants")
+        logger.info("Fetched %s climbing restaurants", len(restaurants))
 
         return {
             'success': True,
@@ -115,7 +115,7 @@ def climbing(req: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error fetching climbing restaurants: {str(e)}")
+        logger.error("Error fetching climbing restaurants: %s", e)
         return {
             'success': False,
             'error': str(e)
@@ -141,7 +141,7 @@ def top_rated(req: Request):
 
         # Query the top-rated endpoint
         url = f'https://api.resy.com/3/cities/new-york-ny/list/top-rated?limit={limit}'
-        logger.info(f"Fetching top-rated restaurants from: {url}")
+        logger.info("Fetching top-rated restaurants from: %s", url)
 
         response = requests.get(url, headers=headers, timeout=10)
 
@@ -178,7 +178,7 @@ def top_rated(req: Request):
                 'rating': venue.get('rater', [{}])[0].get('score') if venue.get('rater') else None
             })
 
-        logger.info(f"Fetched {len(restaurants)} top-rated restaurants")
+        logger.info("Fetched %s top-rated restaurants", len(restaurants))
 
         return {
             'success': True,
@@ -186,7 +186,7 @@ def top_rated(req: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error fetching top-rated restaurants: {str(e)}")
+        logger.error("Error fetching top-rated restaurants: %s", e)
         return {
             'success': False,
             'error': str(e)

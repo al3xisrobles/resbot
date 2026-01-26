@@ -7,11 +7,12 @@ These tests verify the full API flow including:
 - Filtering and pagination
 - Response formatting
 """
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
+
 from flask import Flask
 from firebase_functions.https_fn import Request
-from api.tests.conftest import VenueFactory, AvailabilityFactory
+
+from api.tests.conftest import VenueFactory
 
 # Import the actual function implementations
 import api.search as search_module
@@ -27,7 +28,7 @@ class TestSearchEndpoint:
         request.args.get = Mock(side_effect=lambda key, default='': kwargs.get(key, default))
         request.args.to_dict = Mock(return_value=kwargs)
         return request
-    
+
     def call_endpoint(self, endpoint_func, request):
         """Call an endpoint function and extract the response."""
         app = Flask(__name__)
@@ -46,11 +47,11 @@ class TestSearchEndpoint:
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.build_search_payload')
     @patch('api.search.requests.post')
-    def test_search_basic(self, mock_post, mock_build_payload, mock_fetch, mock_headers, mock_credentials):
+    def test_search_basic(self, _mock_post, _mock_build_payload, mock_fetch, mock_headers, mock_credentials):
         """Basic search without filters."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         # Mock fetch_until_enough_results to return test data
         mock_venues = VenueFactory.create_batch(5)
         # Convert to format expected by the endpoint (already formatted by filter_and_format_venues)
@@ -58,7 +59,11 @@ class TestSearchEndpoint:
         for venue in mock_venues:
             venue_data = venue.get('_source') or venue
             formatted_venues.append({
-                'id': venue_data.get('id', {}).get('resy') if isinstance(venue_data.get('id'), dict) else venue_data.get('id'),
+                'id': (
+                    venue_data.get('id', {}).get('resy')
+                    if isinstance(venue_data.get('id'), dict)
+                    else venue_data.get('id')
+                ),
                 'name': venue_data.get('name', ''),
                 'type': venue_data.get('cuisine', [None])[0] if venue_data.get('cuisine') else '',
                 'price_range': venue_data.get('price_range_id', 0),
@@ -69,16 +74,16 @@ class TestSearchEndpoint:
                 'longitude': venue_data.get('_geoloc', {}).get('lng'),
                 'imageUrl': venue_data.get('images', [None])[0] if venue_data.get('images') else None,
             })
-        
+
         mock_fetch.return_value = (formatted_venues, 100, False)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             query='Italian',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 5
@@ -89,23 +94,27 @@ class TestSearchEndpoint:
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.build_search_payload')
     @patch('api.search.requests.post')
-    def test_search_with_cuisines(self, mock_post, mock_build_payload, mock_fetch, mock_headers, mock_credentials):
+    def test_search_with_cuisines(self, _mock_post, _mock_build_payload, mock_fetch, mock_headers, mock_credentials):
         """Search with cuisine filter."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         mock_venues = VenueFactory.with_cuisine("Italian", 3)
         mock_fetch.return_value = (mock_venues, 50, False)
-        
+
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         mock_venues = VenueFactory.with_cuisine("Italian", 3)
         formatted_venues = []
         for venue in mock_venues:
             venue_data = venue.get('_source') or venue
             formatted_venues.append({
-                'id': venue_data.get('id', {}).get('resy') if isinstance(venue_data.get('id'), dict) else venue_data.get('id'),
+                'id': (
+                    venue_data.get('id', {}).get('resy')
+                    if isinstance(venue_data.get('id'), dict)
+                    else venue_data.get('id')
+                ),
                 'name': venue_data.get('name', ''),
                 'type': venue_data.get('cuisine', [None])[0] if venue_data.get('cuisine') else '',
                 'price_range': venue_data.get('price_range_id', 0),
@@ -117,14 +126,14 @@ class TestSearchEndpoint:
                 'imageUrl': venue_data.get('images', [None])[0] if venue_data.get('images') else None,
             })
         mock_fetch.return_value = (formatted_venues, 50, False)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             cuisines='Italian,Japanese',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 3
@@ -134,20 +143,26 @@ class TestSearchEndpoint:
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.build_search_payload')
     @patch('api.search.requests.post')
-    def test_search_with_price_ranges(self, mock_post, mock_build_payload, mock_fetch, mock_headers, mock_credentials):
+    def test_search_with_price_ranges(
+        self, _mock_post, _mock_build_payload, mock_fetch, mock_headers, mock_credentials
+    ):
         """Search with price range filter."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         mock_venues = VenueFactory.with_price_range(4, 2)
         formatted_venues = []
         for venue in mock_venues:
             venue_data = venue.get('_source') or venue
             formatted_venues.append({
-                'id': venue_data.get('id', {}).get('resy') if isinstance(venue_data.get('id'), dict) else venue_data.get('id'),
+                'id': (
+                    venue_data.get('id', {}).get('resy')
+                    if isinstance(venue_data.get('id'), dict)
+                    else venue_data.get('id')
+                ),
                 'name': venue_data.get('name', ''),
                 'type': venue_data.get('cuisine', [None])[0] if venue_data.get('cuisine') else '',
                 'price_range': venue_data.get('price_range_id', 0),
@@ -159,14 +174,14 @@ class TestSearchEndpoint:
                 'imageUrl': venue_data.get('images', [None])[0] if venue_data.get('images') else None,
             })
         mock_fetch.return_value = (formatted_venues, 30, False)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             priceRanges='2,4',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 2
@@ -177,13 +192,13 @@ class TestSearchEndpoint:
         """Search without any filters should return error."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         request = self.create_mock_request(
             userId='test_user',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search, request)
-        
+
         assert status_code == 400
         assert response['success'] is False
         assert 'error' in response
@@ -193,20 +208,24 @@ class TestSearchEndpoint:
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.build_search_payload')
     @patch('api.search.requests.post')
-    def test_search_pagination(self, mock_post, mock_build_payload, mock_fetch, mock_headers, mock_credentials):
+    def test_search_pagination(self, _mock_post, _mock_build_payload, mock_fetch, mock_headers, mock_credentials):
         """Search with pagination (offset and perPage)."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         mock_venues = VenueFactory.create_batch(20)
         formatted_venues = []
         for venue in mock_venues:
             venue_data = venue.get('_source') or venue
             formatted_venues.append({
-                'id': venue_data.get('id', {}).get('resy') if isinstance(venue_data.get('id'), dict) else venue_data.get('id'),
+                'id': (
+                    venue_data.get('id', {}).get('resy')
+                    if isinstance(venue_data.get('id'), dict)
+                    else venue_data.get('id')
+                ),
                 'name': venue_data.get('name', ''),
                 'type': venue_data.get('cuisine', [None])[0] if venue_data.get('cuisine') else '',
                 'price_range': venue_data.get('price_range_id', 0),
@@ -218,16 +237,16 @@ class TestSearchEndpoint:
                 'imageUrl': venue_data.get('images', [None])[0] if venue_data.get('images') else None,
             })
         mock_fetch.return_value = (formatted_venues, 100, True)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             query='Restaurant',
             offset='20',
             perPage='20',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert response['pagination']['offset'] == 20
@@ -244,7 +263,7 @@ class TestSearchMapEndpoint:
         request.args.get = Mock(side_effect=lambda key, default='': kwargs.get(key, default))
         request.args.to_dict = Mock(return_value=kwargs)
         return request
-    
+
     def call_endpoint(self, endpoint_func, request):
         """Call an endpoint function and extract the response."""
         app = Flask(__name__)
@@ -265,7 +284,7 @@ class TestSearchMapEndpoint:
     @patch('api.search.get_cached_search_results')
     @patch('api.search.save_search_results_to_cache')
     def test_search_map_basic(
-        self, mock_save_cache, mock_get_cache, mock_cache_key,
+        self, _mock_save_cache, mock_get_cache, mock_cache_key,
         mock_fetch, mock_headers, mock_credentials
     ):
         """Basic map search without filters."""
@@ -273,10 +292,10 @@ class TestSearchMapEndpoint:
         mock_headers.return_value = {'Authorization': 'test'}
         mock_get_cache.return_value = None  # Cache miss
         mock_cache_key.return_value = 'test_cache_key'
-        
+
         mock_venues = VenueFactory.create_batch(10)
         mock_fetch.return_value = (mock_venues, 50, False)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             swLat='40.7',
@@ -284,9 +303,9 @@ class TestSearchMapEndpoint:
             neLat='40.8',
             neLng='-73.93',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search_map, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 10
@@ -305,14 +324,18 @@ class TestSearchMapEndpoint:
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
         mock_cache_key.return_value = 'test_cache_key'
-        
+
         # Return cached data - enough for the requested page (offset=0, perPage=20)
         cached_venues = VenueFactory.create_batch(25)  # More than needed
         formatted_cached = []
         for venue in cached_venues:
             venue_data = venue.get('_source') or venue
             formatted_cached.append({
-                'id': venue_data.get('id', {}).get('resy') if isinstance(venue_data.get('id'), dict) else venue_data.get('id'),
+                'id': (
+                    venue_data.get('id', {}).get('resy')
+                    if isinstance(venue_data.get('id'), dict)
+                    else venue_data.get('id')
+                ),
                 'name': venue_data.get('name', ''),
                 'type': venue_data.get('cuisine', [None])[0] if venue_data.get('cuisine') else '',
                 'price_range': venue_data.get('price_range_id', 0),
@@ -328,7 +351,7 @@ class TestSearchMapEndpoint:
             'total': 50,
             'timestamp': 1000.0
         }
-        
+
         request = self.create_mock_request(
             userId='test_user',
             swLat='40.7',
@@ -338,9 +361,9 @@ class TestSearchMapEndpoint:
             offset='0',
             perPage='20',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search_map, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 20  # perPage=20
@@ -356,7 +379,7 @@ class TestSearchMapEndpoint:
     @patch('api.search.get_cached_search_results')
     @patch('api.search.save_search_results_to_cache')
     def test_search_map_available_only(
-        self, mock_save_cache, mock_get_cache, mock_cache_key,
+        self, _mock_save_cache, mock_get_cache, mock_cache_key,
         mock_fetch, mock_headers, mock_credentials
     ):
         """Map search with available_only filter."""
@@ -364,14 +387,14 @@ class TestSearchMapEndpoint:
         mock_headers.return_value = {'Authorization': 'test'}
         mock_get_cache.return_value = None
         mock_cache_key.return_value = 'test_cache_key'
-        
+
         mock_venues = VenueFactory.create_batch(5)
         # Add availableTimes to mock venues
         for venue in mock_venues:
             venue['availableTimes'] = ['6:00 PM', '7:00 PM']
-        
+
         mock_fetch.return_value = (mock_venues, 20, False)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             swLat='40.7',
@@ -382,9 +405,9 @@ class TestSearchMapEndpoint:
             available_day='2026-02-14',
             available_party_size='2',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search_map, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 5
@@ -399,7 +422,7 @@ class TestSearchMapEndpoint:
     @patch('api.search.get_cached_search_results')
     @patch('api.search.save_search_results_to_cache')
     def test_search_map_not_released_only(
-        self, mock_save_cache, mock_get_cache, mock_cache_key,
+        self, _mock_save_cache, mock_get_cache, mock_cache_key,
         mock_fetch, mock_headers, mock_credentials
     ):
         """Map search with not_released_only filter."""
@@ -407,14 +430,14 @@ class TestSearchMapEndpoint:
         mock_headers.return_value = {'Authorization': 'test'}
         mock_get_cache.return_value = None
         mock_cache_key.return_value = 'test_cache_key'
-        
+
         mock_venues = VenueFactory.create_batch(3)
         # Add availabilityStatus to mock venues
         for venue in mock_venues:
             venue['availabilityStatus'] = 'Not released yet'
-        
+
         mock_fetch.return_value = (mock_venues, 15, False)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             swLat='40.7',
@@ -425,9 +448,9 @@ class TestSearchMapEndpoint:
             available_day='2026-02-14',
             available_party_size='2',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search_map, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 3
@@ -449,14 +472,14 @@ class TestSearchMapEndpoint:
         mock_headers.return_value = {'Authorization': 'test'}
         mock_get_cache.return_value = None
         mock_cache_key.return_value = 'test_cache_key'
-        
+
         # First 20 filtered results
         all_filtered = VenueFactory.create_batch(20)
         for venue in all_filtered:
             venue['availableTimes'] = ['6:00 PM']
-        
+
         mock_fetch.return_value = (all_filtered, 100, False)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             swLat='40.7',
@@ -469,9 +492,9 @@ class TestSearchMapEndpoint:
             offset='0',
             perPage='20',
         )
-        
+
         response, status_code = self.call_endpoint(search_module.search_map, request)
-        
+
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 20
@@ -493,10 +516,10 @@ class TestSearchMapEndpoint:
         mock_headers.return_value = {'Authorization': 'test'}
         mock_get_cache.return_value = None
         mock_cache_key.return_value = 'test_cache_key'
-        
+
         mock_venues = VenueFactory.create_batch(10)
         mock_fetch.return_value = (mock_venues, 50, False)
-        
+
         request = self.create_mock_request(
             userId='test_user',
             jobId='test_job_123',
@@ -505,9 +528,9 @@ class TestSearchMapEndpoint:
             neLat='40.8',
             neLng='-73.93',
         )
-        
-        response, status_code = self.call_endpoint(search_module.search_map, request)
-        
+
+        _response, status_code = self.call_endpoint(search_module.search_map, request)
+
         assert status_code == 200
         # Verify progress updates were called
         assert mock_progress.call_count > 0
@@ -518,11 +541,11 @@ class TestSearchMapEndpoint:
         """Map search should handle errors gracefully."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
         mock_headers.return_value = {'Authorization': 'test'}
-        
+
         # Simulate error in fetch_until_enough_results
         with patch('api.search.fetch_until_enough_results') as mock_fetch:
             mock_fetch.side_effect = Exception("API Error")
-            
+
             request = self.create_mock_request(
                 userId='test_user',
                 swLat='40.7',
@@ -530,9 +553,9 @@ class TestSearchMapEndpoint:
                 neLat='40.8',
                 neLng='-73.93',
             )
-            
+
             response, status_code = self.call_endpoint(search_module.search_map, request)
-            
+
             assert status_code == 500
             assert response['success'] is False
             assert 'error' in response

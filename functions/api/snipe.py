@@ -71,7 +71,7 @@ def _make_reservation_for_job(job_data: dict, user_id: str = None, use_parallel:
         user_id: User ID for loading credentials
         use_parallel: If True, attempts to book top 3 slots in parallel for speed
     """
-    logger.info(f"[run_snipe] Starting reservation for job {job_data.get('jobId')} at {dt.datetime.now().isoformat()}")
+    logger.info("[run_snipe] Starting reservation for job %s at %s", job_data.get("jobId"), dt.datetime.now().isoformat())
     reservation_request, manager = _build_reservation_request_from_dict(job_data, user_id)
 
     if use_parallel:
@@ -115,7 +115,7 @@ def run_snipe(req: Request):
 
     try:
         logger.info("[run_snipe] Received request")
-        logger.info(f"[run_snipe] method={req.method}")
+        logger.info("[run_snipe] method=%s", req.method)
         body = req.get_json(silent=True) or {}
         job_id = body.get("jobId")
         print(f"[run_snipe] Request body: {body}")
@@ -125,7 +125,7 @@ def run_snipe(req: Request):
         job_ref = get_db().collection("reservationJobs").document(job_id)
         snap = job_ref.get()
         if not snap.exists:
-            logger.error(f"[run_snipe] Job {job_id} not found")
+            logger.error("[run_snipe] Job %s not found", job_id)
             return {"error": "Job not found"}, 404
 
         job_data = snap.to_dict()
@@ -142,11 +142,11 @@ def run_snipe(req: Request):
         # Cloud Scheduler triggers ~1 min early, so we sleep until 0.1s before target
         delta_seconds = (target_dt - now).total_seconds() - 0.1
 
-        logger.info(f"[run_snipe] Current time: {now.isoformat()}")
-        logger.info(f"[run_snipe] Target time: {target_dt.isoformat()}")
+        logger.info("[run_snipe] Current time: %s", now.isoformat())
+        logger.info("[run_snipe] Target time: %s", target_dt.isoformat())
 
         if delta_seconds > 0:
-            logger.info(f"[run_snipe] Sleeping for {delta_seconds:.2f} seconds until target time")
+            logger.info("[run_snipe] Sleeping for %.2f seconds until target time", delta_seconds)
             time.sleep(delta_seconds)
 
         # Attempt reservation for ~30 seconds max
@@ -154,11 +154,11 @@ def run_snipe(req: Request):
         resy_token = None
         deadline_seconds = 30
         start = time.time()
-        
+
         # Track execution logs
         execution_logs = []
         last_error = None
-        
+
         # Rate limit tracking for outer loop
         rate_limit_count = 0
         base_backoff = 0.5  # Start with 0.5s for non-rate-limit errors
@@ -167,7 +167,7 @@ def run_snipe(req: Request):
             try:
                 resy_token = _make_reservation_for_job(job_data, user_id)
                 success = True
-                logger.info(f"[run_snipe] ✓ Reservation successful!")
+                logger.info("[run_snipe] ✓ Reservation successful!")
                 execution_logs.append({
                     "timestamp": dt.datetime.now().isoformat(),
                     "status": "success",
@@ -179,11 +179,11 @@ def run_snipe(req: Request):
                 rate_limit_count += 1
                 last_error = str(rate_err)
                 elapsed = time.time() - start
-                
+
                 # Exponential backoff: 2s, 4s, 8s (capped)
                 wait_time = min(2 * (2 ** (rate_limit_count - 1)), 8)
                 remaining = deadline_seconds - elapsed
-                
+
                 logger.warning(
                     f"[run_snipe] ✗ Rate limited (#{rate_limit_count}) after {elapsed:.2f}s. "
                     f"Waiting {wait_time:.1f}s before retry. {remaining:.1f}s remaining."
@@ -194,19 +194,19 @@ def run_snipe(req: Request):
                     "message": f"Rate limited - waiting {wait_time:.1f}s",
                     "elapsed_seconds": round(elapsed, 2)
                 })
-                
+
                 # Don't sleep if we'd exceed the deadline
                 if elapsed + wait_time < deadline_seconds:
                     time.sleep(wait_time)
                 else:
                     # Not enough time to wait and retry meaningfully
-                    logger.info(f"[run_snipe] Not enough time remaining after rate limit. Exiting.")
+                    logger.info("[run_snipe] Not enough time remaining after rate limit. Exiting.")
                     break
-                    
+
             except Exception as inner_e:
                 last_error = str(inner_e)
                 elapsed = time.time() - start
-                logger.warning(f"[run_snipe] ✗ Attempt failed after {elapsed:.2f}s: {inner_e}")
+                logger.warning("[run_snipe] ✗ Attempt failed after %.2f s: %s", elapsed, inner_e)
                 execution_logs.append({
                     "timestamp": dt.datetime.now().isoformat(),
                     "status": "error",
@@ -218,7 +218,7 @@ def run_snipe(req: Request):
                     time.sleep(base_backoff)
 
         status = "done" if success else "failed"
-        logger.info(f"[run_snipe] Reservation attempt completed with status: {status}")
+        logger.info("[run_snipe] Reservation attempt completed with status: %s", status)
 
         job_ref.update(
             {
@@ -272,7 +272,7 @@ def summarize_snipe_logs(req: Request):
     POST /summarize_snipe_logs
     Uses Gemini AI to summarize execution logs from a reservation attempt.
     Body: { "jobId": "<firestore-doc-id>" }
-    
+
     Returns a 1-2 sentence summary of what happened during the reservation attempt.
     """
     # 1) Let preflight succeed without touching JSON
@@ -292,14 +292,14 @@ def summarize_snipe_logs(req: Request):
 
         body = req.get_json(silent=True) or {}
         job_id = body.get("jobId")
-        
+
         if not job_id:
             return {"error": "Missing jobId"}, 400
 
         # Load job from Firestore
         job_ref = get_db().collection("reservationJobs").document(job_id)
         snap = job_ref.get()
-        
+
         if not snap.exists:
             return {"error": "Job not found"}, 404
 
@@ -307,7 +307,7 @@ def summarize_snipe_logs(req: Request):
         execution_logs = job_data.get("executionLogs", [])
         error_message = job_data.get("errorMessage")
         status = job_data.get("status", "unknown")
-        
+
         # If no logs and no error message, return early
         if not execution_logs and not error_message:
             return {
@@ -328,11 +328,11 @@ def summarize_snipe_logs(req: Request):
                     logs_text += f"- [{timestamp}] {log_status}: {message} (after {elapsed}s)\n"
                 else:
                     logs_text += f"- [{timestamp}] {log_status}: {message}\n"
-        
+
         if error_message:
             logs_text += f"\nFinal error message: {error_message}\n"
-        
-        prompt = f"""You are analyzing logs from an automated restaurant reservation attempt. 
+
+        prompt = f"""You are analyzing logs from an automated restaurant reservation attempt.
 
 The reservation attempt had a final status of: {status}
 
@@ -357,7 +357,7 @@ If the status is "done", simply state that the reservation was successful."""
         try:
             job_ref.update({"aiSummary": summary})
         except Exception as update_error:
-            logger.warning(f"[summarize_snipe_logs] Failed to cache summary: {update_error}")
+            logger.warning("[summarize_snipe_logs] Failed to cache summary: %s", update_error)
 
         return {
             "success": True,
@@ -365,7 +365,7 @@ If the status is "done", simply state that the reservation was successful."""
         }
 
     except Exception as e:
-        logger.error(f"[summarize_snipe_logs] Error: {str(e)}")
+        logger.error("[summarize_snipe_logs] Error: %s", e)
         return {
             "success": False,
             "error": str(e)

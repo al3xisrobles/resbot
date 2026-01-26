@@ -70,11 +70,11 @@ class ResyManager:
         slots = self.api_access.find_booking_slots(body)
 
         if len(slots) == 0:
-            logger.info(f"No slots found... Returned: {slots}")
+            logger.info("No slots found... Returned: %s", slots)
             raise NoSlotsError("No Slots Found")
-        else:
-            logger.info(f"Found {len(slots)} slots")
-            logger.info(slots)
+
+        logger.info("Found %s slots", len(slots))
+        logger.info(slots)
 
         selected_slot = self.selector.select(slots, reservation_request)
 
@@ -83,9 +83,9 @@ class ResyManager:
             reservation_request, selected_slot
         )
         logger.info(details_request)
-        logger.info(f"Getting booking token for slot {selected_slot.date.start}")
+        logger.info("Getting booking token for slot %s", selected_slot.date.start)
         token = self.api_access.get_booking_token(details_request)
-        logger.info(f"Got booking token: {token}")
+        logger.info("Got booking token: %s", token)
 
         booking_request = build_book_request_body(token, self.config)
 
@@ -98,7 +98,7 @@ class ResyManager:
             status_code = 'N/A'
             if hasattr(e, 'response') and e.response is not None:
                 status_code = e.response.status_code
-            logger.error(f"Booking failed - Error type: {type(e).__name__}, Status: {status_code}, Message: {str(e)}")
+            logger.error(f"Booking failed - Error type: {type(e).__name__}, Status: {status_code}, Message: %s")
             # Raise SlotTakenError to allow retry logic to handle it
             raise SlotTakenError(f"Failed to book slot: {str(e)}") from e
 
@@ -121,14 +121,14 @@ class ResyManager:
         slots = self.api_access.find_booking_slots(body)
 
         if len(slots) == 0:
-            logger.info(f"No slots found... Returned: {slots}")
+            logger.info("No slots found... Returned: %s", slots)
             raise NoSlotsError("No Slots Found")
 
-        logger.info(f"Found {len(slots)} slots")
+        logger.info("Found %s slots", len(slots))
 
         # Get top N candidates
         top_slots = self.selector.select_top_n(slots, reservation_request, n=n_slots)
-        logger.info(f"Selected top {len(top_slots)} slots for parallel booking: {[s.date.start for s in top_slots]}")
+        logger.info("Selected top %s slots for parallel booking: %s", len(top_slots), [s.date.start for s in top_slots])
 
         errors = []
 
@@ -143,14 +143,14 @@ class ResyManager:
                 slot = future_to_slot[future]
                 try:
                     resy_token = future.result()
-                    logger.info(f"Successfully booked slot at {slot.date.start}!")
+                    logger.info("Successfully booked slot at %s!", slot.date.start)
                     # Cancel remaining futures (best effort - they may already be running)
                     for f in future_to_slot:
                         f.cancel()
                     return resy_token
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     # Intentionally catching all exceptions from parallel futures
-                    logger.warning(f"Failed to book slot at {slot.date.start}: {e}")
+                    logger.warning("Failed to book slot at %s: %s", slot.date.start, e)
                     errors.append(e)
 
         # All attempts failed
@@ -160,7 +160,7 @@ class ResyManager:
         self, reservation_request: ReservationRequest
     ) -> str:
         rate_limit_wait = RATE_LIMIT_BASE_WAIT
-        
+
         for attempt in range(self.retry_config.n_retries):
             try:
                 result = self.make_reservation(reservation_request)
@@ -172,13 +172,13 @@ class ResyManager:
                 )
 
             except SlotTakenError:
-                if self.config.retry_on_taken_slot:
-                    logger.info(
-                        f"slot taken (attempt {attempt + 1}/{self.retry_config.n_retries}), retrying; currently {datetime.now().isoformat()}"
-                    )
-                else:
+                if not self.config.retry_on_taken_slot:
                     # If retry_on_taken_slot is False, propagate the error immediately
                     raise
+                logger.info(
+                    f"slot taken (attempt {attempt + 1}/{self.retry_config.n_retries}), "
+                    f"retrying; currently {datetime.now().isoformat()}"
+                )
 
             except RateLimitError as rate_err:
                 # Use retry_after from API if available, otherwise use exponential backoff
@@ -195,7 +195,9 @@ class ResyManager:
 
             except (Timeout, RequestsConnectionError) as net_err:
                 logger.warning(
-                    f"Network error (attempt {attempt + 1}/{self.retry_config.n_retries}): {type(net_err).__name__} - {str(net_err)}, retrying; currently {datetime.now().isoformat()}"
+                    f"Network error (attempt {attempt + 1}/{self.retry_config.n_retries}): "
+                    f"{type(net_err).__name__} - {str(net_err)}, retrying; "
+                    f"currently {datetime.now().isoformat()}"
                 )
 
         raise ExhaustedRetriesError(
@@ -209,7 +211,7 @@ class ResyManager:
         Like make_reservation_with_retries but uses parallel booking for each attempt.
         """
         rate_limit_wait = RATE_LIMIT_BASE_WAIT
-        
+
         for attempt in range(self.retry_config.n_retries):
             try:
                 return self.make_reservation_parallel(reservation_request, n_slots=n_slots)
@@ -220,12 +222,12 @@ class ResyManager:
                 )
 
             except SlotTakenError:
-                if self.config.retry_on_taken_slot:
-                    logger.info(
-                        f"all parallel slots taken (attempt {attempt + 1}/{self.retry_config.n_retries}), retrying; currently {datetime.now().isoformat()}"
-                    )
-                else:
+                if not self.config.retry_on_taken_slot:
                     raise
+                logger.info(
+                    f"all parallel slots taken (attempt {attempt + 1}/{self.retry_config.n_retries}), "
+                    f"retrying; currently {datetime.now().isoformat()}"
+                )
 
             except RateLimitError as rate_err:
                 # Use retry_after from API if available, otherwise use exponential backoff
@@ -242,11 +244,14 @@ class ResyManager:
 
             except (Timeout, RequestsConnectionError) as net_err:
                 logger.warning(
-                    f"Network error (attempt {attempt + 1}/{self.retry_config.n_retries}): {type(net_err).__name__} - {str(net_err)}, retrying; currently {datetime.now().isoformat()}"
+                    f"Network error (attempt {attempt + 1}/{self.retry_config.n_retries}): "
+                    f"{type(net_err).__name__} - {str(net_err)}, retrying; "
+                    f"currently {datetime.now().isoformat()}"
                 )
 
         raise ExhaustedRetriesError(
-            f"Retried {self.retry_config.n_retries} times with parallel booking, without securing a slot"
+            f"Retried {self.retry_config.n_retries} times with parallel booking, "
+            f"without securing a slot"
         )
 
     def _get_drop_time(self, reservation_request: TimedReservationRequest) -> datetime:
@@ -267,16 +272,16 @@ class ResyManager:
         """
         drop_time = self._get_drop_time(reservation_request)
         last_check = datetime.now()
-        logger.info(f"waiting until drop time at {drop_time}")
+        logger.info("waiting until drop time at %s", drop_time)
 
         while True:
             if datetime.now() < drop_time:
                 if datetime.now() - last_check > timedelta(seconds=10):
-                    logger.info(f"{datetime.now()}: still waiting")
+                    logger.info("%s: still waiting", datetime.now())
                     last_check = datetime.now()
                 continue
 
-            logger.info(f"time reached, making a reservation now! {datetime.now()}")
+            logger.info("time reached, making a reservation now! %s", datetime.now())
             return self.make_reservation_with_retries(
                 reservation_request.reservation_request
             )

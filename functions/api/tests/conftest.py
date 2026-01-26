@@ -10,8 +10,9 @@ This module provides reusable fixtures for:
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+# Mock and MagicMock not used in this file
+
 import pytest
-from unittest.mock import Mock, MagicMock
 
 
 # =============================================================================
@@ -83,7 +84,7 @@ class VenueFactory:
     ) -> List[Dict[str, Any]]:
         """Create a batch of venues."""
         venues = []
-        for i in range(count):
+        for _i in range(count):
             venue_kwargs = kwargs.copy()
             if cuisine:
                 venue_kwargs["cuisine"] = cuisine
@@ -166,7 +167,7 @@ class AvailabilityFactory:
 @pytest.fixture(autouse=True)
 def reset_venue_counter():
     """Automatically reset VenueFactory counter before each test.
-    
+
     This ensures venue IDs are predictable within each test,
     regardless of test execution order.
     """
@@ -293,20 +294,18 @@ def mock_search_func():
     def _create_mock(pages_data: List[tuple]) -> callable:
         """
         Create a mock search function.
-        
+
         Args:
             pages_data: List of (hits, total) tuples, one per page
         """
-        page_num = [0]  # Use list to allow modification in closure
-        
         def search_func(page: int):
             if page <= len(pages_data):
                 hits, total = pages_data[page - 1]
                 return hits, total
             return [], 0
-        
+
         return search_func
-    
+
     return _create_mock
 
 

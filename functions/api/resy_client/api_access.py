@@ -1,6 +1,7 @@
-from requests import Session
-from typing import Dict, List
 import logging
+from typing import Dict, List
+
+from requests import Session
 
 from .constants import RESY_BASE_URL, ResyEndpoints
 from .errors import RateLimitError
@@ -27,7 +28,7 @@ def _check_rate_limit(resp) -> None:
         # Try to get retry-after header if available
         retry_after = resp.headers.get('Retry-After')
         retry_seconds = float(retry_after) if retry_after else None
-        logger.warning(f"Rate limited by Resy API (429). Retry-After: {retry_after}")
+        logger.warning("Rate limited by Resy API (429). Retry-After: %s", retry_after)
         raise RateLimitError(
             f"Rate limit exceeded: {resp.text[:200] if resp.text else 'No details'}",
             retry_after=retry_seconds
@@ -49,7 +50,10 @@ def build_session(config: ResyConfig) -> Session:
         "Referer": "https://resy.com/",
         "Referrer": "https://resy.com/",
         "Accept": "application/json, text/plain, */*",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
     }
 
     session.headers.update(headers)
@@ -124,7 +128,7 @@ class ResyApiAccess:
 
         resp = self.session.get(find_url, params=params.model_dump(), timeout=REQUEST_TIMEOUT)
 
-        logger.info(f"Received response from find booking slots: {resp.text}")
+        logger.info("Received response from find booking slots: %s", resp.text)
 
         if not resp.ok:
             _check_rate_limit(resp)  # Check for 429 before generic error

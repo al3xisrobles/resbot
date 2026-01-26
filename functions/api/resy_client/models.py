@@ -35,7 +35,7 @@ class ReservationRequest(BaseModel):
 
         if has_date and has_waiting_pd:
             raise ValueError("Must only provide one of ideal_date or days_in_advance")
-        elif has_date or has_waiting_pd:
+        if has_date or has_waiting_pd:
             return data
 
         raise ValueError("Must provide ideal_date or days_in_advance")

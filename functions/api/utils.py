@@ -3,17 +3,18 @@ Shared utility functions for Resy Bot Cloud Functions
 Includes credential loading, search caching, and Resy API helpers
 """
 
-import os
 import json
 import logging
-import requests
+import os
 import time as time_module
-from time import time
+import traceback
 from datetime import datetime
 from hashlib import md5
-from google import genai
+from time import time
 
+import requests
 from firebase_admin import firestore
+from google import genai
 
 from .resy_client.models import FindRequestBody, ResyConfig
 from .resy_client.api_access import ResyApiAccess
@@ -112,7 +113,7 @@ def load_credentials(userId=None):
             doc = db.collection('resyCredentials').document(userId).get()
 
             if not doc.exists:
-                logger.warning(f"✗ No Resy credentials found in Firestore for user {userId}")
+                logger.warning("✗ No Resy credentials found in Firestore for user %s", userId)
                 raise ValueError(f"User {userId} has not connected their Resy account")
 
             # Get the Firestore data (uses camelCase)
@@ -134,22 +135,22 @@ def load_credentials(userId=None):
                 'legacy_token': data.get('legacyToken')
             }
 
-            logger.info(f"✓ Loaded Resy credentials from Firestore for user {userId}")
+            logger.info("✓ Loaded Resy credentials from Firestore for user %s", userId)
             return credentials
 
         except Exception as e:
-            logger.error(f"✗ Error loading credentials from Firestore: {str(e)}")
+            logger.error("✗ Error loading credentials from Firestore: %s", e)
             raise
-    
+
     # If userId is not provided, try to load from environment variables
     # This allows public endpoints to work without user authentication
     # Use the same default API key as in onboarding.py
     api_key = os.getenv('RESY_API_KEY', 'VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5')
     token = os.getenv('RESY_TOKEN', '')
-    
+
     if not token:
         logger.info("ℹ No RESY_TOKEN provided, using API key only (suitable for public endpoints)")
-    
+
     credentials = {
         'api_key': api_key,
         'token': token,  # Empty string if not provided
@@ -164,7 +165,7 @@ def load_credentials(userId=None):
         'payment_methods': [],
         'legacy_token': None
     }
-    
+
     logger.info("✓ Loaded Resy credentials from environment variables (default API key)")
     return credentials
 
@@ -177,16 +178,19 @@ def get_resy_headers(config):
         'X-origin': 'https://resy.com',
         'Referer': 'https://resy.com/',
         'Accept': 'application/json, text/plain, */*',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': (
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ),
         'Content-Type': 'application/json'
     }
-    
+
     # Only add auth token headers if token is provided
     token = config.get('token')
     if token:
         headers['X-Resy-Auth-Token'] = token
         headers['X-Resy-Universal-Auth'] = token
-    
+
     return headers
 
 
@@ -281,7 +285,11 @@ def parse_search_filters(request_args):
 
     # Parse lists
     cuisines = [c.strip() for c in cuisines_param.split(',') if c.strip()] if cuisines_param else []
-    price_ranges = [int(p.strip()) for p in price_ranges_param.split(',') if p.strip().isdigit()] if price_ranges_param else []
+    price_ranges = (
+        [int(p.strip()) for p in price_ranges_param.split(',') if p.strip().isdigit()]
+        if price_ranges_param
+        else []
+    )
 
     # Parse availability parameters
     available_only = request_args.get('available_only', 'false').lower() == 'true'
@@ -307,7 +315,10 @@ def parse_search_filters(request_args):
     }
 
 
-def fetch_until_enough_results(search_func, target_count, filters, max_fetches=10, config=None, fetch_availability=False, job_id=None):
+def fetch_until_enough_results(
+    search_func, target_count, filters, max_fetches=10,
+    config=None, fetch_availability=False, job_id=None
+):
     """
     Keep fetching results until we have enough filtered results
 
@@ -340,7 +351,7 @@ def fetch_until_enough_results(search_func, target_count, filters, max_fetches=1
         hits, resy_total = search_func(resy_page)
 
         if not hits:
-            print(f"[FETCH] No more results from Resy API")
+            print("[FETCH] No more results from Resy API")
             break
 
         # Filter and format
@@ -370,7 +381,7 @@ def fetch_until_enough_results(search_func, target_count, filters, max_fetches=1
 
         # Check if Resy has more results
         if len(hits) < 20:  # Resy returns 20 per page by default
-            print(f"[FETCH] Resy returned fewer than 20 results, no more available")
+            print("[FETCH] Resy returned fewer than 20 results, no more available")
             break
 
         resy_page += 1
@@ -395,7 +406,8 @@ def build_search_payload(query, filters, geo_config, page=1):
     Args:
         query: Search query string
         filters: Dict of parsed filters from parse_search_filters()
-        geo_config: Dict with either {'latitude', 'longitude', 'radius'} or {'bounding_box': [swLat, swLng, neLat, neLng]}
+        geo_config: Dict with either {'latitude', 'longitude', 'radius'} or
+            {'bounding_box': [swLat, swLng, neLat, neLng]}
         page: Resy API page number (default: 1)
 
     Returns:
@@ -430,7 +442,11 @@ def build_search_payload(query, filters, geo_config, page=1):
 
 def is_transient_resy_error(error):
     """Return True if the error looks transient (timeouts/5xx) from Resy."""
-    if isinstance(error, (requests.exceptions.Timeout, requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError)):
+    if isinstance(
+        error,
+        (requests.exceptions.Timeout, requests.exceptions.ReadTimeout,
+         requests.exceptions.ConnectionError)
+    ):
         return True
 
     if isinstance(error, requests.exceptions.HTTPError):
@@ -597,11 +613,30 @@ def get_venue_availability(venue_id, day, party_size, config):
                 base_delay=0.3
             )
         except Exception as slot_error:
+            # Enhanced error logging
+            error_details = {
+                'error_type': type(slot_error).__name__,
+                'error_message': str(slot_error),
+                'error_args': getattr(slot_error, 'args', None),
+                'is_transient': is_transient_resy_error(slot_error),
+                'venue_id': venue_id,
+                'day': day,
+                'party_size': party_size,
+            }
+
+            # Try to get HTTP status code if it's an HTTPError
+            if isinstance(slot_error, requests.exceptions.HTTPError):
+                response = getattr(slot_error, 'response', None)
+                if response is not None:
+                    error_details['http_status'] = response.status_code
+                    error_details['http_response'] = getattr(response, 'text', None)
+
+            print(f"[AVAILABILITY] Error fetching slots for venue {venue_id}: {error_details}")
+            print(f"[AVAILABILITY] Full traceback:\n{traceback.format_exc()}")
+
             if is_transient_resy_error(slot_error):
-                print(f"[AVAILABILITY] Transient Resy error fetching slots for venue {venue_id}: {slot_error}")
                 return {'times': [], 'status': 'Resy temporarily unavailable'}
 
-            print(f"[AVAILABILITY] Error fetching slots for venue {venue_id}: {slot_error}")
             return {'times': [], 'status': 'Unable to fetch'}
 
         if not slots:
@@ -626,8 +661,25 @@ def get_venue_availability(venue_id, day, party_size, config):
 
         return {'times': available_times, 'status': None}
     except Exception as e:
-        # If there's any error fetching availability, return error status
-        print(f"[AVAILABILITY] Error fetching availability for venue {venue_id}: {str(e)}")
+        # Enhanced error logging for top-level exception
+        error_details = {
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'error_args': getattr(e, 'args', None),
+            'venue_id': venue_id,
+            'day': day,
+            'party_size': party_size,
+        }
+
+        # Try to get HTTP status code if it's an HTTPError
+        if isinstance(e, requests.exceptions.HTTPError):
+            response = getattr(e, 'response', None)
+            if response is not None:
+                error_details['http_status'] = response.status_code
+                error_details['http_response'] = getattr(response, 'text', None)
+
+        print(f"[AVAILABILITY] Top-level error fetching availability for venue {venue_id}: {error_details}")
+        print(f"[AVAILABILITY] Full traceback:\n{traceback.format_exc()}")
         return {'times': [], 'status': 'Unable to fetch'}
 
 
