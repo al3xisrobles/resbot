@@ -28,7 +28,7 @@ const cityIdAtomBase = atom<string>(getInitialCityId());
  */
 export const cityAtom = atom(
     (get) => get(cityIdAtomBase),
-    (get, set, newCityId: string) => {
+    (_get, set, newCityId: string) => {
         set(cityIdAtomBase, newCityId);
         if (typeof window !== "undefined") {
             localStorage.setItem(CITY_STORAGE_KEY, newCityId);

@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { SkeletonCircle, SkeletonRect, SkeletonText } from "@/components/ui/skeleton";
+import { SkeletonCircle, SkeletonRect } from "@/components/ui/skeleton";
 
 export function ProfileTabSkeleton() {
   return (

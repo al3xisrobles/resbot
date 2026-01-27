@@ -303,7 +303,6 @@ export function ReservationsDataTable({
                             <TableHead className="w-[100px] text-center">Party Size</TableHead>
                             <TableHead className="w-[120px]">Status</TableHead>
                             <TableHead className="w-[200px]">Snipe Time</TableHead>
-                            <TableHead>Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>

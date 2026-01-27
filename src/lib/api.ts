@@ -779,7 +779,7 @@ export async function updateResyPaymentMethod(
  * Update a reservation job
  */
 export async function updateReservationJob(
-  userId: string,
+  _userId: string,
   jobId: string,
   updates: {
     date?: string;
@@ -830,7 +830,7 @@ export async function updateReservationJob(
  * Cancel a reservation job
  */
 export async function cancelReservationJob(
-  userId: string,
+  _userId: string,
   jobId: string
 ): Promise<{
   success: boolean;

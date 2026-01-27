@@ -2,7 +2,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { TrendingUp, Star, Search } from "lucide-react";
-import { toast } from "sonner";
 
 import { getTrendingRestaurants, getTopRatedRestaurants } from "@/lib/api";
 import type { TrendingRestaurant } from "@/lib/interfaces";

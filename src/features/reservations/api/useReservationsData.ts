@@ -86,37 +86,70 @@ export function useReservationsData() {
                 console.log("[useReservationsData] Found jobs:", jobs);
 
                 // Transform Firestore jobs to Reservation format
-                const reservationsWithVenues = await Promise.all(
-                    jobs.map(async (job) => {
-                        // Try to get venue name from cache or API
-                        let venueName = "Unknown Restaurant";
-                        let venueImage = "";
+                // First, get all unique venue IDs and check cache for all of them
+                const uniqueVenueIds = [...new Set(jobs.map((job) => job.venueId))];
+                const venueCacheMap = new Map<string, { name: string; image: string }>();
 
+                // Check cache for all venues first
+                await Promise.all(
+                    uniqueVenueIds.map(async (venueId) => {
                         try {
-                            const user = auth.currentUser;
-                            const venueData = await searchRestaurant(user!.uid, job.venueId);
-                            venueName = venueData.name;
-
-                            // Try to get image from cache
-                            const cachedVenue = await getVenueCache(job.venueId);
-                            if (cachedVenue?.photoUrl) {
-                                venueImage = cachedVenue.photoUrl;
-                            } else if (
-                                cachedVenue?.photoUrls &&
-                                cachedVenue.photoUrls.length > 0
-                            ) {
-                                venueImage = cachedVenue.photoUrls[0];
+                            const cachedVenue = await getVenueCache(venueId);
+                            if (cachedVenue?.venueName) {
+                                venueCacheMap.set(venueId, {
+                                    name: cachedVenue.venueName,
+                                    image:
+                                        cachedVenue.photoUrl ||
+                                        cachedVenue.photoUrls?.[0] ||
+                                        "",
+                                });
                             }
                         } catch (error) {
                             console.error(
-                                `[useReservationsData] Failed to fetch venue ${job.venueId}:`,
+                                `[useReservationsData] Failed to get cache for venue ${venueId}:`,
                                 error
                             );
                         }
-
-                        return transformJobToReservation(job, venueName, venueImage);
                     })
                 );
+
+                // Only fetch venues from API that aren't in cache
+                const missingVenueIds = uniqueVenueIds.filter(
+                    (venueId) => !venueCacheMap.has(venueId)
+                );
+
+                // Fetch missing venues from API (deduplicated)
+                await Promise.all(
+                    missingVenueIds.map(async (venueId) => {
+                        try {
+                            const user = auth.currentUser;
+                            const venueData = await searchRestaurant(user!.uid, venueId);
+                            venueCacheMap.set(venueId, {
+                                name: venueData.name,
+                                image: venueData.photoUrls?.[0] || "",
+                            });
+                        } catch (error) {
+                            console.error(
+                                `[useReservationsData] Failed to fetch venue ${venueId}:`,
+                                error
+                            );
+                            // Set fallback
+                            venueCacheMap.set(venueId, {
+                                name: "Unknown Restaurant",
+                                image: "",
+                            });
+                        }
+                    })
+                );
+
+                // Now transform jobs using cached/fetched venue data
+                const reservationsWithVenues = jobs.map((job) => {
+                    const venueData = venueCacheMap.get(job.venueId) || {
+                        name: "Unknown Restaurant",
+                        image: "",
+                    };
+                    return transformJobToReservation(job, venueData.name, venueData.image);
+                });
 
                 setReservations(reservationsWithVenues);
                 setError(null);
@@ -196,37 +229,70 @@ export function useReservationsData() {
             console.log("[useReservationsData] Found jobs:", jobs);
 
             // Transform Firestore jobs to Reservation format
-            const reservationsWithVenues = await Promise.all(
-                jobs.map(async (job) => {
-                    // Try to get venue name from cache or API
-                    let venueName = "Unknown Restaurant";
-                    let venueImage = "";
+            // First, get all unique venue IDs and check cache for all of them
+            const uniqueVenueIds = [...new Set(jobs.map((job) => job.venueId))];
+            const venueCacheMap = new Map<string, { name: string; image: string }>();
 
+            // Check cache for all venues first
+            await Promise.all(
+                uniqueVenueIds.map(async (venueId) => {
                     try {
-                        const user = auth.currentUser;
-                        const venueData = await searchRestaurant(user!.uid, job.venueId);
-                        venueName = venueData.name;
-
-                        // Try to get image from cache
-                        const cachedVenue = await getVenueCache(job.venueId);
-                        if (cachedVenue?.photoUrl) {
-                            venueImage = cachedVenue.photoUrl;
-                        } else if (
-                            cachedVenue?.photoUrls &&
-                            cachedVenue.photoUrls.length > 0
-                        ) {
-                            venueImage = cachedVenue.photoUrls[0];
+                        const cachedVenue = await getVenueCache(venueId);
+                        if (cachedVenue?.venueName) {
+                            venueCacheMap.set(venueId, {
+                                name: cachedVenue.venueName,
+                                image:
+                                    cachedVenue.photoUrl ||
+                                    cachedVenue.photoUrls?.[0] ||
+                                    "",
+                            });
                         }
                     } catch (error) {
                         console.error(
-                            `[useReservationsData] Failed to fetch venue ${job.venueId}:`,
+                            `[useReservationsData] Failed to get cache for venue ${venueId}:`,
                             error
                         );
                     }
-
-                    return transformJobToReservation(job, venueName, venueImage);
                 })
             );
+
+            // Only fetch venues from API that aren't in cache
+            const missingVenueIds = uniqueVenueIds.filter(
+                (venueId) => !venueCacheMap.has(venueId)
+            );
+
+            // Fetch missing venues from API (deduplicated)
+            await Promise.all(
+                missingVenueIds.map(async (venueId) => {
+                    try {
+                        const user = auth.currentUser;
+                        const venueData = await searchRestaurant(user!.uid, venueId);
+                        venueCacheMap.set(venueId, {
+                            name: venueData.name,
+                            image: venueData.photoUrls?.[0] || "",
+                        });
+                    } catch (error) {
+                        console.error(
+                            `[useReservationsData] Failed to fetch venue ${venueId}:`,
+                            error
+                        );
+                        // Set fallback
+                        venueCacheMap.set(venueId, {
+                            name: "Unknown Restaurant",
+                            image: "",
+                        });
+                    }
+                })
+            );
+
+            // Now transform jobs using cached/fetched venue data
+            const reservationsWithVenues = jobs.map((job) => {
+                const venueData = venueCacheMap.get(job.venueId) || {
+                    name: "Unknown Restaurant",
+                    image: "",
+                };
+                return transformJobToReservation(job, venueData.name, venueData.image);
+            });
 
             setReservations(reservationsWithVenues);
             setError(null);
