@@ -380,9 +380,21 @@ def fetch_until_enough_results(
             break
 
         # Check if Resy has more results
+        # Note: Resy API sometimes reports incorrect totals, so we try a few pages
+        # even if it says there are fewer results
         if len(hits) < 20:  # Resy returns 20 per page by default
-            print("[FETCH] Resy returned fewer than 20 results, no more available")
-            break
+            # If we got fewer than 20 hits, try one more page just in case
+            # (Resy API sometimes has incorrect pagination info)
+            if resy_page == 1 and len(hits) > 0:
+                print(
+                    f"[FETCH] Resy returned {len(hits)} hits on page 1, "
+                    f"but trying page 2 in case API pagination is incorrect"
+                )
+                resy_page += 1
+                continue
+            else:
+                print("[FETCH] Resy returned fewer than 20 results, no more available")
+                break
 
         resy_page += 1
 
@@ -416,10 +428,25 @@ def build_search_payload(query, filters, geo_config, page=1):
     # Build search query - if no name query, search by cuisine, or if no cuisine, leave blank
     search_query = query if query else (filters['cuisines'][0] if filters['cuisines'] else '')
 
+    # Use per_page from filters if provided, otherwise default to 20
+    # When availability filters are active, try using 50 to get more results
+    # (Resy API may limit results when availability filters are set)
+    # For bounding box searches, also try 50 to see if API respects it better
+    base_per_page = filters.get('per_page', 20)
+    if filters.get('available_only') and filters.get('available_day') and filters.get('available_party_size'):
+        # When slot_filter is active, use max(50, user's per_page) to try to get more results
+        per_page = max(50, base_per_page)
+    elif 'bounding_box' in geo_config:
+        # For bounding box searches, try 50 to see if API returns more results
+        # (Resy API sometimes limits results for bounding box searches)
+        per_page = max(50, base_per_page)
+    else:
+        per_page = base_per_page
+    
     payload = {
         "availability": filters.get('available_only', False),
         "page": page,
-        "per_page": 20,
+        "per_page": per_page,
         "geo": geo_config,
         "highlight": {
             "pre_tag": "<b>",

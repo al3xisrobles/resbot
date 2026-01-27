@@ -54,6 +54,11 @@ function transformJobToReservation(
         note,
         snipeTime: job.targetTimeIso,
         aiSummary: job.aiSummary,
+        dropDate: job.dropDate,
+        windowHours: job.windowHours,
+        seatingType: job.seatingType,
+        dropHour: job.dropHour,
+        dropMinute: job.dropMinute,
     };
 }
 
@@ -174,9 +179,71 @@ export function useReservationsData() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [reservations.length, loading]);
 
+    const refetch = async () => {
+        const user = auth.currentUser;
+        if (!user) {
+            console.log("[useReservationsData] No user logged in");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            console.log(
+                "[useReservationsData] Refetching reservation jobs for user:",
+                user.uid
+            );
+            const jobs = await getUserReservationJobs(user.uid);
+            console.log("[useReservationsData] Found jobs:", jobs);
+
+            // Transform Firestore jobs to Reservation format
+            const reservationsWithVenues = await Promise.all(
+                jobs.map(async (job) => {
+                    // Try to get venue name from cache or API
+                    let venueName = "Unknown Restaurant";
+                    let venueImage = "";
+
+                    try {
+                        const user = auth.currentUser;
+                        const venueData = await searchRestaurant(user!.uid, job.venueId);
+                        venueName = venueData.name;
+
+                        // Try to get image from cache
+                        const cachedVenue = await getVenueCache(job.venueId);
+                        if (cachedVenue?.photoUrl) {
+                            venueImage = cachedVenue.photoUrl;
+                        } else if (
+                            cachedVenue?.photoUrls &&
+                            cachedVenue.photoUrls.length > 0
+                        ) {
+                            venueImage = cachedVenue.photoUrls[0];
+                        }
+                    } catch (error) {
+                        console.error(
+                            `[useReservationsData] Failed to fetch venue ${job.venueId}:`,
+                            error
+                        );
+                    }
+
+                    return transformJobToReservation(job, venueName, venueImage);
+                })
+            );
+
+            setReservations(reservationsWithVenues);
+            setError(null);
+        } catch (error) {
+            console.error("[useReservationsData] Error fetching reservations:", error);
+            setError(
+                error instanceof Error ? error.message : "Failed to fetch reservations"
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return {
         reservations,
         loading,
         error,
+        refetch,
     };
 }

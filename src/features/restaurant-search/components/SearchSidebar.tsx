@@ -20,6 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { SearchResultItem } from "@/components/SearchResultItem";
+import { SearchResultItemSkeleton } from "@/components/SearchResultItemSkeleton";
 import { useAtom } from "jotai";
 import { reservationFormAtom } from "@/atoms/reservationAtoms";
 import { cityConfigAtom } from "@/atoms/cityAtom";
@@ -437,9 +438,16 @@ export function SearchSidebar({
                         {/* Search Results */}
                         <Stack itemsSpacing={16}>
                             {loading && (
-                                <div className="text-center py-8 text-muted-foreground">
-                                    Loading results...
-                                </div>
+                                <Stack itemsSpacing={12} className="mt-4">
+                                    <p className="text-sm text-muted-foreground">
+                                        Loading results...
+                                    </p>
+                                    <Stack itemsSpacing={4}>
+                                        {Array.from({ length: 20 }).map((_, index) => (
+                                            <SearchResultItemSkeleton key={index} />
+                                        ))}
+                                    </Stack>
+                                </Stack>
                             )}
 
                             {!loading && hasSearched && searchResults.length === 0 && (
@@ -462,8 +470,8 @@ export function SearchSidebar({
                                         {(pagination?.total || searchResults.length) !== 1
                                             ? "s"
                                             : ""}
-                                        {pagination && (currentPage > 1 || hasNextPage) && (
-                                            <span> (Page {currentPage})</span>
+                                        {pagination && pagination.total && pagination.perPage && (
+                                            <span className="pl-4"> Page {currentPage} of {Math.ceil(pagination.total / pagination.perPage)}</span>
                                         )}
                                     </p>
                                     <Stack itemsSpacing={4}>
@@ -534,18 +542,22 @@ export function SearchSidebar({
             </SidebarContent>
 
             {/* Pagination Footer */}
-            {!loading &&
-                searchResults.length > 0 &&
-                pagination &&
+            {pagination &&
                 (() => {
                     // Show pagination if:
-                    // 1. We're not on page 1, OR
-                    // 2. There's a next page, OR
-                    // 3. We have total and there are multiple pages
-                    if (currentPage > 1 || hasNextPage) return true;
-                    if (pagination.total !== undefined && pagination.total > 0) {
-                        const totalPages = Math.ceil(pagination.total / pagination.perPage);
-                        return totalPages > 1;
+                    // 1. We're loading (show previous pagination state), OR
+                    // 2. We have results and pagination conditions are met
+                    if (loading) {
+                        // Show pagination while loading if we have pagination data
+                        return currentPage > 1 || hasNextPage || (pagination.total !== undefined && pagination.total > 0);
+                    }
+                    // Normal pagination logic when not loading
+                    if (searchResults.length > 0) {
+                        if (currentPage > 1 || hasNextPage) return true;
+                        if (pagination.total !== undefined && pagination.total > 0) {
+                            const totalPages = Math.ceil(pagination.total / pagination.perPage);
+                            return totalPages > 1;
+                        }
                     }
                     return false;
                 })() && (
@@ -557,12 +569,14 @@ export function SearchSidebar({
                                         href="#"
                                         onClick={(e) => {
                                             e.preventDefault();
-                                            if (currentPage > 1) {
+                                            if (!loading && currentPage > 1) {
                                                 onPageChange(currentPage - 1);
                                             }
                                         }}
                                         className={
-                                            currentPage === 1 ? "pointer-events-none opacity-50" : ""
+                                            loading || currentPage === 1
+                                                ? "pointer-events-none opacity-50"
+                                                : ""
                                         }
                                     />
                                 </PaginationItem>
@@ -621,11 +635,12 @@ export function SearchSidebar({
                                                         href="#"
                                                         onClick={(e) => {
                                                             e.preventDefault();
-                                                            if (page !== currentPage) {
+                                                            if (!loading && page !== currentPage) {
                                                                 onPageChange(page);
                                                             }
                                                         }}
                                                         isActive={page === currentPage}
+                                                        className={loading ? "pointer-events-none opacity-50" : ""}
                                                     >
                                                         {page}
                                                     </PaginationLink>
@@ -641,6 +656,7 @@ export function SearchSidebar({
                                                         href="#"
                                                         onClick={(e) => e.preventDefault()}
                                                         isActive={true}
+                                                        className={loading ? "pointer-events-none opacity-50" : ""}
                                                     >
                                                         {currentPage}
                                                     </PaginationLink>
@@ -660,12 +676,14 @@ export function SearchSidebar({
                                         href="#"
                                         onClick={(e) => {
                                             e.preventDefault();
-                                            if (hasNextPage) {
+                                            if (!loading && hasNextPage) {
                                                 onPageChange(currentPage + 1);
                                             }
                                         }}
                                         className={
-                                            !hasNextPage ? "pointer-events-none opacity-50" : ""
+                                            loading || !hasNextPage
+                                                ? "pointer-events-none opacity-50"
+                                                : ""
                                         }
                                     />
                                 </PaginationItem>

@@ -188,11 +188,15 @@ def start_resy_onboarding(req: Request):
         }, 502
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET", "DELETE"]))
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "DELETE"]))
 def resy_account(req: Request):
     """
     GET /resy_account?userId=<user_id>
-    Check if user has connected their Resy account
+    Get full Resy account credentials including payment methods
+
+    POST /resy_account?userId=<user_id>
+    Update selected payment method
+    Body: { "paymentMethodId": 123456 }
 
     DELETE /resy_account?userId=<user_id>
     Disconnect Resy account
@@ -213,16 +217,74 @@ def resy_account(req: Request):
             doc = doc_ref.get()
             if doc.exists:
                 data = doc.to_dict()
+                # Return full credential details including payment methods
+                payment_methods = data.get('paymentMethods', [])
+                payment_method_id = data.get('paymentMethodId')
+                
                 return {
                     'success': True,
                     'connected': True,
-                    'hasPaymentMethod': data.get('paymentMethodId') is not None,
+                    'hasPaymentMethod': payment_method_id is not None,
+                    'paymentMethodId': payment_method_id,
+                    'paymentMethods': payment_methods,
                     'email': data.get('email'),
-                    'name': f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
+                    'firstName': data.get('firstName', ''),
+                    'lastName': data.get('lastName', ''),
+                    'name': f"{data.get('firstName', '')} {data.get('lastName', '')}".strip(),
+                    'mobileNumber': data.get('mobileNumber'),
+                    'userId': data.get('userId')  # Resy user ID
                 }, 200
             return {
                 'success': True,
                 'connected': False
+            }, 200
+
+        if req.method == 'POST':
+            # Update payment method
+            request_json = req.get_json(silent=True)
+            if not request_json:
+                return {
+                    'success': False,
+                    'error': 'Invalid request body'
+                }, 400
+
+            payment_method_id = request_json.get('paymentMethodId')
+            if payment_method_id is None:
+                return {
+                    'success': False,
+                    'error': 'paymentMethodId is required'
+                }, 400
+
+            # Check if credentials exist
+            doc = doc_ref.get()
+            if not doc.exists:
+                return {
+                    'success': False,
+                    'error': 'Resy account not connected'
+                }, 404
+
+            data = doc.to_dict()
+            payment_methods = data.get('paymentMethods', [])
+            
+            # Validate that the payment method exists in the user's payment methods
+            payment_method_ids = [pm.get('id') if isinstance(pm, dict) else pm for pm in payment_methods]
+            if payment_method_id not in payment_method_ids:
+                return {
+                    'success': False,
+                    'error': 'Payment method not found in user\'s payment methods'
+                }, 400
+
+            # Update the payment method ID
+            doc_ref.update({
+                'paymentMethodId': payment_method_id,
+                'updatedAt': gc_firestore.SERVER_TIMESTAMP
+            })
+            
+            logger.info("Updated payment method for Firebase user %s to %s", firebase_uid, payment_method_id)
+            return {
+                'success': True,
+                'message': 'Payment method updated',
+                'paymentMethodId': payment_method_id
             }, 200
 
         if req.method == 'DELETE':

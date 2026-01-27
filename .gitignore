@@ -28,3 +28,8 @@ todo.txt
 
 # Saved data directory
 saved_data/
+
+# Debug files (temporary)
+debug/
+functions/debug/
+functions/api/debug/

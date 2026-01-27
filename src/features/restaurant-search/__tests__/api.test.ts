@@ -8,8 +8,8 @@
  * - Pagination handling
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { searchRestaurantsByMap } from '@/lib/api'
-import type { MapSearchFilters } from '@/lib/interfaces'
+import { searchRestaurants, searchRestaurantsByMap } from '@/lib/api'
+import type { MapSearchFilters, SearchFilters } from '@/lib/interfaces'
 
 // Mock fetch globally
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -302,7 +302,7 @@ describe('searchRestaurantsByMap', () => {
         ).rejects.toThrow('Both day and party_size must be provided')
     })
 
-    it('should include desired_time when provided', async () => {
+    it('should include desired_time when availability filters are enabled', async () => {
         const mockResponse = {
             success: true,
             data: [],
@@ -326,6 +326,7 @@ describe('searchRestaurantsByMap', () => {
             swLng: -74.02,
             neLat: 40.8,
             neLng: -73.93,
+            availableOnly: true, // Availability filter must be enabled
             day: '2026-02-14',
             partySize: '2',
             desiredTime: '19:00',
@@ -336,6 +337,8 @@ describe('searchRestaurantsByMap', () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const callUrl = (global.fetch as any).mock.calls[0][0]
         expect(callUrl).toContain('desired_time=19%3A00')
+        expect(callUrl).toContain('available_day=2026-02-14')
+        expect(callUrl).toContain('available_party_size=2')
     })
 
     it('should include jobId when provided', async () => {
@@ -471,5 +474,312 @@ describe('searchRestaurantsByMap', () => {
 
         expect(result.results).toEqual([])
         expect(result.pagination.hasMore).toBe(false)
+    })
+
+    describe('availability parameter handling', () => {
+        /**
+         * Issue: Previously, the frontend would send day, partySize, and desiredTime
+         * parameters to the backend even when availability filters (availableOnly or
+         * notReleasedOnly) were not enabled. This caused the backend to fetch availability
+         * for all restaurants, showing "Not released yet" status even when users didn't
+         * want to filter by availability.
+         *
+         * Fix: Only send day, partySize, and desiredTime when availability filters are
+         * enabled. This prevents unnecessary availability fetching and ensures restaurants
+         * only show availability status when the user explicitly enables those filters.
+         */
+
+        it('should NOT send availability params when filters are disabled', async () => {
+            const mockResponse = {
+                success: true,
+                data: [],
+                pagination: {
+                    offset: 0,
+                    perPage: 20,
+                    nextOffset: null,
+                    hasMore: false,
+                    total: 0,
+                },
+            }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ; (global.fetch as any).mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => mockResponse,
+                })
+
+            const filters: MapSearchFilters = {
+                swLat: 40.7,
+                swLng: -74.02,
+                neLat: 40.8,
+                neLng: -73.93,
+                // Availability filters are NOT enabled
+                availableOnly: false,
+                notReleasedOnly: false,
+                // But day/partySize/desiredTime are provided
+                day: '2026-02-14',
+                partySize: '2',
+                desiredTime: '19:00',
+            }
+
+            await searchRestaurantsByMap('test_user_id', filters)
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const callUrl = (global.fetch as any).mock.calls[0][0]
+            // These params should NOT be in the URL
+            expect(callUrl).not.toContain('available_day')
+            expect(callUrl).not.toContain('available_party_size')
+            expect(callUrl).not.toContain('desired_time')
+        })
+
+        it('should send availability params when availableOnly is enabled', async () => {
+            const mockResponse = {
+                success: true,
+                data: [],
+                pagination: {
+                    offset: 0,
+                    perPage: 20,
+                    nextOffset: null,
+                    hasMore: false,
+                    total: 0,
+                },
+            }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ; (global.fetch as any).mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => mockResponse,
+                })
+
+            const filters: MapSearchFilters = {
+                swLat: 40.7,
+                swLng: -74.02,
+                neLat: 40.8,
+                neLng: -73.93,
+                availableOnly: true, // Filter is enabled
+                day: '2026-02-14',
+                partySize: '2',
+                desiredTime: '19:00',
+            }
+
+            await searchRestaurantsByMap('test_user_id', filters)
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const callUrl = (global.fetch as any).mock.calls[0][0]
+            // These params SHOULD be in the URL
+            expect(callUrl).toContain('available_day=2026-02-14')
+            expect(callUrl).toContain('available_party_size=2')
+            expect(callUrl).toContain('desired_time=19%3A00')
+            expect(callUrl).toContain('available_only=true')
+        })
+
+        it('should send availability params when notReleasedOnly is enabled', async () => {
+            const mockResponse = {
+                success: true,
+                data: [],
+                pagination: {
+                    offset: 0,
+                    perPage: 20,
+                    nextOffset: null,
+                    hasMore: false,
+                    total: 0,
+                },
+            }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ; (global.fetch as any).mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => mockResponse,
+                })
+
+            const filters: MapSearchFilters = {
+                swLat: 40.7,
+                swLng: -74.02,
+                neLat: 40.8,
+                neLng: -73.93,
+                notReleasedOnly: true, // Filter is enabled
+                day: '2026-02-14',
+                partySize: '2',
+                desiredTime: '19:00',
+            }
+
+            await searchRestaurantsByMap('test_user_id', filters)
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const callUrl = (global.fetch as any).mock.calls[0][0]
+            // These params SHOULD be in the URL
+            expect(callUrl).toContain('available_day=2026-02-14')
+            expect(callUrl).toContain('available_party_size=2')
+            expect(callUrl).toContain('desired_time=19%3A00')
+            expect(callUrl).toContain('not_released_only=true')
+        })
+
+        it('should send availability params when both filters are enabled', async () => {
+            const mockResponse = {
+                success: true,
+                data: [],
+                pagination: {
+                    offset: 0,
+                    perPage: 20,
+                    nextOffset: null,
+                    hasMore: false,
+                    total: 0,
+                },
+            }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ; (global.fetch as any).mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => mockResponse,
+                })
+
+            const filters: MapSearchFilters = {
+                swLat: 40.7,
+                swLng: -74.02,
+                neLat: 40.8,
+                neLng: -73.93,
+                availableOnly: true,
+                notReleasedOnly: true, // Both filters enabled
+                day: '2026-02-14',
+                partySize: '2',
+                desiredTime: '19:00',
+            }
+
+            await searchRestaurantsByMap('test_user_id', filters)
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const callUrl = (global.fetch as any).mock.calls[0][0]
+            // These params SHOULD be in the URL
+            expect(callUrl).toContain('available_day=2026-02-14')
+            expect(callUrl).toContain('available_party_size=2')
+            expect(callUrl).toContain('desired_time=19%3A00')
+        })
+    })
+})
+
+describe('searchRestaurants', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    describe('availability parameter handling', () => {
+        /**
+         * Same issue as searchRestaurantsByMap: availability params should only
+         * be sent when availability filters are enabled.
+         */
+
+        it('should NOT send availability params when filters are disabled', async () => {
+            const mockResponse = {
+                success: true,
+                data: [],
+                pagination: {
+                    offset: 0,
+                    perPage: 20,
+                    nextOffset: null,
+                    hasMore: false,
+                    total: 0,
+                },
+            }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ; (global.fetch as any).mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => mockResponse,
+                })
+
+            const filters: SearchFilters = {
+                query: 'test',
+                // Availability filters are NOT enabled
+                availableOnly: false,
+                notReleasedOnly: false,
+                // But day/partySize are provided
+                day: '2026-02-14',
+                partySize: '2',
+            }
+
+            await searchRestaurants('test_user_id', filters)
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const callUrl = (global.fetch as any).mock.calls[0][0]
+            // These params should NOT be in the URL
+            expect(callUrl).not.toContain('available_day')
+            expect(callUrl).not.toContain('available_party_size')
+        })
+
+        it('should send availability params when availableOnly is enabled', async () => {
+            const mockResponse = {
+                success: true,
+                data: [],
+                pagination: {
+                    offset: 0,
+                    perPage: 20,
+                    nextOffset: null,
+                    hasMore: false,
+                    total: 0,
+                },
+            }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ; (global.fetch as any).mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => mockResponse,
+                })
+
+            const filters: SearchFilters = {
+                query: 'test',
+                availableOnly: true, // Filter is enabled
+                day: '2026-02-14',
+                partySize: '2',
+            }
+
+            await searchRestaurants('test_user_id', filters)
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const callUrl = (global.fetch as any).mock.calls[0][0]
+            // These params SHOULD be in the URL
+            expect(callUrl).toContain('available_day=2026-02-14')
+            expect(callUrl).toContain('available_party_size=2')
+            expect(callUrl).toContain('available_only=true')
+        })
+
+        it('should send availability params when notReleasedOnly is enabled', async () => {
+            const mockResponse = {
+                success: true,
+                data: [],
+                pagination: {
+                    offset: 0,
+                    perPage: 20,
+                    nextOffset: null,
+                    hasMore: false,
+                    total: 0,
+                },
+            }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ; (global.fetch as any).mockResolvedValueOnce({
+                    ok: true,
+                    json: async () => mockResponse,
+                })
+
+            const filters: SearchFilters = {
+                query: 'test',
+                notReleasedOnly: true, // Filter is enabled
+                day: '2026-02-14',
+                partySize: '2',
+            }
+
+            await searchRestaurants('test_user_id', filters)
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const callUrl = (global.fetch as any).mock.calls[0][0]
+            // These params SHOULD be in the URL
+            expect(callUrl).toContain('available_day=2026-02-14')
+            expect(callUrl).toContain('available_party_size=2')
+            expect(callUrl).toContain('not_released_only=true')
+        })
     })
 })

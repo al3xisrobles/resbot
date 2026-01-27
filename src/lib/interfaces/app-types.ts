@@ -101,8 +101,9 @@ export interface SearchFilters {
   offset?: number;
   perPage?: number;
   availableOnly?: boolean;
-  day?: string; // Required if available_only is true
-  partySize?: string; // Required if available_only is true
+  notReleasedOnly?: boolean;
+  day?: string; // Required if available_only or notReleasedOnly is true
+  partySize?: string; // Required if available_only or notReleasedOnly is true
 }
 
 export interface MapSearchFilters {
@@ -197,6 +198,8 @@ export interface TrendingRestaurant {
   };
   imageUrl: string | null;
   rating: number | null;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface Reservation {
@@ -212,4 +215,9 @@ export interface Reservation {
   note?: string;
   snipeTime?: string; // ISO timestamp when snipe runs
   aiSummary?: string; // AI-generated summary of what happened
+  dropDate?: string; // "YYYY-MM-DD" - drop date (for editing)
+  windowHours?: number; // Window hours (for editing)
+  seatingType?: string; // Seating type (for editing)
+  dropHour?: number; // Drop hour (for editing)
+  dropMinute?: number; // Drop minute (for editing)
 }

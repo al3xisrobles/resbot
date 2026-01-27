@@ -12,8 +12,6 @@ import {
 import { Map as LeafletMap, Marker as LeafletMarkerType } from "leaflet";
 import { Button } from "@/components/ui/button";
 import type { SearchResult } from "@/lib/interfaces";
-import { useAtom } from "jotai";
-import { cityConfigAtom } from "@/atoms/cityAtom";
 
 interface MapViewProps {
     searchResults: SearchResult[];
@@ -28,7 +26,6 @@ export const MapView = React.memo(function MapView({
     mapRef,
     markerRefsMap,
 }: MapViewProps) {
-    const cityConfig = useAtom(cityConfigAtom)[0];
     const venuePositions = useMemo(() => {
         const positions: Record<string, [number, number]> = {};
         searchResults.forEach((result) => {

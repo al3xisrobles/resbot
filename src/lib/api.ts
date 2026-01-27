@@ -117,13 +117,16 @@ export async function searchRestaurants(
     params.append("perPage", filters.perPage.toString());
   }
 
-  // Always send day and party size if provided (for availability fetching)
-  if (filters.day) {
-    params.append("available_day", filters.day);
-  }
+  // Only send day and party size if availability filters are enabled
+  // This prevents unnecessary availability fetching when filters aren't active
+  if (filters.availableOnly || filters.notReleasedOnly) {
+    if (filters.day) {
+      params.append("available_day", filters.day);
+    }
 
-  if (filters.partySize) {
-    params.append("available_party_size", filters.partySize);
+    if (filters.partySize) {
+      params.append("available_party_size", filters.partySize);
+    }
   }
 
   if (filters.availableOnly) {
@@ -205,17 +208,20 @@ export async function searchRestaurantsByMap(
     params.append("perPage", filters.perPage.toString());
   }
 
-  // Always send day and party size if provided (for availability fetching)
-  if (filters.day) {
-    params.append("available_day", filters.day);
-  }
+  // Only send day, party size, and desired time if availability filters are enabled
+  // This prevents unnecessary availability fetching when filters aren't active
+  if (filters.availableOnly || filters.notReleasedOnly) {
+    if (filters.day) {
+      params.append("available_day", filters.day);
+    }
 
-  if (filters.partySize) {
-    params.append("available_party_size", filters.partySize);
-  }
+    if (filters.partySize) {
+      params.append("available_party_size", filters.partySize);
+    }
 
-  if (filters.desiredTime) {
-    params.append("desired_time", filters.desiredTime);
+    if (filters.desiredTime) {
+      params.append("desired_time", filters.desiredTime);
+    }
   }
 
   if (filters.availableOnly) {
@@ -484,7 +490,8 @@ export async function healthCheck(): Promise<boolean> {
  */
 export async function getTrendingRestaurants(
   userId?: string | null,
-  limit?: number
+  limit?: number,
+  city?: string
 ): Promise<TrendingRestaurant[]> {
   const params = new URLSearchParams();
   if (userId) {
@@ -492,6 +499,9 @@ export async function getTrendingRestaurants(
   }
   if (limit) {
     params.append("limit", limit.toString());
+  }
+  if (city) {
+    params.append("city", city);
   }
 
   const url = `${API_ENDPOINTS.climbing}${params.toString() ? "?" + params.toString() : ""
@@ -518,7 +528,8 @@ export async function getTrendingRestaurants(
  */
 export async function getTopRatedRestaurants(
   userId?: string | null,
-  limit?: number
+  limit?: number,
+  city?: string
 ): Promise<TrendingRestaurant[]> {
   const params = new URLSearchParams();
   if (userId) {
@@ -526,6 +537,9 @@ export async function getTopRatedRestaurants(
   }
   if (limit) {
     params.append("limit", limit.toString());
+  }
+  if (city) {
+    params.append("city", city);
   }
 
   const url = `${API_ENDPOINTS.top_rated}${params.toString() ? "?" + params.toString() : ""
@@ -690,6 +704,160 @@ export async function disconnectResyAccount(userId: string): Promise<{
     return await response.json();
   } catch (error) {
     console.error("[API] Error disconnecting Resy account:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get full Resy credentials including payment methods
+ */
+export async function getResyCredentials(userId: string): Promise<{
+  success: boolean;
+  connected: boolean;
+  hasPaymentMethod?: boolean;
+  paymentMethodId?: number;
+  paymentMethods?: Array<{ id: number;[key: string]: unknown }>;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  mobileNumber?: string;
+  userId?: number;
+}> {
+  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?userId=${userId}`;
+
+  try {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to get Resy credentials");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("[API] Error getting Resy credentials:", error);
+    throw error;
+  }
+}
+
+/**
+ * Update selected payment method for Resy account
+ */
+export async function updateResyPaymentMethod(
+  userId: string,
+  paymentMethodId: number
+): Promise<{
+  success: boolean;
+  message?: string;
+  paymentMethodId?: number;
+}> {
+  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?userId=${userId}`;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ paymentMethodId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to update payment method");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("[API] Error updating payment method:", error);
+    throw error;
+  }
+}
+
+/**
+ * Update a reservation job
+ */
+export async function updateReservationJob(
+  userId: string,
+  jobId: string,
+  updates: {
+    date?: string;
+    hour?: number;
+    minute?: number;
+    partySize?: number;
+    windowHours?: number;
+    seatingType?: string;
+    dropDate?: string;
+    dropHour?: number;
+    dropMinute?: number;
+  }
+): Promise<{
+  success: boolean;
+  jobId?: string;
+  targetTimeIso?: string;
+  error?: string;
+}> {
+  const url = `${CLOUD_FUNCTIONS_BASE}/update_snipe`;
+
+  try {
+    const rawResponse = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jobId,
+        ...updates,
+      }),
+    });
+
+    const response = await handleApiResponse(rawResponse);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to update reservation job");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("[API] Error updating reservation job:", error);
+    throw error;
+  }
+}
+
+/**
+ * Cancel a reservation job
+ */
+export async function cancelReservationJob(
+  userId: string,
+  jobId: string
+): Promise<{
+  success: boolean;
+  jobId?: string;
+  error?: string;
+}> {
+  const url = `${CLOUD_FUNCTIONS_BASE}/cancel_snipe`;
+
+  try {
+    const rawResponse = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ jobId }),
+    });
+
+    const response = await handleApiResponse(rawResponse);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to cancel reservation job");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("[API] Error canceling reservation job:", error);
     throw error;
   }
 }

@@ -11,7 +11,7 @@ import { MapPin } from "lucide-react";
 import * as L from "leaflet";
 import { renderToString } from "react-dom/server";
 import { Button } from "@/components/ui/button";
-import { searchRestaurantsByMap } from "@/lib/api";
+import { searchRestaurantsByMap, getTrendingRestaurants, getTopRatedRestaurants } from "@/lib/api";
 import type { SearchPagination, SearchResult } from "@/lib/interfaces";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAtom } from "jotai";
@@ -21,7 +21,7 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { Stack } from "@/components/ui/layout";
 import { SearchSidebar } from "./SearchSidebar";
 import { MapView } from "./MapView.private";
-import type { SearchFilters } from "../lib/types";
+import type { SearchFilters, SearchMode } from "../lib/types";
 import { Map as LeafletMap, Marker as LeafletMarkerType } from "leaflet";
 
 // Pre-create icon instances to avoid recreating on every render
@@ -169,6 +169,11 @@ export function RestaurantSearchContainer() {
     const handleSearch = async (page: number = 1) => {
         if (!mapRef.current) return;
 
+        // Skip map search if mode is trending or top-rated (handled by handleModeChange)
+        if (filters.mode === "trending" || filters.mode === "top-rated") {
+            return;
+        }
+
         if (filters.availableOnly || filters.notReleasedOnly) {
             const missing = [];
             if (!reservationForm.partySize) missing.push("party size");
@@ -315,6 +320,56 @@ export function RestaurantSearchContainer() {
         setHoveredVenueId(venueId);
     }, []);
 
+    const handleModeChange = useCallback(async (mode: SearchMode) => {
+        if (mode === "trending" || mode === "top-rated") {
+            setLoading(true);
+            setHasSearched(true);
+            try {
+                const fetchFn = mode === "trending" ? getTrendingRestaurants : getTopRatedRestaurants;
+                const user = auth.currentUser;
+                const restaurants = await fetchFn(user?.uid, 20, cityConfig.id);
+
+                // Convert TrendingRestaurant[] to SearchResult[]
+                const results: SearchResult[] = restaurants
+                    .filter(r => r.lat != null && r.lng != null)
+                    .map(r => ({
+                        id: r.id,
+                        name: r.name,
+                        type: r.type,
+                        price_range: r.priceRange,
+                        imageUrl: r.imageUrl,
+                        neighborhood: r.location.neighborhood,
+                        locality: r.location.locality,
+                        region: r.location.region,
+                        address: r.location.address || null,
+                        latitude: r.lat ?? null,
+                        longitude: r.lng ?? null,
+                    }));
+
+                setSearchResults(results);
+                setPagination(null); // No pagination for trending/top-rated
+                setCurrentPage(1);
+
+                // Fit map bounds to show all results
+                if (results.length > 0 && mapRef.current) {
+                    const validResults = results.filter(r => r.latitude != null && r.longitude != null);
+                    if (validResults.length > 0) {
+                        const bounds = L.latLngBounds(
+                            validResults.map(r => [r.latitude!, r.longitude!] as [number, number])
+                        );
+                        mapRef.current.fitBounds(bounds, { padding: [50, 50] });
+                    }
+                }
+            } catch (err) {
+                console.error(`Error fetching ${mode} restaurants:`, err);
+                toast.error(`Failed to fetch ${mode === "trending" ? "trending" : "top-rated"} restaurants`);
+                setSearchResults([]);
+            } finally {
+                setLoading(false);
+            }
+        }
+    }, [auth, cityConfig]);
+
     const handlePageChange = (page: number) => {
         handleSearch(page);
     };
@@ -342,6 +397,7 @@ export function RestaurantSearchContainer() {
                 inputsHaveChanged={inputsHaveChanged}
                 onSearch={handleSearch}
                 onPageChange={handlePageChange}
+                onModeChange={handleModeChange}
                 onCardClick={handleCardClick}
                 onCardHover={handleCardHover}
             />

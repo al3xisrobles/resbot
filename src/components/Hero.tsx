@@ -53,7 +53,7 @@ const HOW_IT_WORKS_STEPS = [
 export function Hero() {
   const [reservationForm, setReservationForm] = useAtom(reservationFormAtom);
   return (
-    <section className="min-h-[90vh] relative pt-12 pb-10 sm:pt-32 sm:pb-14 px-4 md:px-0">
+    <section className="min-h-[90vh] relative pt-4 pb-10 sm:pt-20 sm:pb-14 px-4 md:px-0">
       {/* Decorative geometric panels */}
       <div className="pointer-events-none absolute inset-0 overflow-y-visible overflow-x-hidden -z-10">
         {/* Right side panel */}
@@ -69,7 +69,7 @@ export function Hero() {
           src={GeometricPanelLeft}
           alt=""
           aria-hidden="true"
-          className="hidden md:block absolute -left-28 top-1/5 opacity-30 max-w-xs lg:max-w-md"
+          className="hidden md:block absolute -left-28 top-1/10 opacity-30 max-w-xs lg:max-w-md"
         />
       </div>
 

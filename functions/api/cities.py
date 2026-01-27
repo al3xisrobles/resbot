@@ -12,6 +12,7 @@ CITIES = {
             "ne": {"lat": 40.8, "lng": -73.93},
         },
         "radius": 16100,  # ~10 miles in meters
+        "url_slug": "new-york-ny",
     },
     "chicago": {
         "id": "chicago",
@@ -22,6 +23,7 @@ CITIES = {
             "ne": {"lat": 42.0, "lng": -87.5},
         },
         "radius": 16100,  # ~10 miles in meters
+        "url_slug": "chicago-il",
     },
     "losAngeles": {
         "id": "losAngeles",
@@ -32,6 +34,7 @@ CITIES = {
             "ne": {"lat": 34.3, "lng": -118.0},
         },
         "radius": 16100,  # ~10 miles in meters
+        "url_slug": "los-angeles-ca",
     },
     "sanFrancisco": {
         "id": "sanFrancisco",
@@ -42,6 +45,7 @@ CITIES = {
             "ne": {"lat": 37.8, "lng": -122.3},
         },
         "radius": 16100,  # ~10 miles in meters
+        "url_slug": "san-francisco-ca",
     },
     "boston": {
         "id": "boston",
@@ -52,6 +56,7 @@ CITIES = {
             "ne": {"lat": 42.4, "lng": -70.9},
         },
         "radius": 16100,  # ~10 miles in meters
+        "url_slug": "boston-ma",
     },
 }
 

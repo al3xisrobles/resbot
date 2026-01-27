@@ -17,6 +17,8 @@ import {
 } from "@/services/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { Hero } from "@/components/Hero";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -90,13 +92,14 @@ export function HomePage() {
   }, [auth.currentUser]);
 
   return (
-    <div className="h-screen overflow-y-auto relative">
-      <main className="relative">
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1">
         {/* HERO */}
         <Hero />
 
         {/* Trending Restaurants */}
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-4 pb-12">
           <section>
             <div className="flex items-center gap-2 z-20">
               <TrendingUp className="size-6 text-primary" />
@@ -209,6 +212,7 @@ export function HomePage() {
           </section>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

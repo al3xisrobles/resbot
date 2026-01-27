@@ -390,8 +390,7 @@ def search_map(req: Request):
                             result['id'],
                             filters['available_day'],
                             filters['available_party_size'],
-                            config,
-                            filters.get('desired_time')
+                            config
                         ): result
                         for result in results
                     }
