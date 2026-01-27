@@ -438,15 +438,10 @@ export function SearchSidebar({
                         {/* Search Results */}
                         <Stack itemsSpacing={16}>
                             {loading && (
-                                <Stack itemsSpacing={12} className="mt-4">
-                                    <p className="text-sm text-muted-foreground">
-                                        Loading results...
-                                    </p>
-                                    <Stack itemsSpacing={4}>
-                                        {Array.from({ length: 20 }).map((_, index) => (
-                                            <SearchResultItemSkeleton key={index} />
-                                        ))}
-                                    </Stack>
+                                <Stack itemsSpacing={4} className="mt-4">
+                                    {Array.from({ length: 20 }).map((_, index) => (
+                                        <SearchResultItemSkeleton key={index} />
+                                    ))}
                                 </Stack>
                             )}
 

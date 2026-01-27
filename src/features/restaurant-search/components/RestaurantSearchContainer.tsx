@@ -58,7 +58,7 @@ export function RestaurantSearchContainer() {
     });
 
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true); // Start with loading true to show skeletons immediately
     const [hasSearched, setHasSearched] = useState(false);
     const [hoveredVenueId, setHoveredVenueId] = useState<string | null>(null);
     const [pagination, setPagination] = useState<SearchPagination | null>(null);
@@ -156,6 +156,9 @@ export function RestaurantSearchContainer() {
 
     // Auto-search with debounce when filters or reservation form changes
     useEffect(() => {
+        // Set loading immediately when filters change
+        setLoading(true);
+        
         const timer = setTimeout(() => {
             if (mapRef.current) {
                 handleSearch(1);
