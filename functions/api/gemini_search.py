@@ -8,9 +8,10 @@ from datetime import date, timedelta
 
 import requests
 from firebase_functions.https_fn import on_request, Request
-from firebase_functions.options import CorsOptions
+from firebase_functions.options import CorsOptions, MemoryOption
 
 from google.genai import types
+from .sentry_utils import with_sentry_trace
 from .utils import load_credentials, get_resy_headers, gemini_client
 from .cities import get_city_config
 
@@ -18,7 +19,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]), timeout_sec=60, memory=MemoryOption.GB_1)
+@with_sentry_trace
 def gemini_search(req: Request):
     """
     POST /gemini_search
@@ -53,13 +55,21 @@ def gemini_search(req: Request):
                 'error': 'Gemini API not configured. Please set GEMINI_API_KEY environment variable.'
             }, 503
 
-        # First, query Resy API to check available dates and determine booking window
-        resy_findings = ""
+        # Load credentials and headers once if venue_id is provided (for both calendar and venue API calls)
+        headers = None
         if venue_id:
             try:
                 # Load credentials (from Firestore if userId provided, else from credentials.json)
                 credentials = load_credentials(user_id)
                 headers = get_resy_headers(credentials)
+            except Exception as e:
+                logger.warning("Failed to load credentials: %s", e)
+                headers = None
+
+        # First, query Resy API to check available dates and determine booking window
+        resy_findings = ""
+        if venue_id and headers:
+            try:
 
                 # Use calendar API to get complete availability overview
                 today = date.today()
@@ -131,6 +141,63 @@ def gemini_search(req: Request):
                 logger.warning("Failed to query Resy API for booking window: %s", e)
                 resy_findings = ""
 
+        # Fetch venue content from /3/venue API for authoritative reservation info
+        resy_venue_info = ""
+        if venue_id and headers:
+            try:
+                logger.info("Fetching venue content for venue %s", venue_id)
+
+                # Query /3/venue API for content
+                venue_response = requests.get(
+                    'https://api.resy.com/3/venue',
+                    params={'id': venue_id},
+                    headers=headers,
+                    timeout=5
+                )
+
+                if venue_response.ok:
+                    venue_data = venue_response.json()
+                    content_array = venue_data.get('content', [])
+
+                    # Extract relevant content sections
+                    extracted_content = []
+                    for content_item in content_array:
+                        content_name = content_item.get('name', '')
+                        content_body = content_item.get('body', '')
+
+                        # Prioritize need_to_know (reservation policy), then about, then why_we_like_it
+                        if content_name == 'need_to_know' and content_body:
+                            extracted_content.append(
+                                f"RESERVATION POLICY: {content_body}"
+                            )
+                        elif content_name == 'about' and content_body:
+                            extracted_content.append(
+                                f"ABOUT: {content_body}"
+                            )
+                        elif content_name == 'why_we_like_it' and content_body:
+                            extracted_content.append(
+                                f"WHY WE LIKE IT: {content_body}"
+                            )
+
+                    if extracted_content:
+                        resy_venue_info = (
+                            "\n\nOFFICIAL RESY VENUE INFO (from restaurant's Resy page):\n"
+                            + "\n\n".join(extracted_content)
+                        )
+                        logger.info(
+                            "Extracted %s content sections from venue API",
+                            len(extracted_content)
+                        )
+                else:
+                    logger.warning(
+                        "Venue API returned status %s for venue %s",
+                        venue_response.status_code, venue_id
+                    )
+
+            except Exception as e:
+                logger.warning("Failed to fetch venue content: %s", e)
+                resy_venue_info = ""
+
         # Create search query
         search_query = f"When do {restaurant_name} reservations open in {city_name}? What time and how many days in advance?"
 
@@ -148,7 +215,7 @@ def gemini_search(req: Request):
 
         prompt = f"""You are a helpful assistant providing restaurant reservation information.
 
-Question: {search_query}{resy_findings}
+Question: {search_query}{resy_findings}{resy_venue_info}
 
 Provide a concise summary (3-5 sentences, max 500 tokens) including:
 - What time reservations typically open (e.g., 9:00 AM, 10:00 AM, midnight)
@@ -157,7 +224,7 @@ Provide a concise summary (3-5 sentences, max 500 tokens) including:
 - Do NOT give generic booking advice like "To secure a table, it is recommended to book precisely when the reservation window opens."
 - DO give restaurant-specific booking advice like "For those unable to secure a reservation, the bar at Torrisi accommodates walk-ins on a first-come, first-served basis, offering the full menu."
 
-If Resy API context is provided above, use it to confirm or verify the booking window from web search results.
+IMPORTANT: If "OFFICIAL RESY VENUE INFO" is provided above, prioritize that information over web search results. The official venue info comes directly from the restaurant's Resy page and is the most authoritative source for reservation policies, booking windows, and restaurant-specific details.
 """
 
         # Call Gemini with Google Search grounding

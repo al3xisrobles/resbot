@@ -9,8 +9,9 @@ from datetime import date, timedelta
 
 import requests
 from firebase_functions.https_fn import on_request, Request
-from firebase_functions.options import CorsOptions
+from firebase_functions.options import CorsOptions, MemoryOption
 
+from .sentry_utils import with_sentry_trace
 from .utils import load_credentials, get_resy_headers, get_venue_availability
 from .resy_client.models import ResyConfig, TimedReservationRequest
 from .resy_client.manager import ResyManager
@@ -19,7 +20,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=60, memory=MemoryOption.GB_1)
+@with_sentry_trace
 def calendar(req: Request):
     """
     GET /calendar?id=<venue_id>&partySize=<party_size>&userId=<user_id>
@@ -104,7 +106,8 @@ def calendar(req: Request):
         }, 500
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]), timeout_sec=60, memory=MemoryOption.GB_1)
+@with_sentry_trace
 def reservation(req: Request):
     """
     POST /reservation
@@ -176,7 +179,8 @@ def reservation(req: Request):
         }, 500
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=60, memory=MemoryOption.GB_1)
+@with_sentry_trace
 def slots(req: Request):
     """
     GET /slots?venueId=<venue_id>&date=<date>&partySize=<party_size>&userId=<user_id>

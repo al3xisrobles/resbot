@@ -8,10 +8,11 @@ import datetime as dt
 import logging
 
 from firebase_functions.https_fn import on_request, Request
-from firebase_functions.options import CorsOptions
+from firebase_functions.options import CorsOptions, MemoryOption
 from firebase_admin import firestore
 from google.cloud import firestore as gc_firestore
 
+from .sentry_utils import with_sentry_trace
 from .resy_client.models import ResyConfig, ReservationRequest
 from .resy_client.manager import ResyManager
 from .resy_client.errors import RateLimitError
@@ -88,7 +89,9 @@ def _make_reservation_for_job(job_data: dict, user_id: str = None, use_parallel:
         cors_methods=["POST", "OPTIONS"],  # allow POST + OPTIONS
     ),
     timeout_sec=120,
+    memory=MemoryOption.GB_1,
 )
+@with_sentry_trace
 def run_snipe(req: Request):
     """
     Sniper function called by Cloud Scheduler.
@@ -266,7 +269,9 @@ def run_snipe(req: Request):
         cors_methods=["POST", "OPTIONS"],
     ),
     timeout_sec=30,
+    memory=MemoryOption.MB_512,
 )
+@with_sentry_trace
 def summarize_snipe_logs(req: Request):
     """
     POST /summarize_snipe_logs

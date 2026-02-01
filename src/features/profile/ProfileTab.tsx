@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { updateProfile } from "firebase/auth";
@@ -48,6 +49,7 @@ export function ProfileTab() {
             toast.success("Profile updated successfully");
         } catch (error) {
             console.error("Error updating profile:", error);
+            Sentry.captureException(error);
             toast.error("Failed to update profile");
         } finally {
             setLoading(false);

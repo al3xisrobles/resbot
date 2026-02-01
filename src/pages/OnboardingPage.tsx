@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -69,6 +70,9 @@ export function OnboardingPage() {
           icon: <CheckCircle2 className="h-5 w-5 text-green-600" />,
         });
 
+        // Refresh /me data to update onboarding status
+        await auth.refreshMe();
+
         // Redirect to home page after successful connection
         setTimeout(() => {
           navigate("/");
@@ -80,6 +84,7 @@ export function OnboardingPage() {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to connect Resy account";
       setError(errorMessage);
+      Sentry.captureException(err);
       toast.error("Connection failed", {
         description: errorMessage,
         icon: <AlertCircle className="h-5 w-5 text-red-500" />,

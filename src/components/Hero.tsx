@@ -53,7 +53,7 @@ const HOW_IT_WORKS_STEPS = [
 export function Hero() {
   const [reservationForm, setReservationForm] = useAtom(reservationFormAtom);
   return (
-    <section className="min-h-[90vh] relative pt-4 pb-10 sm:pt-20 sm:pb-14 px-4 md:px-0">
+    <section className="min-h-[85vh] sm:min-h-[80vh] md:min-h-[75vh] lg:min-h-[70vh] xl:min-h-0 relative pt-4 pb-10 sm:pt-20 sm:pb-16 md:pb-20 lg:pb-24 px-4 md:px-0">
       {/* Decorative geometric panels */}
       <div className="pointer-events-none absolute inset-0 overflow-y-visible overflow-x-hidden -z-10">
         {/* Right side panel */}
@@ -61,7 +61,7 @@ export function Hero() {
           src={GeometricPanelRight}
           alt=""
           aria-hidden="true"
-          className="hidden md:block absolute -right-28 -top-6 opacity-30 max-w-xs lg:max-w-md"
+          className="hidden blur-2xl md:block absolute -right-28 -top-6 opacity-20 max-w-xs lg:max-w-md"
         />
 
         {/* Left side panel, a bit lower */}
@@ -69,7 +69,7 @@ export function Hero() {
           src={GeometricPanelLeft}
           alt=""
           aria-hidden="true"
-          className="hidden md:block absolute -left-28 top-1/10 opacity-30 max-w-xs lg:max-w-md"
+          className="hidden md:block blur-2xl absolute -left-28 top-1/10 opacity-20 max-w-xs lg:max-w-md"
         />
       </div>
 
@@ -172,7 +172,7 @@ export function Hero() {
       </div>
 
       {/* --- How Reservation Sniping Works placeholder --- */}
-      <div className="mt-12 text-center w-full z-20">
+      <div className="mt-12 lg:mt-10 xl:mt-8 text-center w-full z-20">
         <p className="text-xs mb-4 font-medium tracking-[0.18em] uppercase text-muted-foreground">
           How Reservation Sniping Works
         </p>

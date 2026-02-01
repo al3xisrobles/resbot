@@ -9,9 +9,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from firebase_functions.https_fn import on_request, Request
-from firebase_functions.options import CorsOptions
-from firebase_admin import firestore as admin_firestore
+from firebase_functions.options import CorsOptions, MemoryOption
+from google.cloud import firestore as gc_firestore
 
+from .sentry_utils import with_sentry_trace
 from .utils import (
     load_credentials,
     get_resy_headers,
@@ -30,8 +31,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-# TODO: Right now /search doesn’t use job progress at all
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
+# TODO: Right now /search doesn't use job progress at all
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=120, memory=MemoryOption.GB_1)
+@with_sentry_trace
 def search(req: Request):
     """
     GET /search
@@ -161,7 +163,8 @@ def search(req: Request):
         }, 500
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=120)
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=120, memory=MemoryOption.GB_1)
+@with_sentry_trace
 def search_map(req: Request):
     """
     GET /search_map
@@ -197,7 +200,7 @@ def search_map(req: Request):
             update_search_progress(job_id, {
                 "status": "started",
                 "stage": "initializing",
-                "createdAt": admin_firestore.SERVER_TIMESTAMP,
+                "createdAt": gc_firestore.SERVER_TIMESTAMP,
                 "filteredCount": 0,
                 "pagesFetched": 0,
             })
@@ -360,7 +363,10 @@ def search_map(req: Request):
             else:
                 next_offset = None
 
-            display_total = filtered_total
+            # For filtered results, we don't know the true total
+            # Set to None to signal progressive loading to frontend
+            display_total = None
+            is_filtered_pagination = True
 
             print(
                 f"[MAP SEARCH] Returning {len(results)} results for offset {filters['offset']} "
@@ -372,6 +378,7 @@ def search_map(req: Request):
             # NORMAL PAGINATION (no availability filtering)
             # Paginate over raw results, then optionally fetch availability for current page
             # ========================================================================
+            is_filtered_pagination = False
 
             # Slice results based on offset to get current page
             results = all_results[filters['offset']:filters['offset'] + filters['per_page']]
@@ -435,16 +442,26 @@ def search_map(req: Request):
                 "durationMs": duration_ms,
             })
 
+        # Build pagination response
+        pagination_response = {
+            'offset': filters['offset'],
+            'perPage': filters['per_page'],
+            'nextOffset': next_offset,
+            'hasMore': next_offset is not None,
+        }
+
+        # For filtered pagination, provide progressive count info instead of total
+        if is_filtered_pagination:
+            pagination_response['isFiltered'] = True
+            pagination_response['foundSoFar'] = len(all_results)  # How many matches found
+            # total is omitted intentionally - we don't know true total
+        else:
+            pagination_response['total'] = display_total
+
         return {
             'success': True,
             'data': results,
-            'pagination': {
-                'offset': filters['offset'],
-                'perPage': filters['per_page'],
-                'nextOffset': next_offset,
-                'hasMore': next_offset is not None,
-                'total': display_total
-            }
+            'pagination': pagination_response
         }
 
     except Exception as e:

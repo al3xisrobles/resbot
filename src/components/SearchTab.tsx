@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useState } from "react";
 import { Search, AlertCircle, MapPin, ChevronRight } from "lucide-react";
 import {
@@ -54,6 +55,7 @@ export function SearchTab({
         setError("No restaurants found matching your search");
       }
     } catch (err) {
+      Sentry.captureException(err);
       setError(
         err instanceof Error ? err.message : "Failed to search restaurants"
       );

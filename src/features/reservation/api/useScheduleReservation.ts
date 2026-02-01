@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
 import { toast } from "sonner";
+import { useAtom } from "jotai";
 import { scheduleReservationSnipe } from "@/services/firebase";
 import { useAuth } from "@/contexts/AuthContext";
+import { cityTimezoneAtom } from "@/atoms/cityAtom";
 import type { ReservationFormState } from "../atoms/reservationFormAtom";
 
 export function useScheduleReservation(
@@ -11,6 +12,7 @@ export function useScheduleReservation(
   reserveOnEmulation: boolean
 ) {
   const auth = useAuth();
+  const [cityTimezone] = useAtom(cityTimezoneAtom);
   const [loadingSubmit, setLoadingSubmit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reservationScheduled, setReservationScheduled] = useState(false);
@@ -36,28 +38,43 @@ export function useScheduleReservation(
       return;
     }
 
+    // Parse drop time
+    const [dropHour, dropMinute] = reservationForm.dropTimeSlot.split(":").map(Number);
+
+    // Validate drop time is in the future
+    const dropDateTime = new Date(
+      reservationForm.dropDate.getFullYear(),
+      reservationForm.dropDate.getMonth(),
+      reservationForm.dropDate.getDate(),
+      dropHour,
+      dropMinute
+    );
+
+    if (dropDateTime <= new Date()) {
+      setError("Drop time must be in the future");
+      return;
+    }
+
     setLoadingSubmit(true);
     setError(null);
 
     try {
       // Parse time slot
       const [hour, minute] = reservationForm.timeSlot.split(":");
-      const [dropHour, dropMinute] = reservationForm.dropTimeSlot.split(":");
 
       const user = auth.currentUser;
 
-      // Convert drop date to EST timezone
-      const dropDateInEst = new Date(
-        reservationForm.dropDate.toLocaleString("en-US", {
-          timeZone: "America/New_York",
-        })
-      );
-      const dropDateFormatted = format(dropDateInEst, "yyyy-MM-dd");
+      // Format dates as YYYY-MM-DD using the date's local components (not UTC)
+      // This ensures Jan 27 selected in the calendar is sent as "2026-01-27" regardless of timezone
+      const dropDateFormatted = `${reservationForm.dropDate.getFullYear()}-${String(reservationForm.dropDate.getMonth() + 1).padStart(2, '0')}-${String(reservationForm.dropDate.getDate()).padStart(2, '0')}`;
 
-      const { jobId } = await scheduleReservationSnipe({
+      // Format reservation date using local components (not UTC) to avoid timezone shifts
+      const reservationDateFormatted = `${reservationForm.date.getFullYear()}-${String(reservationForm.date.getMonth() + 1).padStart(2, '0')}-${String(reservationForm.date.getDate()).padStart(2, '0')}`;
+
+      const requestPayload = {
         venueId,
         partySize: Number(reservationForm.partySize),
-        date: format(reservationForm.date, "yyyy-MM-dd"),
+        date: reservationDateFormatted,
         dropDate: dropDateFormatted,
         hour: Number(hour),
         minute: Number(minute),
@@ -68,11 +85,19 @@ export function useScheduleReservation(
           reservationForm.seatingType === "any"
             ? undefined
             : reservationForm.seatingType,
-        dropHour: Number(dropHour),
-        dropMinute: Number(dropMinute),
+        dropHour,
+        dropMinute,
         userId: user?.uid ?? null,
         actuallyReserve: reserveOnEmulation,
-      });
+        timezone: cityTimezone, // Pass the city's timezone to the backend
+      };
+
+      // Log the request for debugging
+      console.log("[useScheduleReservation] Scheduling with payload:", requestPayload);
+      console.log("[useScheduleReservation] Drop date from form:", reservationForm.dropDate?.toISOString());
+      console.log("[useScheduleReservation] City timezone:", cityTimezone);
+
+      const { jobId } = await scheduleReservationSnipe(requestPayload);
 
       // Show success toast with green background
       toast.success("Reservation Scheduled!", {

@@ -1,4 +1,5 @@
 // src/pages/HomePage.tsx
+import * as Sentry from "@sentry/react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { TrendingUp, Star, Search } from "lucide-react";
@@ -55,6 +56,7 @@ export function HomePage() {
         }
       } catch (err) {
         console.error("Failed to fetch trending restaurants:", err);
+        Sentry.captureException(err);
       } finally {
         setLoadingTrending(false);
       }
@@ -82,6 +84,7 @@ export function HomePage() {
         }
       } catch (err) {
         console.error("Failed to fetch top-rated restaurants:", err);
+        Sentry.captureException(err);
       } finally {
         setLoadingTopRated(false);
       }
@@ -98,7 +101,7 @@ export function HomePage() {
         <Hero />
 
         {/* Trending Restaurants */}
-        <div className="container mx-auto px-4 py-4 pb-12">
+        <div className="container mx-auto px-4 pt-8 sm:pt-12 md:pt-16 lg:pt-12 xl:pt-16 pb-12">
           <section>
             <div className="flex items-center gap-2 z-20">
               <TrendingUp className="size-6 text-primary" />

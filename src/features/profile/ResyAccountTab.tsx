@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -25,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Loader2, CreditCard, LogOut, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+
 
 interface PaymentMethod {
     id: number;
@@ -87,6 +89,7 @@ export function ResyAccountTab({ onLoadingChange }: ResyAccountTabProps = {}) {
             }
         } catch (error) {
             console.error("Error loading Resy credentials:", error);
+            Sentry.captureException(error);
             toast.error("Failed to load Resy account information");
         } finally {
             setLoading(false);
@@ -108,6 +111,7 @@ export function ResyAccountTab({ onLoadingChange }: ResyAccountTabProps = {}) {
             toast.success("Payment method updated successfully");
         } catch (error) {
             console.error("Error updating payment method:", error);
+            Sentry.captureException(error);
             toast.error("Failed to update payment method");
         } finally {
             setSaving(false);
@@ -129,6 +133,7 @@ export function ResyAccountTab({ onLoadingChange }: ResyAccountTabProps = {}) {
             toast.success("Resy account disconnected");
         } catch (error) {
             console.error("Error disconnecting Resy account:", error);
+            Sentry.captureException(error);
             toast.error("Failed to disconnect Resy account");
         } finally {
             setSaving(false);

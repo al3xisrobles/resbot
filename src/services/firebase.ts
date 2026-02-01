@@ -525,6 +525,7 @@ export interface ReservationSnipeRequest {
   seatingType?: string;
   userId?: string | null;
   actuallyReserve?: boolean;
+  timezone?: string; // IANA timezone string (e.g., "America/New_York", "America/Los_Angeles")
 }
 
 export interface ReservationSnipeResponse {
@@ -556,7 +557,10 @@ export async function scheduleReservationSnipe(
       // In emulator mode, create the Firestore job document directly
       // This mimics what the backend does in schedule.py
 
-      // Create target datetime in America/New_York timezone
+      // Use provided timezone or default to America/New_York
+      const timezone = request.timezone || "America/New_York";
+
+      // Create target datetime in the specified timezone
       const [dropYear, dropMonth, dropDay] = request.dropDate
         .split("-")
         .map(Number);
@@ -568,13 +572,23 @@ export async function scheduleReservationSnipe(
         request.dropMinute
       );
 
-      // Format as ISO 8601 with timezone offset for America/New_York
-      // Note: This is a simplified version. In production, the backend handles timezone conversion properly
+      // Get timezone offset for the target date in the specified timezone
+      // This is a simplified version - production backend handles this properly with ZoneInfo
+      const getTimezoneOffset = (tz: string): string => {
+        const offsets: Record<string, string> = {
+          "America/New_York": "-05:00",
+          "America/Chicago": "-06:00",
+          "America/Los_Angeles": "-08:00",
+        };
+        return offsets[tz] || "-05:00";
+      };
+
+      // Format as ISO 8601 with timezone offset
       const targetTimeIso = new Date(
         targetDate.getTime() - targetDate.getTimezoneOffset() * 60000
       )
         .toISOString()
-        .replace("Z", "-05:00"); // EST offset (simplified)
+        .replace("Z", getTimezoneOffset(timezone));
 
       // Create a new job document reference
       const jobRef = doc(collection(db, "reservationJobs"));
@@ -596,6 +610,7 @@ export async function scheduleReservationSnipe(
         // Job/meta
         status: "pending",
         targetTimeIso,
+        timezone, // Store the timezone for reference
         createdAt: Timestamp.now(),
         lastUpdate: Timestamp.now(),
         // Extra options

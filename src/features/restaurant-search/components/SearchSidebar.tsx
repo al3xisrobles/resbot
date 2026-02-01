@@ -1,6 +1,7 @@
 import React from "react";
 import { format } from "date-fns";
-import { ChevronDown, Bookmark, Search, TrendingUp, Star } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ChevronDown, Bookmark, Search, TrendingUp, Star, LogIn } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
     Select,
@@ -44,6 +45,7 @@ import {
 import { Stack, Group } from "@/components/ui/layout";
 import type { SearchSidebarProps, SearchMode } from "../lib/types";
 import { CUISINES, PRICE_RANGES } from "../lib/types";
+import { useAuth } from "@/contexts/AuthContext";
 
 const TIME_SLOT_OPTIONS = TIME_SLOTS.map((slot) => (
     <SelectItem key={slot.value} value={slot.value}>
@@ -67,6 +69,9 @@ export function SearchSidebar({
 }: SearchSidebarProps) {
     const [reservationForm, setReservationForm] = useAtom(reservationFormAtom);
     const cityConfig = useAtom(cityConfigAtom)[0];
+    const auth = useAuth();
+    const navigate = useNavigate();
+    const isAuthenticated = !!auth.currentUser;
     const selectedCuisines = React.useMemo(() => {
         if (filters.cuisines.length === 0) return "All Cuisines";
         if (filters.cuisines.length === 1) {
@@ -102,7 +107,29 @@ export function SearchSidebar({
             collapsible="none"
             className="border-r w-full md:w-(--sidebar-width)"
         >
-            <SidebarContent className="no-scrollbar">
+            <SidebarContent className="no-scrollbar relative">
+                {/* Login overlay for unauthenticated users */}
+                {!isAuthenticated && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+                        <div className="text-center space-y-4 px-8">
+                            <LogIn className="size-12 mx-auto text-muted-foreground" />
+                            <div className="space-y-2">
+                                <h3 className="text-lg font-semibold">Login to search</h3>
+                                <p className="text-sm text-muted-foreground max-w-sm">
+                                    Sign in to search for restaurants and view availability
+                                </p>
+                            </div>
+                            <Button
+                                onClick={() => navigate("/login")}
+                                className="mt-4"
+                            >
+                                <LogIn className="mr-2 size-4" />
+                                Log in
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
                 <SidebarGroup className="p-0">
                     <SidebarGroupContent className="pb-4 px-4">
                         {/* Filter Card */}
@@ -264,8 +291,8 @@ export function SearchSidebar({
                                                             }
                                                         >
                                                             <Checkbox
-                                                                id="availability-available"
                                                                 checked={filters.availableOnly}
+                                                                onClick={(e) => e.stopPropagation()}
                                                                 onCheckedChange={(checked) =>
                                                                     setFilters({
                                                                         ...filters,
@@ -274,12 +301,9 @@ export function SearchSidebar({
                                                                     })
                                                                 }
                                                             />
-                                                            <label
-                                                                htmlFor="availability-available"
-                                                                className="text-sm cursor-pointer flex-1"
-                                                            >
+                                                            <span className="text-sm flex-1">
                                                                 Available Only
-                                                            </label>
+                                                            </span>
                                                         </div>
                                                         <div
                                                             className="flex items-center space-x-2 hover:bg-accent rounded-sm p-2 cursor-pointer"
@@ -292,8 +316,8 @@ export function SearchSidebar({
                                                             }
                                                         >
                                                             <Checkbox
-                                                                id="availability-not-released"
                                                                 checked={filters.notReleasedOnly}
+                                                                onClick={(e) => e.stopPropagation()}
                                                                 onCheckedChange={(checked) =>
                                                                     setFilters({
                                                                         ...filters,
@@ -302,12 +326,9 @@ export function SearchSidebar({
                                                                     })
                                                                 }
                                                             />
-                                                            <label
-                                                                htmlFor="availability-not-released"
-                                                                className="text-sm cursor-pointer flex-1"
-                                                            >
+                                                            <span className="text-sm flex-1">
                                                                 Not Released
-                                                            </label>
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 </PopoverContent>
@@ -331,11 +352,20 @@ export function SearchSidebar({
                                                             (cuisine) => (
                                                                 <div
                                                                     key={cuisine}
-                                                                    className="flex items-center space-x-2 hover:bg-accent rounded-sm"
+                                                                    className="flex items-center space-x-2 hover:bg-accent rounded-sm p-2 cursor-pointer"
+                                                                    onClick={() => {
+                                                                        const isSelected = filters.cuisines.includes(cuisine);
+                                                                        setFilters({
+                                                                            ...filters,
+                                                                            cuisines: isSelected
+                                                                                ? filters.cuisines.filter((c) => c !== cuisine)
+                                                                                : [...filters.cuisines, cuisine],
+                                                                        });
+                                                                    }}
                                                                 >
                                                                     <Checkbox
-                                                                        id={`cuisine-browse-${cuisine}`}
                                                                         checked={filters.cuisines.includes(cuisine)}
+                                                                        onClick={(e) => e.stopPropagation()}
                                                                         onCheckedChange={(checked) => {
                                                                             if (checked) {
                                                                                 setFilters({
@@ -354,14 +384,10 @@ export function SearchSidebar({
                                                                                 });
                                                                             }
                                                                         }}
-                                                                        className="ml-2"
                                                                     />
-                                                                    <label
-                                                                        htmlFor={`cuisine-browse-${cuisine}`}
-                                                                        className="text-sm p-2 cursor-pointer flex-1 hover:bg-accent rounded-sm"
-                                                                    >
+                                                                    <span className="text-sm flex-1">
                                                                         {cuisine}
-                                                                    </label>
+                                                                    </span>
                                                                 </div>
                                                             )
                                                         )}
@@ -389,13 +415,22 @@ export function SearchSidebar({
                                                             (price) => (
                                                                 <div
                                                                     key={price.value}
-                                                                    className="flex items-center space-x-2 hover:bg-accent rounded-sm"
+                                                                    className="flex items-center space-x-2 hover:bg-accent rounded-sm p-2 cursor-pointer"
+                                                                    onClick={() => {
+                                                                        const isSelected = filters.priceRanges.includes(price.value);
+                                                                        setFilters({
+                                                                            ...filters,
+                                                                            priceRanges: isSelected
+                                                                                ? filters.priceRanges.filter((p) => p !== price.value)
+                                                                                : [...filters.priceRanges, price.value],
+                                                                        });
+                                                                    }}
                                                                 >
                                                                     <Checkbox
-                                                                        id={`price-browse-${price.value}`}
                                                                         checked={filters.priceRanges.includes(
                                                                             price.value
                                                                         )}
+                                                                        onClick={(e) => e.stopPropagation()}
                                                                         onCheckedChange={(checked) => {
                                                                             if (checked) {
                                                                                 setFilters({
@@ -415,14 +450,10 @@ export function SearchSidebar({
                                                                                 });
                                                                             }
                                                                         }}
-                                                                        className="ml-2"
                                                                     />
-                                                                    <label
-                                                                        htmlFor={`price-browse-${price.value}`}
-                                                                        className="text-sm cursor-pointer flex-1 p-2 hover:bg-accent rounded-sm"
-                                                                    >
+                                                                    <span className="text-sm flex-1">
                                                                         {price.label}
-                                                                    </label>
+                                                                    </span>
                                                                 </div>
                                                             )
                                                         )}
@@ -544,11 +575,12 @@ export function SearchSidebar({
                     // 2. We have results and pagination conditions are met
                     if (loading) {
                         // Show pagination while loading if we have pagination data
-                        return currentPage > 1 || hasNextPage || (pagination.total !== undefined && pagination.total > 0);
+                        return currentPage > 1 || hasNextPage || (pagination.total !== undefined && pagination.total > 0) || pagination.isFiltered;
                     }
                     // Normal pagination logic when not loading
                     if (searchResults.length > 0) {
                         if (currentPage > 1 || hasNextPage) return true;
+                        if (pagination.isFiltered) return true;
                         if (pagination.total !== undefined && pagination.total > 0) {
                             const totalPages = Math.ceil(pagination.total / pagination.perPage);
                             return totalPages > 1;
@@ -557,133 +589,166 @@ export function SearchSidebar({
                     return false;
                 })() && (
                     <SidebarFooter className="border-t p-2">
-                        <Pagination>
-                            <PaginationContent>
-                                <PaginationItem>
-                                    <PaginationPrevious
-                                        href="#"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            if (!loading && currentPage > 1) {
-                                                onPageChange(currentPage - 1);
-                                            }
-                                        }}
-                                        className={
-                                            loading || currentPage === 1
-                                                ? "pointer-events-none opacity-50"
-                                                : ""
-                                        }
-                                    />
-                                </PaginationItem>
-
-                                {(() => {
-                                    // If we have total, calculate and show page numbers
-                                    if (pagination.total !== undefined && pagination.total > 0) {
-                                        const totalPages = Math.ceil(pagination.total / pagination.perPage);
-                                        const pages: (number | "ellipsis")[] = [];
-
-                                        // Always show first page
-                                        if (totalPages <= 7) {
-                                            // Show all pages if 7 or fewer
-                                            for (let i = 1; i <= totalPages; i++) {
-                                                pages.push(i);
-                                            }
-                                        } else {
-                                            // Show first page
-                                            pages.push(1);
-
-                                            if (currentPage <= 3) {
-                                                // Near the beginning: show 1, 2, 3, 4, ..., last
-                                                for (let i = 2; i <= 4; i++) {
-                                                    pages.push(i);
+                        {/* Progressive pagination UI for filtered results */}
+                        {pagination.isFiltered ? (
+                            <div className="flex items-center justify-between px-2">
+                                <span className="text-sm text-muted-foreground">
+                                    {pagination.foundSoFar}+ found
+                                    {loading && " (checking more...)"}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    {currentPage > 1 && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => onPageChange(currentPage - 1)}
+                                            disabled={loading}
+                                        >
+                                            Previous
+                                        </Button>
+                                    )}
+                                    {hasNextPage && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => onPageChange(currentPage + 1)}
+                                            disabled={loading}
+                                        >
+                                            {loading ? "Loading..." : "Load More"}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            /* Standard pagination UI with page numbers */
+                            <Pagination>
+                                <PaginationContent>
+                                    <PaginationItem>
+                                        <PaginationPrevious
+                                            href="#"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                if (!loading && currentPage > 1) {
+                                                    onPageChange(currentPage - 1);
                                                 }
-                                                pages.push("ellipsis");
-                                                pages.push(totalPages);
-                                            } else if (currentPage >= totalPages - 2) {
-                                                // Near the end: show 1, ..., last-3, last-2, last-1, last
-                                                pages.push("ellipsis");
-                                                for (let i = totalPages - 3; i <= totalPages; i++) {
+                                            }}
+                                            className={
+                                                loading || currentPage === 1
+                                                    ? "pointer-events-none opacity-50"
+                                                    : ""
+                                            }
+                                        />
+                                    </PaginationItem>
+
+                                    {(() => {
+                                        // If we have total, calculate and show page numbers
+                                        if (pagination.total !== undefined && pagination.total > 0) {
+                                            const totalPages = Math.ceil(pagination.total / pagination.perPage);
+                                            const pages: (number | "ellipsis")[] = [];
+
+                                            // Always show first page
+                                            if (totalPages <= 7) {
+                                                // Show all pages if 7 or fewer
+                                                for (let i = 1; i <= totalPages; i++) {
                                                     pages.push(i);
                                                 }
                                             } else {
-                                                // In the middle: show 1, ..., current-1, current, current+1, ..., last
-                                                pages.push("ellipsis");
-                                                for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-                                                    pages.push(i);
-                                                }
-                                                pages.push("ellipsis");
-                                                pages.push(totalPages);
-                                            }
-                                        }
+                                                // Show first page
+                                                pages.push(1);
 
-                                        return pages.map((page, index) => {
-                                            if (page === "ellipsis") {
+                                                if (currentPage <= 3) {
+                                                    // Near the beginning: show 1, 2, 3, 4, ..., last
+                                                    for (let i = 2; i <= 4; i++) {
+                                                        pages.push(i);
+                                                    }
+                                                    pages.push("ellipsis");
+                                                    pages.push(totalPages);
+                                                } else if (currentPage >= totalPages - 2) {
+                                                    // Near the end: show 1, ..., last-3, last-2, last-1, last
+                                                    pages.push("ellipsis");
+                                                    for (let i = totalPages - 3; i <= totalPages; i++) {
+                                                        pages.push(i);
+                                                    }
+                                                } else {
+                                                    // In the middle: show 1, ..., current-1, current, current+1, ..., last
+                                                    pages.push("ellipsis");
+                                                    for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+                                                        pages.push(i);
+                                                    }
+                                                    pages.push("ellipsis");
+                                                    pages.push(totalPages);
+                                                }
+                                            }
+
+                                            return pages.map((page, index) => {
+                                                if (page === "ellipsis") {
+                                                    return (
+                                                        <PaginationItem key={`ellipsis-${index}`}>
+                                                            <PaginationEllipsis />
+                                                        </PaginationItem>
+                                                    );
+                                                }
                                                 return (
-                                                    <PaginationItem key={`ellipsis-${index}`}>
-                                                        <PaginationEllipsis />
+                                                    <PaginationItem key={page}>
+                                                        <PaginationLink
+                                                            href="#"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                if (!loading && page !== currentPage) {
+                                                                    onPageChange(page);
+                                                                }
+                                                            }}
+                                                            isActive={page === currentPage}
+                                                            className={loading ? "pointer-events-none opacity-50" : ""}
+                                                        >
+                                                            {page}
+                                                        </PaginationLink>
                                                     </PaginationItem>
                                                 );
-                                            }
+                                            });
+                                        } else {
+                                            // Fallback: show current page only (original implementation)
                                             return (
-                                                <PaginationItem key={page}>
-                                                    <PaginationLink
-                                                        href="#"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            if (!loading && page !== currentPage) {
-                                                                onPageChange(page);
-                                                            }
-                                                        }}
-                                                        isActive={page === currentPage}
-                                                        className={loading ? "pointer-events-none opacity-50" : ""}
-                                                    >
-                                                        {page}
-                                                    </PaginationLink>
-                                                </PaginationItem>
-                                            );
-                                        });
-                                    } else {
-                                        // Fallback: show current page only (original implementation)
-                                        return (
-                                            <>
-                                                <PaginationItem>
-                                                    <PaginationLink
-                                                        href="#"
-                                                        onClick={(e) => e.preventDefault()}
-                                                        isActive={true}
-                                                        className={loading ? "pointer-events-none opacity-50" : ""}
-                                                    >
-                                                        {currentPage}
-                                                    </PaginationLink>
-                                                </PaginationItem>
-                                                {hasNextPage && (
+                                                <>
                                                     <PaginationItem>
-                                                        <PaginationEllipsis />
+                                                        <PaginationLink
+                                                            href="#"
+                                                            onClick={(e) => e.preventDefault()}
+                                                            isActive={true}
+                                                            className={loading ? "pointer-events-none opacity-50" : ""}
+                                                        >
+                                                            {currentPage}
+                                                        </PaginationLink>
                                                     </PaginationItem>
-                                                )}
-                                            </>
-                                        );
-                                    }
-                                })()}
-
-                                <PaginationItem>
-                                    <PaginationNext
-                                        href="#"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            if (!loading && hasNextPage) {
-                                                onPageChange(currentPage + 1);
-                                            }
-                                        }}
-                                        className={
-                                            loading || !hasNextPage
-                                                ? "pointer-events-none opacity-50"
-                                                : ""
+                                                    {hasNextPage && (
+                                                        <PaginationItem>
+                                                            <PaginationEllipsis />
+                                                        </PaginationItem>
+                                                    )}
+                                                </>
+                                            );
                                         }
-                                    />
-                                </PaginationItem>
-                            </PaginationContent>
-                        </Pagination>
+                                    })()}
+
+                                    <PaginationItem>
+                                        <PaginationNext
+                                            href="#"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                if (!loading && hasNextPage) {
+                                                    onPageChange(currentPage + 1);
+                                                }
+                                            }}
+                                            className={
+                                                loading || !hasNextPage
+                                                    ? "pointer-events-none opacity-50"
+                                                    : ""
+                                            }
+                                        />
+                                    </PaginationItem>
+                                </PaginationContent>
+                            </Pagination>
+                        )}
                     </SidebarFooter>
                 )}
         </Sidebar>

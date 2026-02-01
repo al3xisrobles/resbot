@@ -14,6 +14,8 @@ from firebase_functions.options import CorsOptions
 from firebase_admin import firestore
 from google.cloud import firestore as gc_firestore
 
+from .sentry_utils import with_sentry_trace
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -65,6 +67,7 @@ def authenticate_with_resy(email: str, password: str) -> dict:
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
+@with_sentry_trace
 def start_resy_onboarding(req: Request):
     """
     HTTP Cloud Function to authenticate and store Resy credentials
@@ -189,6 +192,7 @@ def start_resy_onboarding(req: Request):
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "DELETE"]))
+@with_sentry_trace
 def resy_account(req: Request):
     """
     GET /resy_account?userId=<user_id>

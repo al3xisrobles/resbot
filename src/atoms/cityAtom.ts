@@ -43,3 +43,20 @@ export const cityConfigAtom = atom<CityConfig>((get) => {
     const cityId = get(cityAtom);
     return getCityConfig(cityId);
 });
+
+/**
+ * Derived atom that returns just the IANA timezone string for the selected city
+ * Useful for passing to APIs and date calculations
+ */
+export const cityTimezoneAtom = atom<string>((get) => {
+    const cityConfig = get(cityConfigAtom);
+    return cityConfig.timezone;
+});
+
+/**
+ * Derived atom that returns the timezone abbreviation for display (e.g., "ET", "PT")
+ */
+export const cityTimezoneAbbrAtom = atom<string>((get) => {
+    const cityConfig = get(cityConfigAtom);
+    return cityConfig.timezoneAbbr;
+});

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useState } from "react";
 import { ChevronRight, ChevronDown, MoreHorizontal, Edit, X } from "lucide-react";
 import { format } from "date-fns";
@@ -172,6 +173,7 @@ export function ReservationsDataTable({
                 return next;
             });
         } catch (error) {
+            Sentry.captureException(error);
             setEditError(error instanceof Error ? error.message : "Failed to update reservation");
         } finally {
             setEditLoading(false);
@@ -203,6 +205,7 @@ export function ReservationsDataTable({
             setShowCancelDialog(false);
             setCancellingJobId(null);
         } catch (error) {
+            Sentry.captureException(error);
             setCancelError(error instanceof Error ? error.message : "Failed to cancel reservation");
         } finally {
             setCancelLoading(false);

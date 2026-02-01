@@ -11,6 +11,8 @@ export interface CityConfig {
         ne: [number, number]; // Northeast corner [lat, lng]
     };
     radius: number; // Default search radius in meters
+    timezone: string; // IANA timezone string (e.g., "America/New_York")
+    timezoneAbbr: string; // Short timezone abbreviation for display (e.g., "ET", "PT")
 }
 
 export const CITIES: Record<string, CityConfig> = {
@@ -23,6 +25,8 @@ export const CITIES: Record<string, CityConfig> = {
             ne: [40.8, -73.93],
         },
         radius: 16100, // ~10 miles
+        timezone: "America/New_York",
+        timezoneAbbr: "ET",
     },
     chicago: {
         id: "chicago",
@@ -33,6 +37,8 @@ export const CITIES: Record<string, CityConfig> = {
             ne: [42.0, -87.5],
         },
         radius: 16100, // ~10 miles
+        timezone: "America/Chicago",
+        timezoneAbbr: "CT",
     },
     losAngeles: {
         id: "losAngeles",
@@ -43,6 +49,8 @@ export const CITIES: Record<string, CityConfig> = {
             ne: [34.3, -118.0],
         },
         radius: 16100, // ~10 miles
+        timezone: "America/Los_Angeles",
+        timezoneAbbr: "PT",
     },
     sanFrancisco: {
         id: "sanFrancisco",
@@ -53,6 +61,8 @@ export const CITIES: Record<string, CityConfig> = {
             ne: [37.8, -122.3],
         },
         radius: 16100, // ~10 miles
+        timezone: "America/Los_Angeles",
+        timezoneAbbr: "PT",
     },
     boston: {
         id: "boston",
@@ -63,6 +73,8 @@ export const CITIES: Record<string, CityConfig> = {
             ne: [42.4, -70.9],
         },
         radius: 16100, // ~10 miles
+        timezone: "America/New_York",
+        timezoneAbbr: "ET",
     },
 };
 

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useEffect } from "react";
 import {
   LogOut,
@@ -7,7 +8,7 @@ import {
   Bookmark,
   Menu,
 } from "lucide-react";
-import ResbotLogo from "../assets/ResbotLogoRed.svg";
+import ResbotLogoWithText from "../assets/ResbotLogoRedWithText.svg";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "./ui/button";
 import {
@@ -39,6 +40,7 @@ export function Header() {
       await logout();
     } catch (error) {
       console.error("Failed to log out:", error);
+      Sentry.captureException(error);
     }
   }
 
@@ -69,9 +71,9 @@ export function Header() {
               className="flex items-center gap-3 cursor-pointer"
               onClick={() => navigate("/")}
             >
-              <img src={ResbotLogo} className="w-10" />
+              <img src={ResbotLogoWithText} className="h-10" />
               <div>
-                <h1 className="text-3xl font-bold text-foreground">Resbot</h1>
+                <h1 className="hidden">Resbot</h1>
               </div>
             </div>
 
@@ -159,9 +161,9 @@ export function Header() {
               className="flex items-center gap-3 cursor-pointer shrink-0"
               onClick={() => navigate("/")}
             >
-              <img src={ResbotLogo} className="w-10" />
+              <img src={ResbotLogoWithText} className="h-10" />
               <div>
-                <h1 className="text-3xl font-bold text-foreground">Resbot</h1>
+                <h1 className="hidden">Resbot</h1>
               </div>
             </div>
 
@@ -254,8 +256,7 @@ export function Header() {
             className="flex items-center gap-2 cursor-pointer"
             onClick={() => navigate("/")}
           >
-            <img src={ResbotLogo} className="w-8" />
-            <h1 className="text-xl font-bold text-foreground">Resbot</h1>
+            <img src={ResbotLogoWithText} className="h-8" />
           </div>
 
           {/* Right: City Selector, Menu and User */}

@@ -72,7 +72,11 @@ export function useAiInsights(venueId: string | null, venueName: string | null) 
           const currentVenueName = venueName;
 
           const user = auth.currentUser;
-          const summary = await getGeminiSearch(user!.uid, currentVenueName, currentVenueId);
+          const summary = await getGeminiSearch(
+            user!.uid,
+            currentVenueName,
+            currentVenueId
+          );
 
           // Bail out if cancelled or venue changed during fetch
           if (isCancelled || currentVenueIdRef.current !== currentVenueId) return;
@@ -125,7 +129,11 @@ export function useAiInsights(venueId: string | null, venueName: string | null) 
       setLoadingAi(true);
       setAiError(null);
       const user = auth.currentUser;
-      const summary = await getGeminiSearch(user!.uid, currentVenueName, currentVenueId);
+      const summary = await getGeminiSearch(
+        user!.uid,
+        currentVenueName,
+        currentVenueId
+      );
 
       // Only update if still on the same venue
       if (currentVenueIdRef.current !== currentVenueId) return;

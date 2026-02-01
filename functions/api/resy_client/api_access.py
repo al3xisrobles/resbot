@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, List
 
+import sentry_sdk
 from requests import Session
 
 from .constants import RESY_BASE_URL, ResyEndpoints
@@ -82,74 +83,137 @@ class ResyApiAccess:
         """
         search_url = RESY_BASE_URL + ResyEndpoints.VENUE_SEARCH.value
 
-        resp = self.session.get(search_url, params={"query": query}, timeout=REQUEST_TIMEOUT)
+        with sentry_sdk.start_span(
+            op="http.client",
+            name="resy.search_venues",
+            description=f"GET {ResyEndpoints.VENUE_SEARCH.value}",
+        ) as span:
+            span.set_tag("http.url", search_url)
+            span.set_tag("http.method", "GET")
+            span.set_data("query", query)
 
-        if not resp.ok:
-            resp.raise_for_status()  # This properly attaches response to HTTPError
+            resp = self.session.get(search_url, params={"query": query}, timeout=REQUEST_TIMEOUT)
 
-        data = resp.json()
+            span.set_tag("http.status_code", resp.status_code)
 
-        # Extract venue results
-        results = []
-        if "search" in data and "hits" in data["search"]:
-            for hit in data["search"]["hits"]:
-                venue = hit.get("_source", {})
-                results.append({
-                    "id": venue.get("id", {}).get("resy"),
-                    "name": venue.get("name"),
-                    "locality": venue.get("locality"),
-                    "region": venue.get("region"),
-                    "neighborhood": venue.get("neighborhood"),
-                    "type": venue.get("type"),
-                    "price_range": venue.get("price_range_id", 0),
-                })
+            if not resp.ok:
+                span.set_status("internal_error")
+                resp.raise_for_status()  # This properly attaches response to HTTPError
 
-        return results
+            span.set_status("ok")
+            data = resp.json()
+
+            # Extract venue results
+            results = []
+            if "search" in data and "hits" in data["search"]:
+                for hit in data["search"]["hits"]:
+                    venue = hit.get("_source", {})
+                    results.append({
+                        "id": venue.get("id", {}).get("resy"),
+                        "name": venue.get("name"),
+                        "locality": venue.get("locality"),
+                        "region": venue.get("region"),
+                        "neighborhood": venue.get("neighborhood"),
+                        "type": venue.get("type"),
+                        "price_range": venue.get("price_range_id", 0),
+                    })
+
+            span.set_data("results_count", len(results))
+            return results
 
     def auth(self, body: AuthRequestBody) -> AuthResponseBody:
         auth_url = RESY_BASE_URL + ResyEndpoints.PASSWORD_AUTH.value
 
-        resp = self.session.post(
-            auth_url,
-            data=body.model_dump(),
-            headers={"content-type": "application/x-www-form-urlencoded"},
-            timeout=REQUEST_TIMEOUT,
-        )
+        with sentry_sdk.start_span(
+            op="http.client",
+            name="resy.auth",
+            description=f"POST {ResyEndpoints.PASSWORD_AUTH.value}",
+        ) as span:
+            span.set_tag("http.url", auth_url)
+            span.set_tag("http.method", "POST")
+            # Don't log email/password in span data for security
 
-        if not resp.ok:
-            resp.raise_for_status()
+            resp = self.session.post(
+                auth_url,
+                data=body.model_dump(),
+                headers={"content-type": "application/x-www-form-urlencoded"},
+                timeout=REQUEST_TIMEOUT,
+            )
 
-        return AuthResponseBody(**resp.json())
+            span.set_tag("http.status_code", resp.status_code)
+
+            if not resp.ok:
+                span.set_status("internal_error")
+                resp.raise_for_status()
+
+            span.set_status("ok")
+            return AuthResponseBody(**resp.json())
 
     def find_booking_slots(self, params: FindRequestBody) -> List[Slot]:
         find_url = RESY_BASE_URL + ResyEndpoints.FIND.value
 
         logger.info("Sending request to find booking slots with params: %s", params.model_dump())
 
-        resp = self.session.get(find_url, params=params.model_dump(), timeout=REQUEST_TIMEOUT)
+        with sentry_sdk.start_span(
+            op="http.client",
+            name="resy.find",
+            description=f"GET {ResyEndpoints.FIND.value}",
+        ) as span:
+            span.set_tag("http.url", find_url)
+            span.set_tag("http.method", "GET")
+            params_dict = params.model_dump()
+            if "venue_id" in params_dict:
+                span.set_tag("venue_id", params_dict["venue_id"])
+            if "party_size" in params_dict:
+                span.set_data("party_size", params_dict["party_size"])
+            if "day" in params_dict:
+                span.set_data("day", params_dict["day"])
 
-        logger.info("Received response from find booking slots: %s", resp.text)
+            resp = self.session.get(find_url, params=params_dict, timeout=REQUEST_TIMEOUT)
 
-        if not resp.ok:
-            _check_rate_limit(resp)  # Check for 429 before generic error
-            resp.raise_for_status()
+            span.set_tag("http.status_code", resp.status_code)
+            logger.info("Received response from find booking slots: %s", resp.text)
 
-        parsed_resp = FindResponseBody(**resp.json())
+            if not resp.ok:
+                _check_rate_limit(resp)  # Check for 429 before generic error
+                span.set_status("internal_error")
+                resp.raise_for_status()
 
-        if parsed_resp.results and parsed_resp.results.venues:
-            return parsed_resp.results.venues[0].slots
-        return []
+            span.set_status("ok")
+            parsed_resp = FindResponseBody(**resp.json())
+
+            slots = []
+            if parsed_resp.results and parsed_resp.results.venues:
+                slots = parsed_resp.results.venues[0].slots
+            
+            span.set_data("slots_count", len(slots))
+            return slots
 
     def get_booking_token(self, params: DetailsRequestBody) -> DetailsResponseBody:
         details_url = RESY_BASE_URL + ResyEndpoints.DETAILS.value
 
-        resp = self.session.get(details_url, params=params.model_dump(), timeout=REQUEST_TIMEOUT)
+        with sentry_sdk.start_span(
+            op="http.client",
+            name="resy.details",
+            description=f"GET {ResyEndpoints.DETAILS.value}",
+        ) as span:
+            span.set_tag("http.url", details_url)
+            span.set_tag("http.method", "GET")
+            params_dict = params.model_dump()
+            if "config_id" in params_dict:
+                span.set_data("config_id", params_dict["config_id"])
 
-        if not resp.ok:
-            _check_rate_limit(resp)  # Check for 429 before generic error
-            resp.raise_for_status()
+            resp = self.session.get(details_url, params=params_dict, timeout=REQUEST_TIMEOUT)
 
-        return DetailsResponseBody(**resp.json())
+            span.set_tag("http.status_code", resp.status_code)
+
+            if not resp.ok:
+                _check_rate_limit(resp)  # Check for 429 before generic error
+                span.set_status("internal_error")
+                resp.raise_for_status()
+
+            span.set_status("ok")
+            return DetailsResponseBody(**resp.json())
 
     def _dump_book_request_body_to_dict(self, body: BookRequestBody) -> Dict:
         """
@@ -174,18 +238,31 @@ class ResyApiAccess:
             "Cache-Control": "no-cache",
         }
 
-        resp = self.session.post(
-            book_url,
-            data=body_dict,
-            headers=headers,
-            timeout=REQUEST_TIMEOUT,
-        )
+        with sentry_sdk.start_span(
+            op="http.client",
+            name="resy.book",
+            description=f"POST {ResyEndpoints.BOOK.value}",
+        ) as span:
+            span.set_tag("http.url", book_url)
+            span.set_tag("http.method", "POST")
+            # Don't log sensitive booking data in span
 
-        if not resp.ok:
-            _check_rate_limit(resp)  # Check for 429 before generic error
-            resp.raise_for_status()
+            resp = self.session.post(
+                book_url,
+                data=body_dict,
+                headers=headers,
+                timeout=REQUEST_TIMEOUT,
+            )
 
-        logger.info(resp.json())
-        parsed_resp = BookResponseBody(**resp.json())
+            span.set_tag("http.status_code", resp.status_code)
 
-        return parsed_resp.resy_token
+            if not resp.ok:
+                _check_rate_limit(resp)  # Check for 429 before generic error
+                span.set_status("internal_error")
+                resp.raise_for_status()
+
+            span.set_status("ok")
+            logger.info(resp.json())
+            parsed_resp = BookResponseBody(**resp.json())
+
+            return parsed_resp.resy_token

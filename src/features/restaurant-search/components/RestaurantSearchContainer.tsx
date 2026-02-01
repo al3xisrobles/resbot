@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import React, {
     useState,
     useMemo,
@@ -71,6 +72,9 @@ export function RestaurantSearchContainer() {
         new globalThis.Map()
     );
     const prevHoveredIdRef = useRef<string | null>(null);
+
+    // AbortController for cancelling stale requests on filter change
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     // Imperative hover effect
     useEffect(() => {
@@ -156,9 +160,6 @@ export function RestaurantSearchContainer() {
 
     // Auto-search with debounce when filters or reservation form changes
     useEffect(() => {
-        // Set loading immediately when filters change
-        setLoading(true);
-        
         const timer = setTimeout(() => {
             if (mapRef.current) {
                 handleSearch(1);
@@ -237,8 +238,19 @@ export function RestaurantSearchContainer() {
             setPagination(cached.pagination);
             setCurrentPage(page);
             setHasSearched(true);
+            setLoading(false);
             return;
         }
+
+        // Cancel any in-flight request before starting a new one
+        if (abortControllerRef.current) {
+            console.log("[SearchPage] Cancelling previous request");
+            abortControllerRef.current.abort();
+        }
+
+        // Create new AbortController for this request
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
 
         setLoading(true);
         setHasSearched(true);
@@ -282,7 +294,7 @@ export function RestaurantSearchContainer() {
             const user = auth.currentUser;
             const userId = user!.uid;
 
-            const response = await searchRestaurantsByMap(userId, apiParams);
+            const response = await searchRestaurantsByMap(userId, apiParams, controller.signal);
             const results = response.results;
 
             console.log("Search results:", results);
@@ -306,8 +318,40 @@ export function RestaurantSearchContainer() {
                 paginationHasTotal: "total" in response.pagination,
                 cacheSize: Object.keys(pageCache.current).length,
             });
+
+            // Prefetch next page in background if there are more results
+            if (response.pagination.hasMore) {
+                const nextPage = page + 1;
+                const nextCacheKey = `${searchKey}-page${nextPage}`;
+
+                // Only prefetch if not already cached
+                if (!pageCache.current[nextCacheKey]) {
+                    const nextOffset = page * 20;
+                    const nextApiParams = { ...apiParams, offset: nextOffset };
+
+                    // Fire and forget - don't await, don't use AbortController
+                    searchRestaurantsByMap(userId, nextApiParams)
+                        .then((nextResponse) => {
+                            pageCache.current[nextCacheKey] = {
+                                results: nextResponse.results,
+                                pagination: nextResponse.pagination,
+                            };
+                            console.log("[SearchPage] Prefetched page", nextPage);
+                        })
+                        .catch((err) => {
+                            // Silently ignore prefetch errors
+                            console.log("[SearchPage] Prefetch failed:", err);
+                        });
+                }
+            }
         } catch (err) {
+            // Silently ignore cancelled requests - they're expected when filters change rapidly
+            if (err instanceof Error && err.name === 'AbortError') {
+                console.log("[SearchPage] Request cancelled");
+                return;
+            }
             console.error("Map search error:", err);
+            Sentry.captureException(err);
             setSearchResults([]);
             setPagination(null);
         } finally {
@@ -365,6 +409,7 @@ export function RestaurantSearchContainer() {
                 }
             } catch (err) {
                 console.error(`Error fetching ${mode} restaurants:`, err);
+                Sentry.captureException(err);
                 toast.error(`Failed to fetch ${mode === "trending" ? "trending" : "top-rated"} restaurants`);
                 setSearchResults([]);
             } finally {

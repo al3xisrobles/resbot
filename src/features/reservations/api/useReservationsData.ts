@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useState, useEffect } from "react";
 import {
     getUserReservationJobs,
@@ -109,6 +110,7 @@ export function useReservationsData() {
                                 `[useReservationsData] Failed to get cache for venue ${venueId}:`,
                                 error
                             );
+                            Sentry.captureException(error);
                         }
                     })
                 );
@@ -133,6 +135,7 @@ export function useReservationsData() {
                                 `[useReservationsData] Failed to fetch venue ${venueId}:`,
                                 error
                             );
+                            Sentry.captureException(error);
                             // Set fallback
                             venueCacheMap.set(venueId, {
                                 name: "Unknown Restaurant",
@@ -155,6 +158,7 @@ export function useReservationsData() {
                 setError(null);
             } catch (error) {
                 console.error("[useReservationsData] Error fetching reservations:", error);
+                Sentry.captureException(error);
                 setError(
                     error instanceof Error ? error.message : "Failed to fetch reservations"
                 );
@@ -185,6 +189,7 @@ export function useReservationsData() {
                         `[useReservationsData] Failed to fetch summary for ${reservation.id}:`,
                         error
                     );
+                    Sentry.captureException(error);
                     return null;
                 }
             });
@@ -252,6 +257,7 @@ export function useReservationsData() {
                             `[useReservationsData] Failed to get cache for venue ${venueId}:`,
                             error
                         );
+                        Sentry.captureException(error);
                     }
                 })
             );
@@ -276,6 +282,7 @@ export function useReservationsData() {
                             `[useReservationsData] Failed to fetch venue ${venueId}:`,
                             error
                         );
+                        Sentry.captureException(error);
                         // Set fallback
                         venueCacheMap.set(venueId, {
                             name: "Unknown Restaurant",
@@ -298,6 +305,7 @@ export function useReservationsData() {
             setError(null);
         } catch (error) {
             console.error("[useReservationsData] Error fetching reservations:", error);
+            Sentry.captureException(error);
             setError(
                 error instanceof Error ? error.message : "Failed to fetch reservations"
             );

@@ -1,5 +1,7 @@
-import { useState } from "react";
+import * as Sentry from "@sentry/react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useAtomValue } from "jotai";
 import {
   Card,
   CardContent,
@@ -14,6 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Separator } from "@/components/ui/separator";
+import { isOnboardedAtom, meAtom, isAuthLoadingAtom } from "@/atoms/authAtoms";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -21,8 +24,27 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, currentUser } = useAuth();
   const navigate = useNavigate();
+  const isOnboarded = useAtomValue(isOnboardedAtom);
+  const me = useAtomValue(meAtom);
+  const authLoading = useAtomValue(isAuthLoadingAtom);
+
+  // Redirect authenticated users away from login page
+  useEffect(() => {
+    // If user is already authenticated and auth state is loaded
+    if (currentUser && !authLoading) {
+      if (me !== null) {
+        // /me data is loaded - redirect based on onboarding status
+        if (!isOnboarded) {
+          navigate("/onboarding", { replace: true });
+        } else {
+          navigate("/", { replace: true });
+        }
+      }
+      // If /me data is not loaded yet, wait for it
+    }
+  }, [currentUser, authLoading, me, isOnboarded, navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,10 +53,11 @@ export function LoginPage() {
       setError(null);
       setLoading(true);
       await login(email, password);
-      navigate("/");
+      // Navigation will happen via useEffect when auth state updates
     } catch (err) {
       setError("Failed to sign in. Please check your credentials.");
       console.error(err);
+      Sentry.captureException(err);
     } finally {
       setLoading(false);
     }
@@ -45,10 +68,11 @@ export function LoginPage() {
       setError(null);
       setLoading(true);
       await loginWithGoogle();
-      navigate("/");
+      // Navigation will happen via useEffect when auth state updates
     } catch (err) {
       setError("Failed to sign in with Google.");
       console.error(err);
+      Sentry.captureException(err);
     } finally {
       setLoading(false);
     }

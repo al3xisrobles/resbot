@@ -1,5 +1,7 @@
+import * as Sentry from "@sentry/react";
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useAtomValue } from "jotai";
 import {
   Card,
   CardContent,
@@ -15,6 +17,7 @@ import { AlertCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Separator } from "@/components/ui/separator";
 import { FirebaseError } from "@firebase/util";
+import { isOnboardedAtom, meAtom, isAuthLoadingAtom } from "@/atoms/authAtoms";
 
 export function SignupPage() {
   const [displayName, setDisplayName] = useState("");
@@ -26,13 +29,25 @@ export function SignupPage() {
 
   const { signup, loginWithGoogle, currentUser } = useAuth();
   const navigate = useNavigate();
+  const isOnboarded = useAtomValue(isOnboardedAtom);
+  const me = useAtomValue(meAtom);
+  const authLoading = useAtomValue(isAuthLoadingAtom);
 
-  // Navigate to onboarding when user becomes authenticated (for Google sign-in)
+  // Redirect authenticated users away from signup page
   useEffect(() => {
-    if (currentUser && loading) {
-      navigate("/onboarding");
+    // If user is already authenticated and auth state is loaded
+    if (currentUser && !authLoading) {
+      if (me !== null) {
+        // /me data is loaded - redirect based on onboarding status
+        if (!isOnboarded) {
+          navigate("/onboarding", { replace: true });
+        } else {
+          navigate("/", { replace: true });
+        }
+      }
+      // If /me data is not loaded yet, wait for it
     }
-  }, [currentUser, loading, navigate]);
+  }, [currentUser, authLoading, me, isOnboarded, navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,8 +64,8 @@ export function SignupPage() {
       setError(null);
       setLoading(true);
       await signup(email, password, displayName);
-      console.log("Signup successful. Redirecting to onboarding...");
-      navigate("/onboarding");
+      // Navigation will happen via useEffect when auth state updates
+      console.log("Signup successful. Waiting for auth state to update...");
     } catch (err: unknown) {
       const firebaseError = err as FirebaseError;
       if (firebaseError.code === "auth/email-already-in-use") {
@@ -63,6 +78,7 @@ export function SignupPage() {
         setError("Failed to create account. Please try again.");
       }
       console.error(err);
+      Sentry.captureException(err);
     } finally {
       setLoading(false);
     }
@@ -73,16 +89,17 @@ export function SignupPage() {
       setError(null);
       setLoading(true);
       await loginWithGoogle();
-      // Navigation happens via useEffect when currentUser is set
+      // Navigation happens via useEffect when auth state and /me data are ready
     } catch (err) {
       setError("Failed to sign in with Google.");
       console.error(err);
+      Sentry.captureException(err);
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="mt-38 bg-background flex items-center justify-center px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">Create Account</CardTitle>

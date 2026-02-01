@@ -8,8 +8,9 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from firebase_functions.https_fn import on_request, Request
-from firebase_functions.options import CorsOptions
+from firebase_functions.options import CorsOptions, MemoryOption
 
+from .sentry_utils import with_sentry_trace
 from .utils import load_credentials, get_resy_headers
 from .cities import get_city_config
 
@@ -53,7 +54,8 @@ def _extract_resy_image_url(image_data):
     return None
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=60, memory=MemoryOption.GB_1)
+@with_sentry_trace
 def climbing(req: Request):
     """
     GET /climbing?limit=<limit>&userId=<user_id>&city=<city_id>
@@ -191,7 +193,8 @@ def climbing(req: Request):
         }, 500
 
 
-@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]))
+@on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=60, memory=MemoryOption.GB_1)
+@with_sentry_trace
 def top_rated(req: Request):
     """
     GET /top_rated?limit=<limit>&userId=<user_id>&city=<city_id>

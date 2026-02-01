@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, LoaderCircle, CircleCheck } from "lucide-react";
+import { useAtom } from "jotai";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -21,6 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { useAuth } from "@/contexts/AuthContext";
+import { cityTimezoneAbbrAtom } from "@/atoms/cityAtom";
 import type { ReservationFormState } from "../atoms/reservationFormAtom";
 import { Stack, Group } from "@/components/ui/layout";
 
@@ -50,11 +52,12 @@ export function ReservationForm({
   setReserveOnEmulation,
 }: ReservationFormProps) {
   const auth = useAuth();
+  const [timezoneAbbr] = useAtom(cityTimezoneAbbrAtom);
 
   return (
     <Stack itemsSpacing={24}>
       <Stack itemsSpacing={4}>
-        <h2 className="text-2xl font-bold">Make a Reservation</h2>
+        <h2 className="text-2xl font-bold">Schedule a Reservation Snipe</h2>
         <p className="text-sm text-muted-foreground">
           Configure reservation details and timing
         </p>
@@ -129,7 +132,7 @@ export function ReservationForm({
 
         {/* Time */}
         <Stack itemsSpacing={8} className="flex-1">
-          <Label htmlFor="time-slot">Desired Time (EST)</Label>
+          <Label htmlFor="time-slot">Desired Time ({timezoneAbbr})</Label>
           <Select
             value={reservationForm.timeSlot}
             onValueChange={(value) =>
@@ -256,7 +259,7 @@ export function ReservationForm({
           </Stack>
           <Stack itemsSpacing={8} className="flex-1">
             <Label className="flex flex-row gap-2 items-center">
-              <p>Drop Time (EST)</p>
+              <p>Drop Time ({timezoneAbbr})</p>
             </Label>
             <Select
               value={reservationForm.dropTimeSlot}

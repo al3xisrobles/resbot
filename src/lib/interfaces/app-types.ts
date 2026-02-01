@@ -132,7 +132,10 @@ export interface SearchPagination {
   perPage: number;
   nextOffset: number | null;
   hasMore: boolean;
-  total?: number; // Total from Resy API (unfiltered estimate)
+  total?: number; // Total from Resy API (unfiltered estimate) - only for non-filtered results
+  // For availability-filtered results (available_only or not_released_only):
+  isFiltered?: boolean; // True when results are filtered by availability
+  foundSoFar?: number; // Number of matching results found so far (progressive count)
 }
 
 /**

@@ -12,6 +12,7 @@ from datetime import datetime
 from hashlib import md5
 from time import time
 
+import sentry_sdk
 import requests
 from firebase_admin import firestore
 from google import genai
@@ -515,20 +516,40 @@ def retry_with_backoff(func, max_attempts=3, base_delay=0.3):
 
 def _fetch_calendar(headers, params):
     """Wrapper for the calendar GET so we can reuse retry logic."""
-    response = requests.get(
-        'https://api.resy.com/4/venue/calendar',
-        params=params,
-        headers=headers,
-        timeout=10
-    )
-
-    if response.status_code in TRANSIENT_STATUS_CODES:
-        raise requests.exceptions.HTTPError(
-            f"Calendar returned {response.status_code}",
-            response=response
+    calendar_url = 'https://api.resy.com/4/venue/calendar'
+    
+    with sentry_sdk.start_span(
+        op="http.client",
+        name="resy.calendar",
+        description="GET /4/venue/calendar",
+    ) as span:
+        span.set_tag("http.url", calendar_url)
+        span.set_tag("http.method", "GET")
+        if "venue_id" in params:
+            span.set_tag("venue_id", params["venue_id"])
+        if "num_seats" in params:
+            span.set_data("party_size", params["num_seats"])
+        if "start_date" in params:
+            span.set_data("start_date", params["start_date"])
+        
+        response = requests.get(
+            calendar_url,
+            params=params,
+            headers=headers,
+            timeout=10
         )
-
-    return response
+        
+        span.set_tag("http.status_code", response.status_code)
+        
+        if response.status_code in TRANSIENT_STATUS_CODES:
+            span.set_status("internal_error")
+            raise requests.exceptions.HTTPError(
+                f"Calendar returned {response.status_code}",
+                response=response
+            )
+        
+        span.set_status("ok")
+        return response
 
 
 def get_venue_availability(venue_id, day, party_size, config):
@@ -549,9 +570,6 @@ def get_venue_availability(venue_id, day, party_size, config):
         Example: {'times': [], 'status': 'Not released yet'}
     """
     try:
-        # Add a small delay to help with rate limiting (0.1 seconds)
-        time_module.sleep(0.1)
-
         # Store original config for headers (needs dict)
         config_dict = config if isinstance(config, dict) else {
             'api_key': config.api_key,
@@ -724,11 +742,16 @@ def filter_and_format_venues(hits, filters, seen_ids=None, config=None, fetch_av
     Returns:
         tuple: (results list, filtered_count dict, seen_ids set)
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
     results = []
     filtered_count = {'cuisine': 0, 'price': 0, 'duplicate': 0, 'availability': 0}
     if seen_ids is None:
         seen_ids = set()
 
+    # First pass: filter by cuisine/price and build candidates for availability check
+    candidates = []
+    
     for hit in hits:
         venue = hit.get('_source') or hit
 
@@ -778,32 +801,130 @@ def filter_and_format_venues(hits, filters, seen_ids=None, config=None, fetch_av
             'imageUrl': resy_image_url,
             'neighborhood': neighborhood
         }
+        
+        candidates.append((venue_id, result))
 
-        # Fetch availability if requested
-        if fetch_availability and config and filters.get('available_day') and filters.get('available_party_size'):
-            availability_data = get_venue_availability(
-                venue_id,
-                filters['available_day'],
-                filters['available_party_size'],
-                config
-            )
-            # availability_data is a dict with 'times' and 'status'
+    # If we need to fetch availability, do it in parallel
+    if fetch_availability and config and filters.get('available_day') and filters.get('available_party_size'):
+        # Use "not_released_only" mode for faster calendar-only checks
+        not_released_only = filters.get('not_released_only', False)
+        available_only = filters.get('available_only', False)
+        
+        # Fetch availability for all candidates in parallel
+        # Use 10 workers for better throughput (Resy can handle it for calendar checks)
+        max_workers = 10 if not_released_only else 5
+        availability_map = {}
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_venue = {
+                executor.submit(
+                    get_venue_availability_fast if not_released_only else get_venue_availability,
+                    venue_id,
+                    filters['available_day'],
+                    filters['available_party_size'],
+                    config
+                ): venue_id
+                for venue_id, _ in candidates
+            }
+            
+            for future in as_completed(future_to_venue):
+                venue_id = future_to_venue[future]
+                try:
+                    availability_map[venue_id] = future.result()
+                except Exception as e:
+                    print(f"[AVAILABILITY] Parallel fetch error for venue {venue_id}: {e}")
+                    availability_map[venue_id] = {'times': [], 'status': 'Unable to fetch'}
+        
+        # Apply availability data and filter
+        for venue_id, result in candidates:
+            availability_data = availability_map.get(venue_id, {'times': [], 'status': 'Unable to fetch'})
+            
+            # Add availability data to result
             if availability_data['times']:
                 result['availableTimes'] = availability_data['times']
             elif availability_data['status']:
                 result['availabilityStatus'] = availability_data['status']
 
             # If available_only filter is enabled, skip venues without available times
-            if filters.get('available_only') and not availability_data['times']:
+            if available_only and not availability_data['times']:
                 filtered_count['availability'] = filtered_count.get('availability', 0) + 1
                 continue
 
             # If not_released_only filter is enabled, skip venues that are not "Not released yet"
-            if filters.get('not_released_only'):
+            if not_released_only:
                 if availability_data['status'] != 'Not released yet':
                     filtered_count['not_released'] = filtered_count.get('not_released', 0) + 1
                     continue
 
-        results.append(result)
+            results.append(result)
+    else:
+        # No availability check needed, just add all candidates
+        results = [result for _, result in candidates]
 
     return results, filtered_count, seen_ids
+
+
+def get_venue_availability_fast(venue_id, day, party_size, config):
+    """
+    Fast availability check - only uses calendar API to determine release status.
+    Does NOT fetch actual time slots. Use for "not_released_only" filtering.
+    
+    Returns:
+        Dict with 'times' (always empty) and 'status' (release/availability status)
+    """
+    try:
+        # Store original config for headers (needs dict)
+        config_dict = config if isinstance(config, dict) else {
+            'api_key': config.api_key,
+            'token': config.token,
+            'payment_method_id': config.payment_method_id,
+            'email': config.email,
+            'password': config.password
+        }
+
+        headers = get_resy_headers(config_dict)
+        target_date = datetime.strptime(day, '%Y-%m-%d').date()
+
+        params = {
+            'venue_id': venue_id,
+            'num_seats': int(party_size),
+            'start_date': target_date.strftime('%Y-%m-%d'),
+            'end_date': target_date.strftime('%Y-%m-%d')
+        }
+
+        try:
+            calendar_response = retry_with_backoff(
+                lambda: _fetch_calendar(headers, params),
+                max_attempts=2,  # Fewer retries for speed
+                base_delay=0.2
+            )
+        except Exception as calendar_error:
+            if is_transient_resy_error(calendar_error):
+                return {'times': [], 'status': 'Resy temporarily unavailable'}
+            return {'times': [], 'status': 'Unable to fetch'}
+
+        if calendar_response and calendar_response.status_code == 200:
+            calendar_data = calendar_response.json()
+            scheduled = calendar_data.get('scheduled', [])
+
+            # Check if the target date is in the scheduled list
+            for entry in scheduled:
+                if entry.get('date') == day:
+                    inventory = entry.get('inventory', {})
+                    reservation_status = inventory.get('reservation')
+                    
+                    if reservation_status == 'closed':
+                        return {'times': [], 'status': 'Closed'}
+                    if reservation_status in ['sold-out', 'not available']:
+                        return {'times': [], 'status': 'Sold out'}
+                    # Date is released and has availability
+                    return {'times': [], 'status': 'Available'}
+            
+            # Date not in scheduled list = not released yet
+            return {'times': [], 'status': 'Not released yet'}
+
+        return {'times': [], 'status': 'Unable to fetch'}
+        
+    except Exception as e:
+        print(f"[AVAILABILITY_FAST] Error for venue {venue_id}: {e}")
+        return {'times': [], 'status': 'Unable to fetch'}

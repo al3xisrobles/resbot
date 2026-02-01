@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, LogIn } from "lucide-react";
@@ -93,6 +94,7 @@ export function SearchBar({
         }
       } catch (err) {
         console.error("Search error:", err);
+        Sentry.captureException(err);
         if (currentQueryRef.current === querySnapshot) {
           setSearchPopoverOpen(false);
         }

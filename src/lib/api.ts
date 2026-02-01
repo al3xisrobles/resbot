@@ -1,69 +1,9 @@
 /**
  * API client for Resy Bot backend
  * Now using Cloud Functions instead of Flask server
+ * Uses centralized apiClient for trace header propagation
  */
-import { CLOUD_FUNCTIONS_BASE } from "../services/firebase";
-import { triggerSessionExpiredModal } from "../contexts/ResySessionContext.utils";
-
-/**
- * Custom error class for Resy session expiration (419 error)
- */
-export class ResySessionExpiredError extends Error {
-  constructor(message = "Resy session expired") {
-    super(message);
-    this.name = "ResySessionExpiredError";
-  }
-}
-
-/**
- * Check if an API error response indicates a Resy session expiration (419)
- * and trigger the modal if so
- */
-async function handleApiResponse(response: Response): Promise<Response> {
-  if (!response.ok) {
-    // Check for 419 or 500 with "Unauthorized" message (backend wraps 419 as 500)
-    if (response.status === 419) {
-      triggerSessionExpiredModal();
-      throw new ResySessionExpiredError();
-    }
-
-    // Try to parse the error response to check for 419-related errors
-    try {
-      const errorData = await response.clone().json();
-      // Backend returns 500 but the error message contains "419" or "Unauthorized"
-      if (
-        errorData.error?.includes("419") ||
-        errorData.error?.includes("Unauthorized") ||
-        (response.status === 500 && errorData.error?.includes("API returned status 419"))
-      ) {
-        triggerSessionExpiredModal();
-        throw new ResySessionExpiredError();
-      }
-    } catch (e) {
-      // If it's already a ResySessionExpiredError, re-throw it
-      if (e instanceof ResySessionExpiredError) {
-        throw e;
-      }
-      // Otherwise, continue with normal error handling
-    }
-  }
-  return response;
-}
-
-const API_ENDPOINTS = {
-  search: `${CLOUD_FUNCTIONS_BASE}/search`,
-  search_map: `${CLOUD_FUNCTIONS_BASE}/search_map`,
-  venue: `${CLOUD_FUNCTIONS_BASE}/venue`,
-  venue_links: `${CLOUD_FUNCTIONS_BASE}/venue_links`,
-  calendar: `${CLOUD_FUNCTIONS_BASE}/calendar`,
-  slots: `${CLOUD_FUNCTIONS_BASE}/slots`,
-  reservation: `${CLOUD_FUNCTIONS_BASE}/reservation`,
-  gemini_search: `${CLOUD_FUNCTIONS_BASE}/gemini_search`,
-  summarize_snipe_logs: `${CLOUD_FUNCTIONS_BASE}/summarize_snipe_logs`,
-  climbing: `${CLOUD_FUNCTIONS_BASE}/climbing`,
-  top_rated: `${CLOUD_FUNCTIONS_BASE}/top_rated`,
-  health: "https://health-hypomglm7a-uc.a.run.app",
-};
+import { apiGet, apiPost, apiDelete, API_ENDPOINTS } from "./apiClient";
 
 import type {
   SearchFilters,
@@ -86,46 +26,47 @@ export async function searchRestaurants(
   filters: SearchFilters,
   cityId?: string
 ): Promise<SearchResponse> {
-  const params = new URLSearchParams();
-  params.append("userId", userId);
-
   // Get city from parameter or localStorage (for backward compatibility)
   const city = cityId || (typeof window !== "undefined" ? localStorage.getItem("resbot_selected_city") || "nyc" : "nyc");
-  params.append("city", city);
+
+  const params: Record<string, string | number> = {
+    userId,
+    city,
+  };
 
   if (filters.query) {
-    params.append("query", filters.query);
+    params.query = filters.query;
   }
 
   if (filters.cuisines && filters.cuisines.length > 0) {
-    params.append("cuisines", filters.cuisines.join(","));
+    params.cuisines = filters.cuisines.join(",");
   }
 
   if (filters.neighborhoods && filters.neighborhoods.length > 0) {
-    params.append("neighborhoods", filters.neighborhoods.join(","));
+    params.neighborhoods = filters.neighborhoods.join(",");
   }
 
   if (filters.priceRanges && filters.priceRanges.length > 0) {
-    params.append("priceRanges", filters.priceRanges.join(","));
+    params.priceRanges = filters.priceRanges.join(",");
   }
 
   if (filters.offset !== undefined) {
-    params.append("offset", filters.offset.toString());
+    params.offset = filters.offset;
   }
 
   if (filters.perPage) {
-    params.append("perPage", filters.perPage.toString());
+    params.perPage = filters.perPage;
   }
 
   // Only send day and party size if availability filters are enabled
   // This prevents unnecessary availability fetching when filters aren't active
   if (filters.availableOnly || filters.notReleasedOnly) {
     if (filters.day) {
-      params.append("available_day", filters.day);
+      params.available_day = filters.day;
     }
 
     if (filters.partySize) {
-      params.append("available_party_size", filters.partySize);
+      params.available_party_size = filters.partySize;
     }
   }
 
@@ -135,18 +76,10 @@ export async function searchRestaurants(
         "Both day and party_size must be provided when available_only is true"
       );
     }
-    params.append("available_only", "true");
+    params.available_only = "true";
   }
 
-  const rawResponse = await fetch(`${API_ENDPOINTS.search}?${params.toString()}`);
-  const response = await handleApiResponse(rawResponse);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to search restaurants");
-  }
-
-  const result: SearchApiResponse = await response.json();
+  const result = await apiGet<SearchApiResponse>(API_ENDPOINTS.search, params);
 
   console.log("[API] searchRestaurants raw response:", {
     hasPagination: !!result.pagination,
@@ -174,53 +107,54 @@ export async function searchRestaurants(
  */
 export async function searchRestaurantsByMap(
   userId: string,
-  filters: MapSearchFilters
+  filters: MapSearchFilters,
+  signal?: AbortSignal
 ): Promise<SearchResponse> {
-  const params = new URLSearchParams();
-
-  params.append("userId", userId);
-  params.append("swLat", filters.swLat.toString());
-  params.append("swLng", filters.swLng.toString());
-  params.append("neLat", filters.neLat.toString());
-  params.append("neLng", filters.neLng.toString());
+  const params: Record<string, string | number> = {
+    userId,
+    swLat: filters.swLat,
+    swLng: filters.swLng,
+    neLat: filters.neLat,
+    neLng: filters.neLng,
+  };
 
   if (filters.jobId) {
-    params.append("jobId", filters.jobId);
+    params.jobId = filters.jobId;
   }
 
   if (filters.query) {
-    params.append("query", filters.query);
+    params.query = filters.query;
   }
 
   if (filters.cuisines && filters.cuisines.length > 0) {
-    params.append("cuisines", filters.cuisines.join(","));
+    params.cuisines = filters.cuisines.join(",");
   }
 
   if (filters.priceRanges && filters.priceRanges.length > 0) {
-    params.append("priceRanges", filters.priceRanges.join(","));
+    params.priceRanges = filters.priceRanges.join(",");
   }
 
   if (filters.offset !== undefined) {
-    params.append("offset", filters.offset.toString());
+    params.offset = filters.offset;
   }
 
   if (filters.perPage) {
-    params.append("perPage", filters.perPage.toString());
+    params.perPage = filters.perPage;
   }
 
   // Only send day, party size, and desired time if availability filters are enabled
   // This prevents unnecessary availability fetching when filters aren't active
   if (filters.availableOnly || filters.notReleasedOnly) {
     if (filters.day) {
-      params.append("available_day", filters.day);
+      params.available_day = filters.day;
     }
 
     if (filters.partySize) {
-      params.append("available_party_size", filters.partySize);
+      params.available_party_size = filters.partySize;
     }
 
     if (filters.desiredTime) {
-      params.append("desired_time", filters.desiredTime);
+      params.desired_time = filters.desiredTime;
     }
   }
 
@@ -230,7 +164,7 @@ export async function searchRestaurantsByMap(
         "Both day and party_size must be provided when available_only is true"
       );
     }
-    params.append("available_only", "true");
+    params.available_only = "true";
   }
 
   if (filters.notReleasedOnly) {
@@ -239,20 +173,10 @@ export async function searchRestaurantsByMap(
         "Both day and party_size must be provided when not_released_only is true"
       );
     }
-    params.append("not_released_only", "true");
+    params.not_released_only = "true";
   }
 
-  const rawResponse = await fetch(
-    `${API_ENDPOINTS.search_map}?${params.toString()}`
-  );
-  const response = await handleApiResponse(rawResponse);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to search restaurants by map");
-  }
-
-  const result: SearchApiResponse = await response.json();
+  const result = await apiGet<SearchApiResponse>(API_ENDPOINTS.searchMap, params, signal);
 
   console.log("[API] searchRestaurantsByMap raw response:", {
     hasPagination: !!result.pagination,
@@ -282,17 +206,10 @@ export async function searchRestaurant(
   userId: string,
   venueId: string
 ): Promise<VenueData> {
-  const rawResponse = await fetch(
-    `${API_ENDPOINTS.venue}?id=${venueId}&userId=${userId}`
-  );
-  const response = await handleApiResponse(rawResponse);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch restaurant");
-  }
-
-  const result: ApiResponse<VenueData> = await response.json();
+  const result = await apiGet<ApiResponse<VenueData>>(API_ENDPOINTS.venue, {
+    id: venueId,
+    userId,
+  });
 
   console.log("[API] searchRestaurant raw response:", result);
 
@@ -314,24 +231,15 @@ export async function getGeminiSearch(
 ): Promise<GeminiSearchResponse> {
   // Get city from parameter or localStorage (for backward compatibility)
   const city = cityId || (typeof window !== "undefined" ? localStorage.getItem("resbot_selected_city") || "nyc" : "nyc");
-  const rawResponse = await fetch(
-    `${API_ENDPOINTS.gemini_search}?userId=${userId}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ restaurantName, venueId, city }),
-    }
+
+  const body: Record<string, string> = { restaurantName, city };
+  if (venueId) body.venueId = venueId;
+
+  const result = await apiPost<ApiResponse<GeminiSearchResponse>>(
+    API_ENDPOINTS.geminiSearch,
+    body,
+    { userId }
   );
-  const response = await handleApiResponse(rawResponse);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to get AI summary");
-  }
-
-  const result: ApiResponse<GeminiSearchResponse> = await response.json();
 
   if (!result.success || !result.data) {
     throw new Error(result.error || "Failed to get AI summary");
@@ -346,21 +254,10 @@ export async function getGeminiSearch(
 export async function getSnipeLogsSummary(
   jobId: string
 ): Promise<string> {
-  const rawResponse = await fetch(API_ENDPOINTS.summarize_snipe_logs, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ jobId }),
-  });
-  const response = await handleApiResponse(rawResponse);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to get log summary");
-  }
-
-  const result: ApiResponse<{ summary: string }> = await response.json();
+  const result = await apiPost<ApiResponse<{ summary: string }>>(
+    API_ENDPOINTS.summarizeSnipeLogs,
+    { jobId }
+  );
 
   if (!result.success || !result.data) {
     throw new Error(result.error || "Failed to get log summary");
@@ -377,22 +274,15 @@ export async function getCalendar(
   venueId: string,
   partySize?: string
 ): Promise<CalendarData> {
-  const params = new URLSearchParams();
-  params.append("id", venueId);
-  params.append("userId", userId);
+  const params: Record<string, string> = {
+    id: venueId,
+    userId,
+  };
   if (partySize) {
-    params.append("partySize", partySize);
-  }
-  const url = `${API_ENDPOINTS.calendar}?${params.toString()}`;
-  const rawResponse = await fetch(url);
-  const response = await handleApiResponse(rawResponse);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch calendar");
+    params.partySize = partySize;
   }
 
-  const result: ApiResponse<CalendarData> = await response.json();
+  const result = await apiGet<ApiResponse<CalendarData>>(API_ENDPOINTS.calendar, params);
 
   if (!result.success || !result.data) {
     throw new Error(result.error || "Failed to fetch calendar");
@@ -410,17 +300,16 @@ export async function getSlots(
   date: string,
   partySize?: string
 ): Promise<{ times: string[]; status: string | null }> {
-  const params = new URLSearchParams();
-  params.append("venueId", venueId);
-  params.append("date", date);
-  params.append("userId", userId);
+  const params: Record<string, string> = {
+    venueId,
+    date,
+    userId,
+  };
   if (partySize) {
-    params.append("partySize", partySize);
+    params.partySize = partySize;
   }
-  const url = `${API_ENDPOINTS.slots}?${params.toString()}`;
 
   console.log("[getSlots] Making request:", {
-    url,
     venueId,
     date,
     partySize,
@@ -428,26 +317,10 @@ export async function getSlots(
   });
 
   try {
-    const rawResponse = await fetch(url);
-    console.log("[getSlots] Raw response:", {
-      status: rawResponse.status,
-      statusText: rawResponse.statusText,
-      ok: rawResponse.ok,
-    });
-
-    const response = await handleApiResponse(rawResponse);
-
-    if (!response.ok) {
-      const error = await response.json();
-      console.error("[getSlots] Response not OK:", {
-        status: response.status,
-        error,
-      });
-      throw new Error(error.error || "Failed to fetch slots");
-    }
-
-    const result: ApiResponse<{ times: string[]; status: string | null }> =
-      await response.json();
+    const result = await apiGet<ApiResponse<{ times: string[]; status: string | null }>>(
+      API_ENDPOINTS.slots,
+      params
+    );
 
     if (!result.success || !result.data) {
       console.error("[getSlots] Result not successful:", result);
@@ -462,7 +335,6 @@ export async function getSlots(
       errorMessage: err instanceof Error ? err.message : String(err),
       errorStack: err instanceof Error ? err.stack : undefined,
       errorName: err instanceof Error ? err.name : typeof err,
-      url,
       venueId,
       date,
       partySize,
@@ -477,10 +349,9 @@ export async function getSlots(
  */
 export async function healthCheck(): Promise<boolean> {
   try {
-    const response = await fetch(API_ENDPOINTS.health);
-    const data = await response.json();
+    const data = await apiGet<{ status: string }>(API_ENDPOINTS.health);
     return data.status === "ok";
-  } catch {
+  } catch (error) {
     return false;
   }
 }
@@ -493,28 +364,21 @@ export async function getTrendingRestaurants(
   limit?: number,
   city?: string
 ): Promise<TrendingRestaurant[]> {
-  const params = new URLSearchParams();
+  const params: Record<string, string | number> = {};
   if (userId) {
-    params.append("userId", userId);
+    params.userId = userId;
   }
   if (limit) {
-    params.append("limit", limit.toString());
+    params.limit = limit;
   }
   if (city) {
-    params.append("city", city);
+    params.city = city;
   }
 
-  const url = `${API_ENDPOINTS.climbing}${params.toString() ? "?" + params.toString() : ""
-    }`;
-  const rawResponse = await fetch(url);
-  const response = await handleApiResponse(rawResponse);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch trending restaurants");
-  }
-
-  const result: ApiResponse<TrendingRestaurant[]> = await response.json();
+  const result = await apiGet<ApiResponse<TrendingRestaurant[]>>(
+    API_ENDPOINTS.climbing,
+    params
+  );
 
   if (!result.success || !result.data) {
     throw new Error(result.error || "Failed to fetch trending restaurants");
@@ -531,28 +395,21 @@ export async function getTopRatedRestaurants(
   limit?: number,
   city?: string
 ): Promise<TrendingRestaurant[]> {
-  const params = new URLSearchParams();
+  const params: Record<string, string | number> = {};
   if (userId) {
-    params.append("userId", userId);
+    params.userId = userId;
   }
   if (limit) {
-    params.append("limit", limit.toString());
+    params.limit = limit;
   }
   if (city) {
-    params.append("city", city);
+    params.city = city;
   }
 
-  const url = `${API_ENDPOINTS.top_rated}${params.toString() ? "?" + params.toString() : ""
-    }`;
-  const rawResponse = await fetch(url);
-  const response = await handleApiResponse(rawResponse);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch top-rated restaurants");
-  }
-
-  const result: ApiResponse<TrendingRestaurant[]> = await response.json();
+  const result = await apiGet<ApiResponse<TrendingRestaurant[]>>(
+    API_ENDPOINTS.topRated,
+    params
+  );
 
   if (!result.success || !result.data) {
     throw new Error(result.error || "Failed to fetch top-rated restaurants");
@@ -572,19 +429,10 @@ export async function getVenueLinks(
   const startTime = performance.now();
 
   try {
-    const rawResponse = await fetch(
-      `${API_ENDPOINTS.venue_links}?id=${venueId}&userId=${userId}`
+    const result = await apiGet<VenueLinksResponse & { success: boolean; error?: string }>(
+      API_ENDPOINTS.venueLinks,
+      { id: venueId, userId }
     );
-    const response = await handleApiResponse(rawResponse);
-
-    if (!response.ok) {
-      console.error(
-        `[API] Failed to fetch venue links. Status: ${response.status}`
-      );
-      throw new Error("Failed to fetch venue links");
-    }
-
-    const result = await response.json();
 
     if (!result.success) {
       console.error(`[API] API returned error:`, result.error);
@@ -627,30 +475,54 @@ export async function connectResyAccount(
   paymentMethodId?: number;
   error?: string;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/start_resy_onboarding`;
-
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-        password,
-        userId: userId,
-      }),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.error || "Failed to connect Resy account");
-    }
-
+    const result = await apiPost<{
+      success: boolean;
+      hasPaymentMethod?: boolean;
+      paymentMethodId?: number;
+      error?: string;
+    }>(
+      API_ENDPOINTS.startResyOnboarding,
+      { email, password, userId }
+    );
     return result;
   } catch (error) {
     console.error("[API] Error connecting Resy account:", error);
+    throw error;
+  }
+}
+
+/**
+ * Get user session data including onboarding status
+ */
+export async function getMe(userId: string): Promise<{
+  success: boolean;
+  onboardingStatus: 'not_started' | 'completed';
+  hasPaymentMethod: boolean;
+  resy: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    paymentMethodId: number | null;
+  } | null;
+  error?: string;
+}> {
+  try {
+    const result = await apiGet<{
+      success: boolean;
+      onboardingStatus: 'not_started' | 'completed';
+      hasPaymentMethod: boolean;
+      resy: {
+        email: string;
+        firstName: string;
+        lastName: string;
+        paymentMethodId: number | null;
+      } | null;
+      error?: string;
+    }>(API_ENDPOINTS.me, { userId });
+    return result;
+  } catch (error) {
+    console.error("[API] Error getting user session data:", error);
     throw error;
   }
 }
@@ -665,17 +537,15 @@ export async function checkResyAccountStatus(userId: string): Promise<{
   email?: string;
   name?: string;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?userId=${userId}`;
-
   try {
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to check Resy account status");
-    }
-
-    return await response.json();
+    const result = await apiGet<{
+      success: boolean;
+      connected: boolean;
+      hasPaymentMethod?: boolean;
+      email?: string;
+      name?: string;
+    }>(API_ENDPOINTS.resyAccount, { userId });
+    return result;
   } catch (error) {
     console.error("[API] Error checking Resy account status:", error);
     throw error;
@@ -689,19 +559,12 @@ export async function disconnectResyAccount(userId: string): Promise<{
   success: boolean;
   message?: string;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?userId=${userId}`;
-
   try {
-    const response = await fetch(url, {
-      method: "DELETE",
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to disconnect Resy account");
-    }
-
-    return await response.json();
+    const result = await apiDelete<{
+      success: boolean;
+      message?: string;
+    }>(API_ENDPOINTS.resyAccount, { userId });
+    return result;
   } catch (error) {
     console.error("[API] Error disconnecting Resy account:", error);
     throw error;
@@ -724,17 +587,21 @@ export async function getResyCredentials(userId: string): Promise<{
   mobileNumber?: string;
   userId?: number;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?userId=${userId}`;
-
   try {
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to get Resy credentials");
-    }
-
-    return await response.json();
+    const result = await apiGet<{
+      success: boolean;
+      connected: boolean;
+      hasPaymentMethod?: boolean;
+      paymentMethodId?: number;
+      paymentMethods?: Array<{ id: number;[key: string]: unknown }>;
+      email?: string;
+      firstName?: string;
+      lastName?: string;
+      name?: string;
+      mobileNumber?: string;
+      userId?: number;
+    }>(API_ENDPOINTS.resyAccount, { userId });
+    return result;
   } catch (error) {
     console.error("[API] Error getting Resy credentials:", error);
     throw error;
@@ -752,23 +619,17 @@ export async function updateResyPaymentMethod(
   message?: string;
   paymentMethodId?: number;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/resy_account?userId=${userId}`;
-
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ paymentMethodId }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to update payment method");
-    }
-
-    return await response.json();
+    const result = await apiPost<{
+      success: boolean;
+      message?: string;
+      paymentMethodId?: number;
+    }>(
+      API_ENDPOINTS.resyAccount,
+      { paymentMethodId },
+      { userId }
+    );
+    return result;
   } catch (error) {
     console.error("[API] Error updating payment method:", error);
     throw error;
@@ -798,28 +659,17 @@ export async function updateReservationJob(
   targetTimeIso?: string;
   error?: string;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/update_snipe`;
-
   try {
-    const rawResponse = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jobId,
-        ...updates,
-      }),
-    });
-
-    const response = await handleApiResponse(rawResponse);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to update reservation job");
-    }
-
-    return await response.json();
+    const result = await apiPost<{
+      success: boolean;
+      jobId?: string;
+      targetTimeIso?: string;
+      error?: string;
+    }>(
+      API_ENDPOINTS.updateSnipe,
+      { jobId, ...updates }
+    );
+    return result;
   } catch (error) {
     console.error("[API] Error updating reservation job:", error);
     throw error;
@@ -837,25 +687,16 @@ export async function cancelReservationJob(
   jobId?: string;
   error?: string;
 }> {
-  const url = `${CLOUD_FUNCTIONS_BASE}/cancel_snipe`;
-
   try {
-    const rawResponse = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ jobId }),
-    });
-
-    const response = await handleApiResponse(rawResponse);
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to cancel reservation job");
-    }
-
-    return await response.json();
+    const result = await apiPost<{
+      success: boolean;
+      jobId?: string;
+      error?: string;
+    }>(
+      API_ENDPOINTS.cancelSnipe,
+      { jobId }
+    );
+    return result;
   } catch (error) {
     console.error("[API] Error canceling reservation job:", error);
     throw error;
