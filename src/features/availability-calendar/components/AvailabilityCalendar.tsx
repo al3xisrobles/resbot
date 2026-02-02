@@ -1,24 +1,70 @@
+import { useMemo, useCallback, memo } from "react";
 import { format } from "date-fns";
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import type { CalendarData } from "../lib/types";
 import { CalendarDayButtonWithTooltip } from "./CalendarDayButton.private";
-import type { ReservationFormState } from "../../reservation/atoms/reservationFormAtom";
 
 interface AvailabilityCalendarProps {
   calendarData: CalendarData | null;
   calendarError: string | null;
-  reservationForm: ReservationFormState;
+  selectedDate: Date | undefined;
   onDateSelect: (date: Date | undefined) => void;
 }
 
-export function AvailabilityCalendar({
+function AvailabilityCalendarComponent({
   calendarData,
   calendarError,
-  reservationForm,
+  selectedDate,
   onDateSelect,
 }: AvailabilityCalendarProps) {
+
+  // Memoize the DayButton component to prevent remounting all days on every render
+  const DayButtonComponent = useMemo(() => {
+    if (!calendarData) return undefined;
+    
+    // Create a stable component that captures calendarData
+    return function MemoizedDayButton(props: React.ComponentProps<typeof CalendarDayButton>) {
+      return <CalendarDayButtonWithTooltip {...props} calendarData={calendarData} />;
+    };
+  }, [calendarData]);
+
+  // Memoize disabled callback
+  const disabledDates = useCallback(
+    (date: Date) => {
+      if (!calendarData) return true;
+      const dateStr = format(date, "yyyy-MM-dd");
+      const dateEntry = calendarData.availability.find((a) => a.date === dateStr);
+      const dateAvailable = dateEntry ? !dateEntry.closed : false;
+      return !dateAvailable;
+    },
+    [calendarData]
+  );
+
+  // Memoize modifiers
+  const modifiers = useMemo(() => {
+    if (!calendarData) return {};
+    return {
+      available: (date: Date) => {
+        const dateStr = format(date, "yyyy-MM-dd");
+        const dateAvailability = calendarData.availability.find((a) => a.date === dateStr);
+        return dateAvailability?.available || false;
+      },
+      soldOut: (date: Date) => {
+        const dateStr = format(date, "yyyy-MM-dd");
+        const dateAvailability = calendarData.availability.find((a) => a.date === dateStr);
+        return dateAvailability?.soldOut || false;
+      },
+    };
+  }, [calendarData]);
+
+  // Memoize components object
+  const components = useMemo(() => {
+    if (!DayButtonComponent) return undefined;
+    return { DayButton: DayButtonComponent };
+  }, [DayButtonComponent]);
+
   if (calendarError) {
     return (
       <Alert variant="destructive">
@@ -36,41 +82,25 @@ export function AvailabilityCalendar({
     <Calendar
       mode="single"
       className="w-full rounded-lg border shadow-sm [--cell-size:--spacing(10.5)]"
-      selected={reservationForm.date}
+      selected={selectedDate}
       onSelect={onDateSelect}
-      disabled={(date) => {
-        const dateStr = format(date, "yyyy-MM-dd");
-        const dateEntry = calendarData.availability.find(
-          (a) => a.date === dateStr
-        );
-        const dateAvailable = dateEntry ? !dateEntry.closed : false;
-        return !dateAvailable;
-      }}
-      modifiers={{
-        available: (date) => {
-          const dateStr = format(date, "yyyy-MM-dd");
-          const dateAvailability = calendarData.availability.find(
-            (a) => a.date === dateStr
-          );
-          return dateAvailability?.available || false;
-        },
-        soldOut: (date) => {
-          const dateStr = format(date, "yyyy-MM-dd");
-          const dateAvailability = calendarData.availability.find(
-            (a) => a.date === dateStr
-          );
-          return dateAvailability?.soldOut || false;
-        },
-      }}
+      disabled={disabledDates}
+      modifiers={modifiers}
       modifiersClassNames={{
         available: "[&>button:not([data-selected-single=true])]:text-blue-600 [&>button:not([data-selected-single=true])]:font-bold",
         soldOut: "[&>button:not([data-selected-single=true])]:text-red-600",
       }}
-      components={{
-        DayButton: (props) => (
-          <CalendarDayButtonWithTooltip {...props} calendarData={calendarData} />
-        ),
-      }}
+      components={components}
     />
   );
 }
+
+// Memoize to prevent re-renders when unrelated props change
+export const AvailabilityCalendar = memo(AvailabilityCalendarComponent, (prevProps, nextProps) => {
+  return (
+    prevProps.calendarData === nextProps.calendarData &&
+    prevProps.calendarError === nextProps.calendarError &&
+    prevProps.selectedDate === nextProps.selectedDate &&
+    prevProps.onDateSelect === nextProps.onDateSelect
+  );
+});

@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, LoaderCircle, CircleCheck } from "lucide-react";
+import { LoaderCircle, CircleCheck, AlertCircle, Plus, X } from "lucide-react";
 import { useAtom } from "jotai";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -17,13 +17,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
+import { DatePickerTrigger } from "@/components/ui/date-picker-trigger";
+import { UnifiedSearchControls } from "@/components/ui/unified-search-controls";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { useAuth } from "@/contexts/AuthContext";
 import { cityTimezoneAbbrAtom } from "@/atoms/cityAtom";
-import type { ReservationFormState } from "../atoms/reservationFormAtom";
+import type { ReservationFormState, DropSchedule } from "../atoms/reservationFormAtom";
 import { Stack, Group } from "@/components/ui/layout";
 
 const useEmulators =
@@ -32,7 +32,7 @@ const useEmulators =
 
 interface ReservationFormProps {
   reservationForm: ReservationFormState;
-  setReservationForm: (form: ReservationFormState) => void;
+  setReservationForm: (form: ReservationFormState | ((prev: ReservationFormState) => ReservationFormState)) => void;
   onSchedule: () => void;
   loadingSubmit: boolean;
   error: string | null;
@@ -71,91 +71,26 @@ export function ReservationForm({
       )}
 
       {/* Reservation Details */}
-      <Group itemsSpacing={16} noWrap className="flex-col md:flex-row">
-        {/* Party Size */}
-        <Stack itemsSpacing={8} className="flex-1">
-          <Label htmlFor="party-size">Party Size</Label>
-          <Select
-            value={reservationForm.partySize}
-            onValueChange={(value) =>
-              setReservationForm({
-                ...reservationForm,
-                partySize: value,
-              })
-            }
-            disabled={!auth.currentUser}
-          >
-            <SelectTrigger id="party-size">
-              <SelectValue placeholder="Select party size" />
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from({ length: 6 }, (_, i) => i + 1).map((size) => (
-                <SelectItem key={size} value={size.toString()}>
-                  {size} {size === 1 ? "person" : "people"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Stack>
-
-        {/* Date */}
-        <Stack itemsSpacing={8} className="flex-1">
-          <Label>Date</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                disabled={!auth.currentUser}
-                className={cn(
-                  "flex h-9 w-full items-center justify-start rounded-md border bg-background px-3 py-2 text-sm shadow-xs ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer hover:bg-accent/50 transition-colors",
-                  !reservationForm.date && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-2 size-4" />
-                {reservationForm.date ? (
-                  format(reservationForm.date, "EEE, MMM d")
-                ) : (
-                  <span>Pick a date</span>
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={reservationForm.date}
-                onSelect={(date) =>
-                  setReservationForm({ ...reservationForm, date })
-                }
-              />
-            </PopoverContent>
-          </Popover>
-        </Stack>
-
-        {/* Time */}
-        <Stack itemsSpacing={8} className="flex-1">
-          <Label htmlFor="time-slot">Desired Time ({timezoneAbbr})</Label>
-          <Select
-            value={reservationForm.timeSlot}
-            onValueChange={(value) =>
-              setReservationForm({
-                ...reservationForm,
-                timeSlot: value,
-              })
-            }
-            disabled={!auth.currentUser}
-          >
-            <SelectTrigger id="time-slot">
-              <SelectValue placeholder="Select time" />
-            </SelectTrigger>
-            <SelectContent>
-              {TIME_SLOTS.map((slot) => (
-                <SelectItem key={slot.value} value={slot.value}>
-                  {slot.display}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Stack>
-      </Group>
+      <Stack itemsSpacing={8} className="w-fit">
+        <Label>Reservation Details</Label>
+        <UnifiedSearchControls
+          partySize={reservationForm.partySize}
+          onPartySizeChange={(partySize) =>
+            setReservationForm({ ...reservationForm, partySize })
+          }
+          date={reservationForm.date}
+          onDateChange={(date) =>
+            setReservationForm({ ...reservationForm, date })
+          }
+          timeSlot={reservationForm.timeSlot}
+          onTimeSlotChange={(timeSlot) =>
+            setReservationForm({ ...reservationForm, timeSlot })
+          }
+          timeSlots={TIME_SLOTS}
+          showSearchButton={false}
+          disabled={!auth.currentUser}
+        />
+      </Stack>
 
       {/* Preferences */}
       <Stack itemsSpacing={16}>
@@ -173,7 +108,7 @@ export function ReservationForm({
               }
               disabled={!auth.currentUser}
             >
-              <SelectTrigger id="window">
+              <SelectTrigger variant="pill" id="window">
                 <SelectValue placeholder="Select window" />
               </SelectTrigger>
               <SelectContent>
@@ -197,7 +132,7 @@ export function ReservationForm({
               }
               disabled={!auth.currentUser}
             >
-              <SelectTrigger id="seating-type">
+              <SelectTrigger variant="pill" id="seating-type">
                 <SelectValue placeholder="Any seating" />
               </SelectTrigger>
               <SelectContent>
@@ -220,70 +155,115 @@ export function ReservationForm({
         <Stack itemsSpacing={4}>
           <h3 className="text-lg">Reservation Drop Time</h3>
           <p className="text-sm text-muted-foreground">
-            When do reservations open? The bot will wait until this time.
+            When do reservations open? The bot will wait until this time. You can schedule multiple snipes at different times.
           </p>
         </Stack>
-        <Group itemsSpacing={16} noWrap className="flex-col md:flex-row">
-          <Stack itemsSpacing={8} className="flex-1">
-            <Label>Drop Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  disabled={!auth.currentUser}
-                  className={cn(
-                    "flex h-9 w-full items-center justify-start rounded-md border bg-background px-3 py-2 text-sm shadow-xs ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer hover:bg-accent/50 transition-colors",
-                    !reservationForm.dropDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 size-4" />
-                  {reservationForm.dropDate ? (
-                    format(reservationForm.dropDate, "EEE, MMM d")
-                  ) : (
-                    <span>Pick drop date</span>
-                  )}
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={reservationForm.dropDate}
-                  onSelect={(date) =>
-                    setReservationForm({
-                      ...reservationForm,
-                      dropDate: date,
-                    })
-                  }
-                />
-              </PopoverContent>
-            </Popover>
-          </Stack>
-          <Stack itemsSpacing={8} className="flex-1">
-            <Label className="flex flex-row gap-2 items-center">
-              <p>Drop Time ({timezoneAbbr})</p>
-            </Label>
-            <Select
-              value={reservationForm.dropTimeSlot}
-              onValueChange={(value) =>
-                setReservationForm({
-                  ...reservationForm,
-                  dropTimeSlot: value,
-                })
-              }
-              disabled={!auth.currentUser}
+        <Stack itemsSpacing={12}>
+          {reservationForm.dropSchedules.map((schedule) => (
+            <Group
+              key={schedule.id}
+              itemsSpacing={16}
+              noWrap
+              className="flex-col md:flex-row items-end"
             >
-              <SelectTrigger id="drop-time-slot">
-                <SelectValue placeholder="Select drop time" />
-              </SelectTrigger>
-              <SelectContent>
-                {TIME_SLOTS.map((slot) => (
-                  <SelectItem key={slot.value} value={slot.value}>
-                    {slot.display}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Stack>
-        </Group>
+              <Stack itemsSpacing={8} className="flex-1">
+                <Label>Drop Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <DatePickerTrigger
+                      disabled={!auth.currentUser}
+                      displayText={
+                        schedule.dropDate
+                          ? format(schedule.dropDate, "EEE, MMM d")
+                          : undefined
+                      }
+                      placeholder="Pick drop date"
+                    />
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={schedule.dropDate}
+                      onSelect={(date) => {
+                        setReservationForm((prev: ReservationFormState) => ({
+                          ...prev,
+                          dropSchedules: prev.dropSchedules.map((s: DropSchedule) =>
+                            s.id === schedule.id ? { ...s, dropDate: date } : s
+                          ),
+                        }));
+                      }}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </Stack>
+              <Stack itemsSpacing={8} className="flex-1">
+                <Label className="flex flex-row gap-2 items-center">
+                  <p>Drop Time ({timezoneAbbr})</p>
+                </Label>
+                <Select
+                  value={schedule.dropTimeSlot}
+                  onValueChange={(value) => {
+                    setReservationForm((prev: ReservationFormState) => ({
+                      ...prev,
+                      dropSchedules: prev.dropSchedules.map((s: DropSchedule) =>
+                        s.id === schedule.id ? { ...s, dropTimeSlot: value } : s
+                      ),
+                    }));
+                  }}
+                  disabled={!auth.currentUser}
+                >
+                  <SelectTrigger variant="pill" id={`drop-time-slot-${schedule.id}`}>
+                    <SelectValue placeholder="Select drop time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_SLOTS.map((slot) => (
+                      <SelectItem key={slot.value} value={slot.value}>
+                        {slot.display}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Stack>
+              {reservationForm.dropSchedules.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setReservationForm((prev: ReservationFormState) => ({
+                      ...prev,
+                      dropSchedules: prev.dropSchedules.filter((s: DropSchedule) => s.id !== schedule.id),
+                    }));
+                  }}
+                  disabled={!auth.currentUser}
+                  className="shrink-0 translate-y-[10px]"
+                >
+                  <X className="size-4" />
+                </Button>
+              )}
+            </Group>
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setReservationForm((prev: ReservationFormState) => ({
+                ...prev,
+                dropSchedules: [
+                  ...prev.dropSchedules,
+                  {
+                    id: crypto.randomUUID(),
+                    dropDate: undefined,
+                    dropTimeSlot: "9:0",
+                  },
+                ],
+              }));
+            }}
+            disabled={!auth.currentUser}
+            className="w-full gap-2"
+          >
+            <Plus className="size-4" />
+          </Button>
+        </Stack>
       </Stack>
 
       {useEmulators && (
@@ -299,16 +279,19 @@ export function ReservationForm({
             size="sm"
             variant="ghost"
             onClick={() => {
-              // Set drop date/time to now
+              // Set all drop dates/times to now
               const now = new Date();
-              setReservationForm({
-                ...reservationForm,
-                dropDate: now,
-                dropTimeSlot: `${now.getHours()}:${now.getMinutes()}`,
-              });
+              setReservationForm((prev: ReservationFormState) => ({
+                ...prev,
+                dropSchedules: prev.dropSchedules.map((schedule: DropSchedule) => ({
+                  ...schedule,
+                  dropDate: now,
+                  dropTimeSlot: `${now.getHours()}:${now.getMinutes()}`,
+                })),
+              }));
             }}
           >
-            Set time to now
+            Set all times to now
           </Button>
         </Group>
       )}
@@ -322,7 +305,10 @@ export function ReservationForm({
           loadingSubmit ||
           reservationScheduled ||
           !reservationForm.date ||
-          !reservationForm.dropDate
+          reservationForm.dropSchedules.length === 0 ||
+          reservationForm.dropSchedules.some(
+            (schedule) => !schedule.dropDate
+          )
         }
         className="w-full"
       >

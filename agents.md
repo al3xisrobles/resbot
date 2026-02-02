@@ -125,6 +125,29 @@ pylint api/tests/    # Check test files
 
 ---
 
+# Component Styling Consistency
+
+**Design Tokens:** Use CSS custom properties from `index.css` for consistent rounding and sizing:
+- `--radius-pill`: Fully rounded (hero controls, pills)
+- `--radius-control`: Form controls (default selects, inputs)
+- `--radius-surface`: Popovers, dropdowns, cards
+- `--radius-inner`: Items, tags within containers
+- `--height-control-sm/default/lg/xl`: Consistent component heights
+
+**Component Variants:** Use variant props instead of custom classes:
+- `Select`: `variant="pill"` for hero/pill style, default for forms
+- `Input`: `variant="pill"` for search bars, default for forms
+- `DatePickerTrigger`: Unified date picker button (replaces custom buttons)
+- `Button`: Use size variants (`sm`, `default`, `lg`, `icon`, `icon-sm`, `icon-lg`)
+
+**Rules:**
+- Never use inline `rounded-full` or custom border-radius classes—use component variants
+- Hero/search controls use `variant="pill"`, form controls use default
+- All popovers/dropdowns use `--radius-surface` automatically
+- Use `DatePickerTrigger` instead of custom date button implementations
+
+---
+
 # Sentry Error Monitoring & Logging
 
 This project uses Sentry for error tracking, logging, and performance monitoring.

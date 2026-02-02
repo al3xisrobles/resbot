@@ -30,7 +30,8 @@ export const accessTokenAtom = atom<string | null>(null);
 export const meAtom = atom<MeResponse | null>(null);
 
 // Loading state atoms
-export const isAuthLoadingAtom = atom(false);
+// Starts as true to prevent routing decisions before auth state is resolved
+export const isAuthLoadingAtom = atom(true);
 export const isSigningInAtom = atom(false);
 export const isSigningOutAtom = atom(false);
 

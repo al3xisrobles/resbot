@@ -17,10 +17,12 @@ export function useScheduleReservation(
   const [error, setError] = useState<string | null>(null);
   const [reservationScheduled, setReservationScheduled] = useState(false);
 
-  // Reset reservationScheduled when form state or venue changes
+  // Reset reservationScheduled when venue changes
+  // Note: We intentionally don't reset on reservationForm changes to avoid
+  // unnecessary state updates during form editing
   useEffect(() => {
     setReservationScheduled(false);
-  }, [reservationForm, venueId]);
+  }, [venueId]);
 
   const scheduleReservation = async () => {
     if (!venueId) {
@@ -33,26 +35,34 @@ export function useScheduleReservation(
       return;
     }
 
-    if (!reservationForm.dropDate) {
-      setError("Please select a drop date");
+    if (!reservationForm.dropSchedules || reservationForm.dropSchedules.length === 0) {
+      setError("Please add at least one drop schedule");
       return;
     }
 
-    // Parse drop time
-    const [dropHour, dropMinute] = reservationForm.dropTimeSlot.split(":").map(Number);
+    // Validate all drop schedules
+    for (const schedule of reservationForm.dropSchedules) {
+      if (!schedule.dropDate) {
+        setError("Please select a drop date for all schedules");
+        return;
+      }
 
-    // Validate drop time is in the future
-    const dropDateTime = new Date(
-      reservationForm.dropDate.getFullYear(),
-      reservationForm.dropDate.getMonth(),
-      reservationForm.dropDate.getDate(),
-      dropHour,
-      dropMinute
-    );
+      // Parse drop time
+      const [dropHour, dropMinute] = schedule.dropTimeSlot.split(":").map(Number);
 
-    if (dropDateTime <= new Date()) {
-      setError("Drop time must be in the future");
-      return;
+      // Validate drop time is in the future
+      const dropDateTime = new Date(
+        schedule.dropDate.getFullYear(),
+        schedule.dropDate.getMonth(),
+        schedule.dropDate.getDate(),
+        dropHour,
+        dropMinute
+      );
+
+      if (dropDateTime <= new Date()) {
+        setError("All drop times must be in the future");
+        return;
+      }
     }
 
     setLoadingSubmit(true);
@@ -64,49 +74,88 @@ export function useScheduleReservation(
 
       const user = auth.currentUser;
 
-      // Format dates as YYYY-MM-DD using the date's local components (not UTC)
-      // This ensures Jan 27 selected in the calendar is sent as "2026-01-27" regardless of timezone
-      const dropDateFormatted = `${reservationForm.dropDate.getFullYear()}-${String(reservationForm.dropDate.getMonth() + 1).padStart(2, '0')}-${String(reservationForm.dropDate.getDate()).padStart(2, '0')}`;
-
       // Format reservation date using local components (not UTC) to avoid timezone shifts
       const reservationDateFormatted = `${reservationForm.date.getFullYear()}-${String(reservationForm.date.getMonth() + 1).padStart(2, '0')}-${String(reservationForm.date.getDate()).padStart(2, '0')}`;
 
-      const requestPayload = {
-        venueId,
-        partySize: Number(reservationForm.partySize),
-        date: reservationDateFormatted,
-        dropDate: dropDateFormatted,
-        hour: Number(hour),
-        minute: Number(minute),
-        windowHours: reservationForm.windowHours
-          ? Number(reservationForm.windowHours)
-          : undefined,
-        seatingType:
-          reservationForm.seatingType === "any"
-            ? undefined
-            : reservationForm.seatingType,
-        dropHour,
-        dropMinute,
-        userId: user?.uid ?? null,
-        actuallyReserve: reserveOnEmulation,
-        timezone: cityTimezone, // Pass the city's timezone to the backend
-      };
+      // Schedule a reservation for each drop schedule
+      const jobIds: string[] = [];
+      const errors: string[] = [];
 
-      // Log the request for debugging
-      console.log("[useScheduleReservation] Scheduling with payload:", requestPayload);
-      console.log("[useScheduleReservation] Drop date from form:", reservationForm.dropDate?.toISOString());
-      console.log("[useScheduleReservation] City timezone:", cityTimezone);
+      for (const schedule of reservationForm.dropSchedules) {
+        // Skip schedules without a drop date (shouldn't happen due to validation, but TypeScript needs this)
+        if (!schedule.dropDate) {
+          continue;
+        }
 
-      const { jobId } = await scheduleReservationSnipe(requestPayload);
+        try {
+          // Format drop date as YYYY-MM-DD using the date's local components (not UTC)
+          const dropDateFormatted = `${schedule.dropDate.getFullYear()}-${String(schedule.dropDate.getMonth() + 1).padStart(2, '0')}-${String(schedule.dropDate.getDate()).padStart(2, '0')}`;
 
-      // Show success toast with green background
-      toast.success("Reservation Scheduled!", {
-        description: `Job ID: ${jobId}`,
-        className: "bg-green-600 text-white border-green-600",
-        position: "bottom-right",
-      });
+          // Parse drop time
+          const [dropHour, dropMinute] = schedule.dropTimeSlot.split(":").map(Number);
 
-      setReservationScheduled(true);
+          const requestPayload = {
+            venueId,
+            partySize: Number(reservationForm.partySize),
+            date: reservationDateFormatted,
+            dropDate: dropDateFormatted,
+            hour: Number(hour),
+            minute: Number(minute),
+            windowHours: reservationForm.windowHours
+              ? Number(reservationForm.windowHours)
+              : undefined,
+            seatingType:
+              reservationForm.seatingType === "any"
+                ? undefined
+                : reservationForm.seatingType,
+            dropHour,
+            dropMinute,
+            userId: user?.uid ?? null,
+            actuallyReserve: reserveOnEmulation,
+            timezone: cityTimezone, // Pass the city's timezone to the backend
+          };
+
+          // Log the request for debugging
+          console.log("[useScheduleReservation] Scheduling with payload:", requestPayload);
+          console.log("[useScheduleReservation] Drop date from form:", schedule.dropDate?.toISOString());
+          console.log("[useScheduleReservation] City timezone:", cityTimezone);
+
+          const { jobId } = await scheduleReservationSnipe(requestPayload);
+          jobIds.push(jobId);
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : "Failed to schedule reservation";
+          errors.push(errorMessage);
+          console.error("[useScheduleReservation] Error scheduling reservation:", err);
+        }
+      }
+
+      // Show success or error messages
+      if (jobIds.length > 0) {
+        const successMessage = jobIds.length === 1
+          ? `Reservation Scheduled! Job ID: ${jobIds[0]}`
+          : `${jobIds.length} Reservations Scheduled! Job IDs: ${jobIds.join(", ")}`;
+        
+        toast.success("Reservation Scheduled!", {
+          description: successMessage,
+          className: "bg-green-600 text-white border-green-600",
+          position: "bottom-right",
+        });
+      }
+
+      if (errors.length > 0) {
+        const errorMessage = errors.length === 1
+          ? errors[0]
+          : `${errors.length} schedules failed: ${errors.join("; ")}`;
+        setError(errorMessage);
+        toast.error("Some reservations failed to schedule", {
+          description: errorMessage,
+        });
+      }
+
+      // Only mark as scheduled if at least one succeeded
+      if (jobIds.length > 0) {
+        setReservationScheduled(true);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to make reservation"

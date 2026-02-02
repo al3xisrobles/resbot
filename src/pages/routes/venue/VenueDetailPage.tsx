@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAtom } from "jotai";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -10,6 +10,8 @@ import {
     SidebarInset,
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
+import { SkeletonRect } from "@/components/ui/skeleton";
+import ResbotLogo from "@/assets/ResbotLogoRedWithText.svg";
 import { useVenueData } from "@/features/venue-details/api/useVenueData";
 import { VenueHeader } from "@/features/venue-details/components/VenueHeader";
 import { VenueInfo } from "@/features/venue-details/components/VenueInfo";
@@ -24,7 +26,7 @@ import { CalendarWithSlots } from "@/features/availability-calendar/components/C
 import { CalendarSkeleton } from "@/features/availability-calendar/components/CalendarSkeleton";
 import { useScheduleReservation } from "@/features/reservation/api/useScheduleReservation";
 import { ReservationForm } from "@/features/reservation/components/ReservationForm";
-import { reservationFormAtom } from "@/features/reservation/atoms/reservationFormAtom";
+import { reservationFormAtom, type ReservationFormState } from "@/features/reservation/atoms/reservationFormAtom";
 
 export function VenueDetailPage() {
     const [searchParams] = useSearchParams();
@@ -38,7 +40,7 @@ export function VenueDetailPage() {
             const today = new Date();
             // Reset time to midnight to avoid timezone issues
             today.setHours(0, 0, 0, 0);
-            setReservationForm((prev) => ({ ...prev, date: today }));
+            setReservationForm((prev: ReservationFormState) => ({ ...prev, date: today }));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // Only run once on mount
@@ -66,6 +68,15 @@ export function VenueDetailPage() {
         venueId,
         reservationForm.partySize
     );
+
+    // Memoize callbacks to prevent CalendarWithSlots from re-rendering
+    const handleDateSelect = useCallback((date: Date | undefined) => {
+        setReservationForm((prev) => ({ ...prev, date }));
+    }, [setReservationForm]);
+
+    const handleTimeSlotSelect = useCallback((timeSlot: string) => {
+        setReservationForm((prev) => ({ ...prev, timeSlot }));
+    }, [setReservationForm]);
 
     // Schedule reservation
     const {
@@ -95,7 +106,7 @@ export function VenueDetailPage() {
             <Sidebar collapsible="none" className="w-1/2 h-[calc(100vh-90px)] **:data-[sidebar=sidebar]:bg-white!">
                 <SidebarContent className="overflow-y-auto h-full flex flex-col pt-12 pb-12">
                     <div
-                        className="max-w-[650px] w-full ml-auto space-y-4"
+                        className="max-w-[650px] w-full ml-auto space-y-4 flex flex-col flex-1"
                         style={{ padding: "0 3rem 0 2rem" }}
                     >
                         {/* Restaurant Details */}
@@ -135,15 +146,42 @@ export function VenueDetailPage() {
                                     reservationForm={reservationForm}
                                     venueId={venueId}
                                     resyLink={venueLinks?.resy || null}
-                                    onDateSelect={(date) =>
-                                        setReservationForm({ ...reservationForm, date })
-                                    }
-                                    onTimeSlotSelect={(timeSlot) =>
-                                        setReservationForm({ ...reservationForm, timeSlot })
-                                    }
+                                    onDateSelect={handleDateSelect}
+                                    onTimeSlotSelect={handleTimeSlotSelect}
                                 />
                             )}
                         </div>
+
+                        {/* Footer */}
+                        {isLoadingCritical ? (
+                            <div className="mt-auto pt-8 text-center flex justify-center flex-row items-center gap-4">
+                                <SkeletonRect width={80} height={20} rounding="8" />
+                                <span className="flex items-center h-4">
+                                    <Separator orientation="vertical" className="h-full opacity-30" />
+                                </span>
+                                <SkeletonRect width={120} height={16} rounding="8" />
+                            </div>
+                        ) : (
+                            <div className="mt-auto pt-8 text-center flex justify-center flex-row items-center gap-4 text-sm text-muted-foreground">
+                                <div className="flex items-center justify-center gap-2">
+                                    <img src={ResbotLogo} className="h-5 grayscale" />
+                                </div>
+                                <span className="flex items-center h-4">
+                                    <Separator orientation="vertical" className="h-full" />
+                                </span>
+                                <p>
+                                    Built by{" "}
+                                    <a
+                                        href="https://www.linkedin.com/in/alexisdrobles"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline hover:text-primary"
+                                    >
+                                        Alexis Robles
+                                    </a>
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </SidebarContent>
             </Sidebar>

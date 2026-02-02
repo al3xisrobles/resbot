@@ -1,23 +1,9 @@
 // src/components/Hero.tsx
-import { format } from "date-fns";
 import { SearchBar } from "@/components/SearchBar";
-import { cn } from "@/lib/utils";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { useAtom } from "jotai";
 import { reservationFormAtom } from "@/atoms/reservationAtoms";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { UnifiedSearchControls } from "@/components/ui/unified-search-controls";
 import chooseIllustration from "@/assets/undraw_choose_5kz4.svg";
 import timeManagementIllustration from "@/assets/undraw_time-management_4ss6.svg";
 import mailSentIllustration from "@/assets/undraw_mail-sent_ujev.svg";
@@ -103,72 +89,23 @@ export function Hero() {
           />
         </div>
 
-        {/* Party size / date / time pills */}
-        <div className="w-full max-w-xl flex flex-row gap-3 justify-center z-20">
-          {/* Party size pill */}
-          <Select
-            value={reservationForm.partySize}
-            onValueChange={(partySize) =>
-              setReservationForm({ ...reservationForm, partySize })
-            }
-          >
-            <SelectTrigger className="rounded-full">
-              <SelectValue placeholder="Party size" />
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from({ length: 6 }, (_, i) => i + 1).map((size) => (
-                <SelectItem key={size} value={size.toString()}>
-                  {size} {size === 1 ? "person" : "people"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Date pill */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                className={cn(
-                  "flex h-9 w-full items-center justify-start rounded-full border bg-background px-3 py-2 text-sm shadow-xs ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer hover:bg-accent/50 transition-colors"
-                )}
-              >
-                {reservationForm.date ? (
-                  format(reservationForm.date, "EEE, MMM d")
-                ) : (
-                  <span>Pick a date</span>
-                )}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={reservationForm.date!}
-                onSelect={(date) =>
-                  setReservationForm({ ...reservationForm, date })
-                }
-              />
-            </PopoverContent>
-          </Popover>
-
-          {/* Time pill */}
-          <Select
-            value={reservationForm.timeSlot}
-            onValueChange={(timeSlot) =>
-              setReservationForm({ ...reservationForm, timeSlot })
-            }
-          >
-            <SelectTrigger className="rounded-full">
-              <SelectValue placeholder="Time" />
-            </SelectTrigger>
-            <SelectContent>
-              {TIME_SLOTS.map((slot) => (
-                <SelectItem key={slot.value} value={slot.value}>
-                  {slot.display}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Unified party size / date / time control */}
+        <UnifiedSearchControls
+          partySize={reservationForm.partySize}
+          onPartySizeChange={(partySize) =>
+            setReservationForm({ ...reservationForm, partySize })
+          }
+          date={reservationForm.date}
+          onDateChange={(date) =>
+            setReservationForm({ ...reservationForm, date })
+          }
+          timeSlot={reservationForm.timeSlot}
+          onTimeSlotChange={(timeSlot) =>
+            setReservationForm({ ...reservationForm, timeSlot })
+          }
+          timeSlots={TIME_SLOTS}
+          showSearchButton={false}
+        />
       </div>
 
       {/* --- How Reservation Sniping Works placeholder --- */}

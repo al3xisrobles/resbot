@@ -1,11 +1,12 @@
 import { Navigate } from "react-router-dom";
 import { useAtomValue } from "jotai";
 import { useAuth } from "@/contexts/AuthContext";
-import { isOnboardedAtom } from "@/atoms/authAtoms";
+import { isOnboardedAtom, isAuthLoadingAtom } from "@/atoms/authAtoms";
 
 /**
  * Route guard that requires authentication only
- * Redirects to /login if not authenticated
+ * Returns null while auth is loading to prevent premature redirects
+ * Redirects to /login if not authenticated (after auth state resolves)
  */
 export function AuthenticatedRoute({
   children,
@@ -13,6 +14,12 @@ export function AuthenticatedRoute({
   children: React.ReactNode;
 }) {
   const { currentUser } = useAuth();
+  const isAuthLoading = useAtomValue(isAuthLoadingAtom);
+
+  // Wait for auth state to resolve before making routing decisions
+  if (isAuthLoading) {
+    return null;
+  }
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
@@ -23,12 +30,19 @@ export function AuthenticatedRoute({
 
 /**
  * Route guard that requires authentication + Resy onboarding
- * Redirects to /login if not authenticated
+ * Returns null while auth is loading to prevent premature redirects
+ * Redirects to /login if not authenticated (after auth state resolves)
  * Redirects to /connect-resy if authenticated but not onboarded
  */
 export function OnboardedRoute({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
   const isOnboarded = useAtomValue(isOnboardedAtom);
+  const isAuthLoading = useAtomValue(isAuthLoadingAtom);
+
+  // Wait for auth state to resolve before making routing decisions
+  if (isAuthLoading) {
+    return null;
+  }
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
@@ -43,6 +57,7 @@ export function OnboardedRoute({ children }: { children: React.ReactNode }) {
 
 /**
  * Route guard that requires authentication and redirects to /connect-resy if not onboarded
+ * Returns null while auth is loading to prevent premature redirects
  * This is similar to AuthenticatedRoute but also checks onboarding status
  */
 export function AuthenticatedOnboardedRoute({
@@ -52,6 +67,12 @@ export function AuthenticatedOnboardedRoute({
 }) {
   const { currentUser } = useAuth();
   const isOnboarded = useAtomValue(isOnboardedAtom);
+  const isAuthLoading = useAtomValue(isAuthLoadingAtom);
+
+  // Wait for auth state to resolve before making routing decisions
+  if (isAuthLoading) {
+    return null;
+  }
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
@@ -66,10 +87,17 @@ export function AuthenticatedOnboardedRoute({
 
 /**
  * Route guard for guest-only pages (login, signup)
- * Redirects to / if already authenticated
+ * Returns null while auth is loading to prevent premature redirects
+ * Redirects to / if already authenticated (after auth state resolves)
  */
 export function GuestOnlyRoute({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
+  const isAuthLoading = useAtomValue(isAuthLoadingAtom);
+
+  // Wait for auth state to resolve before making routing decisions
+  if (isAuthLoading) {
+    return null;
+  }
 
   if (currentUser) {
     return <Navigate to="/" replace />;

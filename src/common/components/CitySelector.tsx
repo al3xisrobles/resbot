@@ -14,7 +14,7 @@ export function CitySelector() {
 
     return (
         <Select value={selectedCity} onValueChange={setSelectedCity}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger variant="pill" className="w-[180px]">
                 <SelectValue placeholder="Select city" />
             </SelectTrigger>
             <SelectContent>

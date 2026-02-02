@@ -108,7 +108,7 @@ export function Header() {
               {currentUser ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-12 h-12">
+                    <Button variant="outline" size="icon-lg">
                       <User className="size-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -202,7 +202,7 @@ export function Header() {
               {currentUser ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-12 h-12">
+                    <Button variant="outline" size="icon-lg">
                       <User className="size-4" />
                     </Button>
                   </DropdownMenuTrigger>
