@@ -46,7 +46,6 @@ export function Header() {
 
   const isAuthPage =
     location.pathname === "/login" || location.pathname === "/signup";
-
   const isHomePage = location.pathname === "/";
 
   const isLoggedIn = !!currentUser;
@@ -60,7 +59,7 @@ export function Header() {
   const showHeaderSearch = !isHomePage && isLoggedIn;
 
   return (
-    <header className="border-b bg-card">
+    <header className={`${!isHomePage && "border-b"} bg-card`}>
       <div className="container mx-auto px-4 py-4">
         {/* Desktop Layout */}
         {!showHeaderSearch ? (

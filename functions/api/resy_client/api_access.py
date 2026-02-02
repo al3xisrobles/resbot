@@ -157,10 +157,10 @@ class ResyApiAccess:
         with sentry_sdk.start_span(
             op="http.client",
             name="resy.find",
-            description=f"GET {ResyEndpoints.FIND.value}",
+            description=f"POST {ResyEndpoints.FIND.value}",
         ) as span:
             span.set_tag("http.url", find_url)
-            span.set_tag("http.method", "GET")
+            span.set_tag("http.method", "POST")
             params_dict = params.model_dump()
             if "venue_id" in params_dict:
                 span.set_tag("venue_id", params_dict["venue_id"])
@@ -169,7 +169,15 @@ class ResyApiAccess:
             if "day" in params_dict:
                 span.set_data("day", params_dict["day"])
 
-            resp = self.session.get(find_url, params=params_dict, timeout=REQUEST_TIMEOUT)
+            headers = {
+                "Content-Type": "application/json",
+            }
+            resp = self.session.post(
+                find_url,
+                json=params_dict,
+                headers=headers,
+                timeout=REQUEST_TIMEOUT
+            )
 
             span.set_tag("http.status_code", resp.status_code)
             logger.info("Received response from find booking slots: %s", resp.text)

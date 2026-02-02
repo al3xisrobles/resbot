@@ -66,7 +66,7 @@ function AppContent() {
 
         {/* Authenticated routes - require authentication only */}
         <Route
-          path="/onboarding"
+          path="/connect-resy"
           element={
             <AuthenticatedRoute>
               <OnboardingPageWrapper />
@@ -76,9 +76,9 @@ function AppContent() {
         <Route
           path="/profile"
           element={
-            <AuthenticatedRoute>
+            <OnboardedRoute>
               <ProfilePage />
-            </AuthenticatedRoute>
+            </OnboardedRoute>
           }
         />
 

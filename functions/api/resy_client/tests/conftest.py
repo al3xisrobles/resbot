@@ -360,7 +360,7 @@ def mock_successful_booking_flow(
     """
     # Find slots
     mock_resy_api.add(
-        responses.GET,
+        responses.POST,
         f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
         json=find_response_with_slots,
         status=200,
@@ -389,7 +389,7 @@ def mock_successful_booking_flow(
 def mock_no_slots_available(mock_resy_api, find_response_empty):
     """Mock for when no slots are available."""
     mock_resy_api.add(
-        responses.GET,
+        responses.POST,
         f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
         json=find_response_empty,
         status=200,

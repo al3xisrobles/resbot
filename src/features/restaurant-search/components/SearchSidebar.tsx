@@ -22,9 +22,10 @@ import { cn } from "@/lib/utils";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { SearchResultItem } from "@/components/SearchResultItem";
 import { SearchResultItemSkeleton } from "@/components/SearchResultItemSkeleton";
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { reservationFormAtom } from "@/atoms/reservationAtoms";
 import { cityConfigAtom } from "@/atoms/cityAtom";
+import { isOnboardedAtom } from "@/atoms/authAtoms";
 import {
     Pagination,
     PaginationContent,
@@ -72,6 +73,7 @@ export function SearchSidebar({
     const auth = useAuth();
     const navigate = useNavigate();
     const isAuthenticated = !!auth.currentUser;
+    const isOnboarded = useAtomValue(isOnboardedAtom);
     const selectedCuisines = React.useMemo(() => {
         if (filters.cuisines.length === 0) return "All Cuisines";
         if (filters.cuisines.length === 1) {
@@ -125,6 +127,28 @@ export function SearchSidebar({
                             >
                                 <LogIn className="mr-2 size-4" />
                                 Log in
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Connect Resy overlay for authenticated but not onboarded users */}
+                {isAuthenticated && !isOnboarded && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+                        <div className="text-center space-y-4 px-8">
+                            <LogIn className="size-12 mx-auto text-muted-foreground" />
+                            <div className="space-y-2">
+                                <h3 className="text-lg font-semibold">Connect your Resy account to search</h3>
+                                <p className="text-sm text-muted-foreground max-w-sm">
+                                    Connect your Resy account to search for restaurants and view availability
+                                </p>
+                            </div>
+                            <Button
+                                onClick={() => navigate("/connect-resy")}
+                                className="mt-4"
+                            >
+                                <LogIn className="mr-2 size-4" />
+                                Connect Resy Account
                             </Button>
                         </div>
                     </div>

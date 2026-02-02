@@ -43,7 +43,7 @@ class TestBuildFindRequestBody:
 
         body = build_find_request_body(request)
 
-        assert body.venue_id == "60058"
+        assert body.venue_id == 60058
         assert body.party_size == 2
         assert body.day == "2026-02-14"
 
@@ -82,7 +82,7 @@ class TestBuildFindRequestBody:
         assert body.day == expected_date.strftime("%Y-%m-%d")
 
     def test_default_lat_long(self):
-        """Should have default lat/long of '0'."""
+        """Should have default lat/long of 0."""
         request = ReservationRequest(
             venue_id="60058",
             party_size=2,
@@ -95,8 +95,8 @@ class TestBuildFindRequestBody:
 
         body = build_find_request_body(request)
 
-        assert body.lat == "0"
-        assert body.long == "0"
+        assert body.lat == 0
+        assert body.long == 0
 
 
 class TestBuildGetSlotDetailsBody:

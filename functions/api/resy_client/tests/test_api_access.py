@@ -216,14 +216,14 @@ class TestFindBookingSlots:
     def test_find_slots_returns_slot_list(self, resy_config, find_response_with_slots):
         """Find should return list of Slot objects."""
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=find_response_with_slots,
             status=200,
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
         slots = api.find_booking_slots(params)
 
         assert len(slots) > 0
@@ -234,14 +234,14 @@ class TestFindBookingSlots:
     def test_find_slots_empty_venue(self, resy_config, find_response_empty):
         """Find should return empty list when no slots available."""
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=find_response_empty,
             status=200,
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
         slots = api.find_booking_slots(params)
 
         assert slots == []
@@ -250,50 +250,54 @@ class TestFindBookingSlots:
     def test_find_slots_no_venues_in_response(self, resy_config):
         """Find should return empty list when venues array is empty."""
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json={"results": {"venues": []}},
             status=200,
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
         slots = api.find_booking_slots(params)
 
         assert slots == []
 
     @responses.activate
     def test_find_slots_sends_correct_params(self, resy_config, find_response_empty):
-        """Find should send venue_id, party_size, and day as query params."""
+        """Find should send venue_id, party_size, and day as JSON body."""
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=find_response_empty,
             status=200,
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
         api.find_booking_slots(params)
 
         assert len(responses.calls) == 1
         request = responses.calls[0].request
-        assert "venue_id=60058" in request.url
-        assert "party_size=2" in request.url
-        assert "day=2026-02-14" in request.url
+        import json
+        body = json.loads(request.body)
+        assert body["venue_id"] == 60058
+        assert body["party_size"] == 2
+        assert body["day"] == "2026-02-14"
+        assert body["lat"] == 0
+        assert body["long"] == 0
 
     @responses.activate
     def test_find_slots_http_error(self, resy_config):
         """Find should raise HTTPError on server error (non-429)."""
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json={"error": "Internal Server Error"},
             status=500,
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
 
         with pytest.raises(HTTPError) as exc_info:
             api.find_booking_slots(params)
@@ -304,14 +308,14 @@ class TestFindBookingSlots:
     def test_find_slots_rate_limit_raises_rate_limit_error(self, resy_config):
         """Find should raise RateLimitError (not HTTPError) on 429."""
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json={"status": 429, "message": "Rate Limit Exceeded"},
             status=429,
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
 
         with pytest.raises(RateLimitError) as exc_info:
             api.find_booking_slots(params)
@@ -322,7 +326,7 @@ class TestFindBookingSlots:
     def test_find_slots_rate_limit_with_retry_after_header(self, resy_config):
         """Find should capture Retry-After header from 429 response."""
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json={"status": 429, "message": "Rate Limit Exceeded"},
             status=429,
@@ -330,7 +334,7 @@ class TestFindBookingSlots:
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
 
         with pytest.raises(RateLimitError) as exc_info:
             api.find_booking_slots(params)
@@ -358,14 +362,14 @@ class TestFindBookingSlots:
             }
         }
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=slot_response,
             status=200,
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
         slots = api.find_booking_slots(params)
 
         assert len(slots) == 1
@@ -621,14 +625,14 @@ class TestTimeouts:
     def test_find_slots_uses_timeout(self, resy_config, find_response_empty):
         """API calls should use configured timeout."""
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=find_response_empty,
             status=200,
         )
 
         api = ResyApiAccess.build(resy_config)
-        params = FindRequestBody(venue_id="60058", party_size=2, day="2026-02-14")
+        params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
         api.find_booking_slots(params)
 
         # Verify timeout constant is defined correctly

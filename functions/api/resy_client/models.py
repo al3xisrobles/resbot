@@ -77,11 +77,11 @@ class AuthResponseBody(BaseModel):
 
 
 class FindRequestBody(BaseModel):
-    lat: str = "0"
-    long: str = "0"
+    lat: int = 0
+    long: int = 0
     day: str
     party_size: int
-    venue_id: Optional[str] = None
+    venue_id: Optional[int] = None
 
     @field_validator("day")
     @classmethod

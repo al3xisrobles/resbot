@@ -37,7 +37,7 @@ export function LoginPage() {
       if (me !== null) {
         // /me data is loaded - redirect based on onboarding status
         if (!isOnboarded) {
-          navigate("/onboarding", { replace: true });
+          navigate("/connect-resy", { replace: true });
         } else {
           navigate("/", { replace: true });
         }

@@ -126,7 +126,7 @@ class TestHappyPath:
             },
         ]
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -180,7 +180,7 @@ class TestHappyPath:
             },
         ]
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -239,7 +239,7 @@ class TestParallelBooking:
 
         # Find slots returns all 3
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -287,7 +287,7 @@ class TestParallelBooking:
         ]
 
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -339,7 +339,7 @@ class TestRetryScenarios:
         """Should retry when no slots, then succeed when slots appear."""
         # First call - no slots
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json={"results": {"venues": [{"slots": []}]}},
             status=200,
@@ -353,7 +353,7 @@ class TestRetryScenarios:
             "end": datetime(2026, 2, 14, 21, 15),
         }]
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -405,13 +405,13 @@ class TestRetryScenarios:
 
         # Find returns same slots both times
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
         )
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -497,7 +497,7 @@ class TestEdgeCases:
             },
         ]
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -531,7 +531,7 @@ class TestEdgeCases:
             },
         ]
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -563,7 +563,7 @@ class TestEdgeCases:
             "end": datetime(2026, 2, 14, 21, 15),
         }]
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,
@@ -613,7 +613,7 @@ class TestHighDemandScenarios:
                     "end": datetime(2026, 2, 14, hour + 1, minute + 45 if minute + 45 < 60 else (minute + 45) % 60),
                 })
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_1),
             status=200,
@@ -636,7 +636,7 @@ class TestHighDemandScenarios:
         # Second find - fewer slots
         slots_2 = slots_1[:27]
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_2),
             status=200,
@@ -696,7 +696,7 @@ class TestHighDemandScenarios:
             },
         ]
         responses.add(
-            responses.GET,
+            responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.FIND.value}",
             json=_build_slots_response(slots_data),
             status=200,

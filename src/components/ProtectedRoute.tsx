@@ -24,7 +24,7 @@ export function AuthenticatedRoute({
 /**
  * Route guard that requires authentication + Resy onboarding
  * Redirects to /login if not authenticated
- * Redirects to /onboarding if authenticated but not onboarded
+ * Redirects to /connect-resy if authenticated but not onboarded
  */
 export function OnboardedRoute({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
@@ -35,7 +35,30 @@ export function OnboardedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isOnboarded) {
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to="/connect-resy" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+/**
+ * Route guard that requires authentication and redirects to /connect-resy if not onboarded
+ * This is similar to AuthenticatedRoute but also checks onboarding status
+ */
+export function AuthenticatedOnboardedRoute({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { currentUser } = useAuth();
+  const isOnboarded = useAtomValue(isOnboardedAtom);
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!isOnboarded) {
+    return <Navigate to="/connect-resy" replace />;
   }
 
   return <>{children}</>;

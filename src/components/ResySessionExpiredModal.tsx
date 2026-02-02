@@ -25,7 +25,7 @@ export function ResySessionExpiredModal() {
 
   const handleReconnect = () => {
     hideSessionExpiredModal();
-    navigate("/onboarding");
+    navigate("/connect-resy");
   };
 
   const handleDismiss = () => {

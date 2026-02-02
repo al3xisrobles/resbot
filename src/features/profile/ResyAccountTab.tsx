@@ -141,7 +141,7 @@ export function ResyAccountTab({ onLoadingChange }: ResyAccountTabProps = {}) {
     };
 
     const handleSwitchAccount = () => {
-        navigate("/onboarding");
+        navigate("/connect-resy");
     };
 
     const formatPaymentMethod = (pm: PaymentMethod) => {
@@ -200,7 +200,7 @@ export function ResyAccountTab({ onLoadingChange }: ResyAccountTabProps = {}) {
                             </AlertDescription>
                         </Alert>
                         <div className="mt-6">
-                            <Button onClick={() => navigate("/onboarding")}>
+                            <Button onClick={() => navigate("/connect-resy")}>
                                 Connect Resy Account
                             </Button>
                         </div>

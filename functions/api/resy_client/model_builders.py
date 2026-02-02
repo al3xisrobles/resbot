@@ -16,7 +16,9 @@ def build_find_request_body(reservation: ReservationRequest) -> FindRequestBody:
     day = date.strftime(reservation.target_date, "%Y-%m-%d")
 
     return FindRequestBody(
-        venue_id=reservation.venue_id, party_size=reservation.party_size, day=day
+        venue_id=int(reservation.venue_id) if reservation.venue_id else None,
+        party_size=reservation.party_size,
+        day=day
     )
 
 
