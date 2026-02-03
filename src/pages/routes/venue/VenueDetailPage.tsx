@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAtom } from "jotai";
+import { motion } from "framer-motion";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import {
@@ -27,6 +28,62 @@ import { CalendarSkeleton } from "@/features/availability-calendar/components/Ca
 import { useScheduleReservation } from "@/features/reservation/api/useScheduleReservation";
 import { ReservationForm } from "@/features/reservation/components/ReservationForm";
 import { reservationFormAtom, type ReservationFormState } from "@/features/reservation/atoms/reservationFormAtom";
+
+// ==========================================
+// ANIMATION CONSTANTS
+// ==========================================
+
+/** Easing curve for smooth pop-up animations (ease-out-quad) */
+const EASE_OUT_QUAD: [number, number, number, number] = [
+    0.25, 0.46, 0.45, 0.94,
+];
+
+/** Duration for quick pop-up animations */
+const POPUP_DURATION = 0.35;
+
+/** Stagger delay between items */
+const STAGGER_DELAY = 0.08;
+
+/** Initial delay before animations start */
+const INITIAL_DELAY = 0.05;
+
+/** Y-offset for fade-up animations */
+const FADE_UP_OFFSET = 15;
+
+/** Scale for hidden state */
+const HIDDEN_SCALE = 0.97;
+
+// ==========================================
+// ANIMATION VARIANTS
+// ==========================================
+
+const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+        opacity: 1,
+        transition: {
+            staggerChildren: STAGGER_DELAY,
+            delayChildren: INITIAL_DELAY,
+        },
+    },
+};
+
+const itemVariants = {
+    hidden: {
+        opacity: 0,
+        y: FADE_UP_OFFSET,
+        scale: HIDDEN_SCALE,
+    },
+    visible: {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        transition: {
+            duration: POPUP_DURATION,
+            ease: EASE_OUT_QUAD,
+        },
+    },
+};
 
 export function VenueDetailPage() {
     const [searchParams] = useSearchParams();
@@ -113,26 +170,39 @@ export function VenueDetailPage() {
                         {isLoadingCritical ? (
                             <VenueDetailsSkeleton />
                         ) : (
-                            <>
+                            <motion.div
+                                variants={containerVariants}
+                                initial="hidden"
+                                animate="visible"
+                                className="space-y-4"
+                            >
                                 {venueError && (
-                                    <Alert variant="destructive">
-                                        <AlertCircle className="size-4" />
-                                        <AlertDescription>{venueError}</AlertDescription>
-                                    </Alert>
+                                    <motion.div variants={itemVariants}>
+                                        <Alert variant="destructive">
+                                            <AlertCircle className="size-4" />
+                                            <AlertDescription>{venueError}</AlertDescription>
+                                        </Alert>
+                                    </motion.div>
                                 )}
 
                                 {venueData && (
-                                    <div className="space-y-4">
-                                        <VenueHeader venueData={venueData} />
-                                        <Separator />
-                                        <VenueInfo
-                                            venueData={venueData}
-                                            venueLinks={venueLinks}
-                                            loadingLinks={loadingLinks}
-                                        />
-                                    </div>
+                                    <>
+                                        <motion.div variants={itemVariants}>
+                                            <VenueHeader venueData={venueData} />
+                                        </motion.div>
+                                        <motion.div variants={itemVariants}>
+                                            <Separator />
+                                        </motion.div>
+                                        <motion.div variants={itemVariants}>
+                                            <VenueInfo
+                                                venueData={venueData}
+                                                venueLinks={venueLinks}
+                                                loadingLinks={loadingLinks}
+                                            />
+                                        </motion.div>
+                                    </>
                                 )}
-                            </>
+                            </motion.div>
                         )}
 
                         {/* Availability Calendar */}
@@ -140,15 +210,25 @@ export function VenueDetailPage() {
                             {isLoadingCritical ? (
                                 <CalendarSkeleton />
                             ) : (
-                                <CalendarWithSlots
-                                    calendarData={calendarData}
-                                    calendarError={calendarError}
-                                    reservationForm={reservationForm}
-                                    venueId={venueId}
-                                    resyLink={venueLinks?.resy || null}
-                                    onDateSelect={handleDateSelect}
-                                    onTimeSlotSelect={handleTimeSlotSelect}
-                                />
+                                <motion.div
+                                    initial={{ opacity: 0, y: FADE_UP_OFFSET, scale: HIDDEN_SCALE }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{
+                                        duration: POPUP_DURATION,
+                                        ease: EASE_OUT_QUAD,
+                                        delay: INITIAL_DELAY + STAGGER_DELAY * 3,
+                                    }}
+                                >
+                                    <CalendarWithSlots
+                                        calendarData={calendarData}
+                                        calendarError={calendarError}
+                                        reservationForm={reservationForm}
+                                        venueId={venueId}
+                                        resyLink={venueLinks?.resy || null}
+                                        onDateSelect={handleDateSelect}
+                                        onTimeSlotSelect={handleTimeSlotSelect}
+                                    />
+                                </motion.div>
                             )}
                         </div>
 
@@ -162,7 +242,16 @@ export function VenueDetailPage() {
                                 <SkeletonRect width={120} height={16} rounding="8" />
                             </div>
                         ) : (
-                            <div className="mt-auto pt-8 text-center flex justify-center flex-row items-center gap-4 text-sm text-muted-foreground">
+                            <motion.div
+                                initial={{ opacity: 0, y: FADE_UP_OFFSET, scale: HIDDEN_SCALE }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                transition={{
+                                    duration: POPUP_DURATION,
+                                    ease: EASE_OUT_QUAD,
+                                    delay: INITIAL_DELAY + STAGGER_DELAY * 4,
+                                }}
+                                className="mt-auto pt-8 text-center flex justify-center flex-row items-center gap-4 text-sm text-muted-foreground"
+                            >
                                 <div className="flex items-center justify-center gap-2">
                                     <img src={ResbotLogo} className="h-5 grayscale" />
                                 </div>
@@ -180,7 +269,7 @@ export function VenueDetailPage() {
                                         Alexis Robles
                                     </a>
                                 </p>
-                            </div>
+                            </motion.div>
                         )}
                     </div>
                 </SidebarContent>
@@ -195,11 +284,32 @@ export function VenueDetailPage() {
                         {isLoadingCritical ? (
                             <PhotoCarouselSkeleton />
                         ) : (
-                            venueData && <PhotoCarousel venueData={venueData} venueId={venueId} />
+                            venueData && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: FADE_UP_OFFSET, scale: HIDDEN_SCALE }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{
+                                        duration: POPUP_DURATION,
+                                        ease: EASE_OUT_QUAD,
+                                        delay: INITIAL_DELAY,
+                                    }}
+                                >
+                                    <PhotoCarousel venueData={venueData} venueId={venueId} />
+                                </motion.div>
+                            )
                         )}
 
                         {/* Reservation Insights */}
-                        <div className="space-y-4">
+                        <motion.div
+                            initial={{ opacity: 0, y: FADE_UP_OFFSET, scale: HIDDEN_SCALE }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{
+                                duration: POPUP_DURATION,
+                                ease: EASE_OUT_QUAD,
+                                delay: INITIAL_DELAY + STAGGER_DELAY,
+                            }}
+                            className="space-y-4"
+                        >
                             {isLoadingCritical ? (
                                 <AiInsightsSkeleton />
                             ) : (
@@ -211,11 +321,20 @@ export function VenueDetailPage() {
                                     onRefresh={refreshAiSummary}
                                 />
                             )}
-                        </div>
+                        </motion.div>
 
                         {/* Make a Reservation */}
                         {!isLoadingCritical && (
-                            <div className="pb-8">
+                            <motion.div
+                                initial={{ opacity: 0, y: FADE_UP_OFFSET, scale: HIDDEN_SCALE }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                transition={{
+                                    duration: POPUP_DURATION,
+                                    ease: EASE_OUT_QUAD,
+                                    delay: INITIAL_DELAY + STAGGER_DELAY * 2,
+                                }}
+                                className="pb-8"
+                            >
                                 <ReservationForm
                                     reservationForm={reservationForm}
                                     setReservationForm={setReservationForm}
@@ -226,7 +345,7 @@ export function VenueDetailPage() {
                                     reserveOnEmulation={reserveOnEmulation}
                                     setReserveOnEmulation={setReserveOnEmulation}
                                 />
-                            </div>
+                            </motion.div>
                         )}
                     </div>
                 </div>

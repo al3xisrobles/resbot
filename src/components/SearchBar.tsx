@@ -80,8 +80,9 @@ export function SearchBar({
         };
 
         const user = auth.currentUser;
-        const results = (await searchRestaurants(user!.uid, searchFilter, selectedCity))
-          .results;
+        const results = (
+          await searchRestaurants(user!.uid, searchFilter, selectedCity)
+        ).results;
 
         // Check if this query is still current
         if (currentQueryRef.current !== querySnapshot) {
@@ -106,7 +107,7 @@ export function SearchBar({
         }
       }
     },
-    [auth.currentUser, inputFocused, setSearchResults]
+    [auth.currentUser, inputFocused, setSearchResults],
   );
 
   const handleSearchChange = (value: string) => {
@@ -226,7 +227,7 @@ export function SearchBar({
       <Popover open={searchPopoverOpen} onOpenChange={setSearchPopoverOpen}>
         <PopoverTrigger asChild>
           <div
-            className={`cursor-text! ${className}`}
+            className={`cursor-text! transition-all duration-200 ease-out ${searchPopoverOpen ? "" : "border shadow-md"} ${className}`}
             style={{ position: "relative", zIndex: 10001 }}
             onClick={(e) => {
               e.stopPropagation();
@@ -253,19 +254,25 @@ export function SearchBar({
                 e.stopPropagation();
               }}
               autoComplete="off"
-              className={`shadow-md bg-background ${inputClassName}`}
+              className={`bg-background transition-all duration-200 ease-out ${searchPopoverOpen ? "border-0 shadow-none focus-visible:ring-0 focus-visible:border-transparent" : "shadow-sm"} ${inputClassName}`}
             />
             <Search className="absolute right-6 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+            <div
+              className={`absolute -left-px -right-px top-full -translate-y-7 -z-1 h-10 bg-background transition-all duration-200 ease-out ${searchPopoverOpen ? "opacity-100" : "opacity-0"}`}
+            />
           </div>
         </PopoverTrigger>
         <PopoverContent
-          className="w-(--radix-popover-trigger-width) p-0"
+          className={`w-(--radix-popover-trigger-width) ${searchPopoverOpen && searchResults.length === 0 && "rounded-b-3xl"} rounded-t-none p-0 pb-1 border-0`}
           style={{ zIndex: 10002 }}
           align="start"
+          sideOffset={0}
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
+          {/* Horizontal divider between search bar and content */}
+          <div className="h-px bg-border mx-4" />
           {loading ? (
-            <div className="p-4 text-center text-sm text-muted-foreground">
+            <div className="p-4 text-center text-sm text-muted-foreground rounded-b-full">
               Loading results...
             </div>
           ) : searchResults.length > 0 ? (
@@ -303,7 +310,7 @@ export function SearchBar({
               )}
             </div>
           ) : (
-            <div className="p-4">
+            <div className="p-4 rounded-b-full">
               <Button
                 variant="ghost"
                 className="w-full justify-start"

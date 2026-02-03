@@ -336,7 +336,7 @@ export function Header() {
         {/* Mobile Search Bar (when not on home page) */}
         {showHeaderSearch && (
           <div className="mt-4 md:hidden">
-            <SearchBar className="relative w-full" inputClassName="pr-10" />
+            <SearchBar className="relative w-full border rounded-md" inputClassName="pr-10 rounded-md" />
           </div>
         )}
       </div>

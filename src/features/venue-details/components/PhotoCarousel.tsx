@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import {
   Carousel,
   CarouselContent,
@@ -9,6 +10,9 @@ import {
 } from "@/components/ui/carousel";
 import { cn } from "@/lib/utils";
 import type { VenueData } from "../lib/types";
+
+/** Quick ease-out curve for photo animations */
+const EASE_OUT_QUAD: [number, number, number, number] = [0.25, 0.46, 0.45, 0.94];
 
 interface PhotoCarouselProps {
   venueData: VenueData;
@@ -42,7 +46,12 @@ export function PhotoCarousel({ venueData, venueId }: PhotoCarouselProps) {
   }
 
   return (
-    <div className="relative rounded-lg overflow-hidden cursor-pointer">
+    <motion.div
+      className="relative rounded-lg overflow-hidden cursor-pointer"
+      initial={{ opacity: 0, y: 15, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.4, ease: EASE_OUT_QUAD }}
+    >
       <Carousel
         className="w-full z-9 rounded-lg overflow-hidden"
         setApi={setCarouselApi}
@@ -72,7 +81,12 @@ export function PhotoCarousel({ venueData, venueId }: PhotoCarouselProps) {
         <CarouselNext className="right-2" />
       </Carousel>
 
-      <div className="absolute left-1/2 bottom-3 -translate-x-1/2 z-10">
+      <motion.div
+        className="absolute left-1/2 bottom-3 -translate-x-1/2 z-10"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: EASE_OUT_QUAD, delay: 0.2 }}
+      >
         <div className="flex items-center gap-2 rounded-full bg-background px-3 py-1 shadow-sm">
           {venueData.photoUrls.map((_, index: number) => (
             <button
@@ -86,7 +100,7 @@ export function PhotoCarousel({ venueData, venueId }: PhotoCarouselProps) {
             />
           ))}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

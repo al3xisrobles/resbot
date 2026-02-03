@@ -1,6 +1,10 @@
-import { MapPin, Banknote, ExternalLink } from "lucide-react";
+import { MapPin, ExternalLink } from "lucide-react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import type { VenueData, VenueLinks } from "../lib/types";
+
+/** Quick ease-out curve for micro-interactions */
+const EASE_OUT_QUAD: [number, number, number, number] = [0.25, 0.46, 0.45, 0.94];
 
 interface VenueInfoProps {
   venueData: VenueData;
@@ -10,9 +14,19 @@ interface VenueInfoProps {
 
 export function VenueInfo({ venueData, venueLinks, loadingLinks }: VenueInfoProps) {
   return (
-    <div className="space-y-3">
+    <motion.div
+      className="space-y-3"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: EASE_OUT_QUAD, delay: 0.05 }}
+    >
       <div className="flex items-start gap-3 justify-between">
-        <div className="flex items-start gap-3 flex-1">
+        <motion.div
+          className="flex items-start gap-3 flex-1"
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.25, ease: EASE_OUT_QUAD, delay: 0.1 }}
+        >
           <MapPin className="size-5 text-muted-foreground mt-0.5 shrink-0" />
           <div>
             <p className="font-medium">Address</p>
@@ -36,8 +50,13 @@ export function VenueInfo({ venueData, venueLinks, loadingLinks }: VenueInfoProp
               </p>
             )}
           </div>
-        </div>
-        <div className="flex gap-2">
+        </motion.div>
+        <motion.div
+          className="flex gap-2"
+          initial={{ opacity: 0, x: 8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.25, ease: EASE_OUT_QUAD, delay: 0.15 }}
+        >
           <Button
             variant="outline"
             size="sm"
@@ -66,18 +85,10 @@ export function VenueInfo({ venueData, venueLinks, loadingLinks }: VenueInfoProp
             <ExternalLink className="size-4" />
             Resy
           </Button>
-        </div>
+        </motion.div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <Banknote className="size-5 text-muted-foreground shrink-0" />
-        <div>
-          <p className="font-medium">Price Range</p>
-          <p className="text-sm text-muted-foreground">
-            {"$".repeat(venueData.price_range || 1)}
-          </p>
-        </div>
-      </div>
-    </div>
+
+    </motion.div>
   );
 }

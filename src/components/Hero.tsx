@@ -1,4 +1,5 @@
 // src/components/Hero.tsx
+import { motion } from "framer-motion";
 import { SearchBar } from "@/components/SearchBar";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { useAtom } from "jotai";
@@ -9,6 +10,10 @@ import timeManagementIllustration from "@/assets/undraw_time-management_4ss6.svg
 import mailSentIllustration from "@/assets/undraw_mail-sent_ujev.svg";
 import GeometricPanelRight from "@/assets/GeometricPanelRight.svg";
 import GeometricPanelLeft from "@/assets/GeometricPanelLeft.svg";
+
+// ==========================================
+// CONTENT CONSTANTS
+// ==========================================
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -36,89 +41,271 @@ const HOW_IT_WORKS_STEPS = [
   },
 ];
 
+// ==========================================
+// ANIMATION CONSTANTS
+// ==========================================
+
+/** Easing curve for smooth pop-up animations (ease-out-quad) */
+const EASE_OUT_QUAD: [number, number, number, number] = [
+  0.25, 0.46, 0.45, 0.94,
+];
+
+/** Duration for hero content animations (heading, tagline) */
+const HERO_CONTENT_DURATION = 0.5;
+
+/** Duration for geometric panel fade-in animations */
+const PANEL_DURATION = 0.8;
+
+/** Duration for "How It Works" section title animation */
+const SECTION_TITLE_DURATION = 0.4;
+
+/** Duration for step card animations */
+const CARD_DURATION = 0.3;
+
+/** Stagger delay between hero items (heading → tagline → search bar → controls) */
+const HERO_STAGGER_DELAY = 0.1;
+
+/** Initial delay before hero animations start */
+const HERO_INITIAL_DELAY = 0.1;
+
+/** Stagger delay between step cards */
+const CARD_STAGGER_DELAY = 0.12;
+
+/** Initial delay before step cards animate */
+const CARD_INITIAL_DELAY = 0.3;
+
+/** Delay for right geometric panel */
+const PANEL_RIGHT_DELAY = 0.2;
+
+/** Delay for left geometric panel */
+const PANEL_LEFT_DELAY = 0.3;
+
+/** Delay for "How It Works" section wrapper */
+const HOW_IT_WORKS_DELAY = 0.4;
+
+/** Delay for "How It Works" section title */
+const HOW_IT_WORKS_TITLE_DELAY = 0.5;
+
+/** Y-offset for fade-up animations (smaller = subtler) */
+const FADE_UP_OFFSET = 20;
+
+/** Y-offset for card animations */
+const CARD_FADE_UP_OFFSET = 30;
+
+/** Scale for hidden state (slightly smaller for pop-up effect) */
+const HIDDEN_SCALE = 0.95;
+
+/** Scale for card hidden state */
+const CARD_HIDDEN_SCALE = 0.92;
+
+/** Hover lift amount for cards */
+const CARD_HOVER_LIFT = -4;
+
+/** Duration for card hover animation */
+const CARD_HOVER_DURATION = 0.2;
+
+// ==========================================
+// ANIMATION VARIANTS
+// ==========================================
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: HERO_STAGGER_DELAY,
+      delayChildren: HERO_INITIAL_DELAY,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: {
+    opacity: 0,
+    y: FADE_UP_OFFSET,
+    scale: HIDDEN_SCALE,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: HERO_CONTENT_DURATION,
+      ease: EASE_OUT_QUAD,
+    },
+  },
+};
+
+const cardContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: CARD_STAGGER_DELAY,
+      delayChildren: CARD_INITIAL_DELAY,
+    },
+  },
+};
+
+const cardVariants = {
+  hidden: {
+    opacity: 0,
+    y: CARD_FADE_UP_OFFSET,
+    scale: CARD_HIDDEN_SCALE,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: CARD_DURATION,
+      ease: EASE_OUT_QUAD,
+    },
+  },
+};
+
+// ==========================================
+// COMPONENT
+// ==========================================
+
 export function Hero() {
   const [reservationForm, setReservationForm] = useAtom(reservationFormAtom);
+
   return (
     <section className="min-h-[85vh] sm:min-h-[80vh] md:min-h-[75vh] lg:min-h-[70vh] xl:min-h-0 relative pt-4 pb-10 sm:pt-20 sm:pb-16 md:pb-20 lg:pb-24 px-4 md:px-0">
       {/* Decorative geometric panels */}
       <div className="pointer-events-none absolute inset-0 overflow-y-visible overflow-x-hidden -z-10">
         {/* Right side panel */}
-        <img
+        <motion.img
           src={GeometricPanelRight}
           alt=""
           aria-hidden="true"
-          className="hidden blur-2xl md:block absolute -right-28 -top-6 opacity-20 max-w-xs lg:max-w-md"
+          initial={{ opacity: 0, scale: 0.9, x: 20 }}
+          animate={{ opacity: 0.2, scale: 1, x: 0 }}
+          transition={{
+            duration: PANEL_DURATION,
+            ease: EASE_OUT_QUAD,
+            delay: PANEL_RIGHT_DELAY,
+          }}
+          className="hidden blur-2xl md:block absolute -right-28 -top-6 max-w-xs lg:max-w-md"
         />
 
         {/* Left side panel, a bit lower */}
-        <img
+        <motion.img
           src={GeometricPanelLeft}
           alt=""
           aria-hidden="true"
-          className="hidden md:block blur-2xl absolute -left-28 top-1/10 opacity-20 max-w-xs lg:max-w-md"
+          initial={{ opacity: 0, scale: 0.9, x: -20 }}
+          animate={{ opacity: 0.2, scale: 1, x: 0 }}
+          transition={{
+            duration: PANEL_DURATION,
+            ease: EASE_OUT_QUAD,
+            delay: PANEL_LEFT_DELAY,
+          }}
+          className="hidden md:block blur-2xl absolute -left-28 top-1/10 max-w-xs lg:max-w-md"
         />
       </div>
 
-      <div className="max-w-4xl mx-auto text-center z-20">
-        <h1 className="relative text-5xl sm:text-6xl md:text-7xl font-extrabold z-10 tracking-tight">
+      <motion.div
+        className="max-w-4xl mx-auto text-center z-20"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        <motion.h1
+          className="relative text-5xl sm:text-6xl md:text-7xl font-extrabold z-10 tracking-tight"
+          variants={itemVariants}
+        >
           Book Impossible Reservations
-          {/* BOOK IMP
-          <span className="relative inline-block">
-            <img
-              src={GlitchedPlate}
-              alt="O"
-              className="inline-block w-10 h-10 sm:w-16 sm:h-16 md:w-14 md:h-14 align-middle pointer-events-none select-none -mt-2 sm:-mt-3 ml-0.5 sm:ml-1"
-            />
-          </span>
-          SSIBLE RESERVATIONS */}
-        </h1>
-        <p className="relative mt-3 text-sm sm:text-base w-[70%] mx-auto z-10 text-muted-foreground">
+        </motion.h1>
+        <motion.p
+          className="relative mt-3 text-sm sm:text-base w-[70%] mx-auto z-10 text-muted-foreground"
+          variants={itemVariants}
+        >
           Tell us where you want to eat—we monitor when reservations drop and
           instantly secure the reservation for you.
-        </p>
-      </div>
+        </motion.p>
+      </motion.div>
 
       {/* Search + controls */}
-      <div className="mt-8 flex flex-col items-center gap-4 z-20">
+      <motion.div
+        className="mt-8 flex flex-col items-center gap-4 z-20"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
         {/* Search bar */}
-        <div className="w-full max-w-2xl md:px-0">
+        <motion.div
+          className="w-full max-w-2xl md:px-0"
+          variants={itemVariants}
+        >
           <SearchBar
             className="relative rounded-full border bg-background"
             inputClassName="h-12 sm:h-14 pl-6 pr-12 rounded-full text-sm sm:text-base"
             placeholderText="Search restaurants or cuisines (e.g., Carbone)"
           />
-        </div>
+        </motion.div>
 
         {/* Unified party size / date / time control */}
-        <UnifiedSearchControls
-          partySize={reservationForm.partySize}
-          onPartySizeChange={(partySize) =>
-            setReservationForm({ ...reservationForm, partySize })
-          }
-          date={reservationForm.date}
-          onDateChange={(date) =>
-            setReservationForm({ ...reservationForm, date })
-          }
-          timeSlot={reservationForm.timeSlot}
-          onTimeSlotChange={(timeSlot) =>
-            setReservationForm({ ...reservationForm, timeSlot })
-          }
-          timeSlots={TIME_SLOTS}
-          showSearchButton={false}
-        />
-      </div>
+        <motion.div variants={itemVariants}>
+          <UnifiedSearchControls
+            partySize={reservationForm.partySize}
+            onPartySizeChange={(partySize) =>
+              setReservationForm({ ...reservationForm, partySize })
+            }
+            date={reservationForm.date}
+            onDateChange={(date) =>
+              setReservationForm({ ...reservationForm, date })
+            }
+            timeSlot={reservationForm.timeSlot}
+            onTimeSlotChange={(timeSlot) =>
+              setReservationForm({ ...reservationForm, timeSlot })
+            }
+            timeSlots={TIME_SLOTS}
+            showSearchButton={false}
+          />
+        </motion.div>
+      </motion.div>
 
-      {/* --- How Reservation Sniping Works placeholder --- */}
-      <div className="mt-12 lg:mt-10 xl:mt-8 text-center w-full z-20">
-        <p className="text-xs mb-4 font-medium tracking-[0.18em] uppercase text-muted-foreground">
+      {/* --- How Reservation Sniping Works --- */}
+      <motion.div
+        className="mt-12 lg:mt-10 xl:mt-8 text-center w-full z-20"
+        initial={{ opacity: 0, y: FADE_UP_OFFSET }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{
+          duration: HERO_CONTENT_DURATION,
+          ease: EASE_OUT_QUAD,
+          delay: HOW_IT_WORKS_DELAY,
+        }}
+      >
+        <motion.p
+          className="text-xs mb-4 font-medium tracking-[0.18em] uppercase text-muted-foreground"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{
+            duration: SECTION_TITLE_DURATION,
+            ease: EASE_OUT_QUAD,
+            delay: HOW_IT_WORKS_TITLE_DELAY,
+          }}
+        >
           How Reservation Sniping Works
-        </p>
+        </motion.p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mx-auto max-w-4xl">
+        <motion.div
+          className="grid grid-cols-1 lg:grid-cols-3 gap-4 mx-auto max-w-4xl"
+          variants={cardContainerVariants}
+          initial="hidden"
+          animate="visible"
+        >
           {HOW_IT_WORKS_STEPS.map((step) => (
-            <div
+            <motion.div
               key={step.id}
-              className="flex flex-row gap-4 sm:gap-0 sm:flex-col items-center sm:text-center p-6 rounded-xl bg-card border border-border hover:border-primary/10 hover:shadow-sm transition-all h-full"
+              variants={cardVariants}
+              whileHover={{
+                y: CARD_HOVER_LIFT,
+                transition: { duration: CARD_HOVER_DURATION },
+              }}
+              className="flex flex-row gap-4 sm:gap-0 sm:flex-col items-center sm:text-center p-6 rounded-xl bg-card border border-border hover:border-primary/10 hover:shadow-sm transition-colors h-full"
             >
               <div className="shrink-0 w-24 h-24 sm:w-full sm:h-46 bg-muted/40 rounded-lg flex items-center justify-center mb-0 sm:mb-4 p-2 sm:p-8">
                 <img
@@ -135,10 +322,10 @@ export function Hero() {
                   {step.description}
                 </p>
               </div>
-            </div>
+            </motion.div>
           ))}
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </section>
   );
 }

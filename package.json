@@ -38,6 +38,7 @@
     "embla-carousel-react": "^8.6.0",
     "firebase": "^12.6.0",
     "flake8": "^0.0.1",
+    "framer-motion": "^12.30.0",
     "jotai": "^2.16.2",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",

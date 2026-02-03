@@ -1,9 +1,39 @@
 import { format } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { SkeletonRect } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Clock } from "lucide-react";
 import { useSlotsData } from "../api/useSlotsData";
+
+/** Quick ease-out curve for slot animations */
+const EASE_OUT_QUAD: [number, number, number, number] = [0.25, 0.46, 0.45, 0.94];
+
+/** Container variants for staggered children */
+const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+        opacity: 1,
+        transition: {
+            staggerChildren: 0.03,
+            delayChildren: 0.05,
+        },
+    },
+};
+
+/** Item variants for individual slot buttons */
+const slotVariants = {
+    hidden: { opacity: 0, y: 8, scale: 0.95 },
+    visible: {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        transition: {
+            duration: 0.2,
+            ease: EASE_OUT_QUAD,
+        },
+    },
+};
 
 interface TimeSlotsListProps {
     venueId: string | null;
@@ -25,7 +55,12 @@ function TimeSlotsSkeleton() {
 
 function EmptyState() {
     return (
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <motion.div
+            className="flex flex-col items-center justify-center py-12 px-4 text-center"
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.3, ease: EASE_OUT_QUAD }}
+        >
             <Clock className="size-12 text-muted-foreground mb-4" />
             <p className="text-sm font-medium text-foreground mb-1">
                 Select a date to see available times
@@ -33,7 +68,7 @@ function EmptyState() {
             <p className="text-xs text-muted-foreground">
                 Choose a date from the calendar to view reservation time slots
             </p>
-        </div>
+        </motion.div>
     );
 }
 
@@ -197,31 +232,53 @@ export function TimeSlotsList({
     // Display time slots
     return (
         <div className="space-y-4">
-            <div>
+            <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, ease: EASE_OUT_QUAD }}
+            >
                 <h3 className="text-lg font-semibold mb-1">
                     {format(selectedDate, "EEE, MMM d")}
                 </h3>
                 <p className="text-sm text-muted-foreground">Available times</p>
-            </div>
+            </motion.div>
             {uniqueTimes.length === 0 ? (
-                <Alert>
-                    <AlertCircle className="size-4" />
-                    <AlertDescription>No time slots available</AlertDescription>
-                </Alert>
+                <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: EASE_OUT_QUAD, delay: 0.1 }}
+                >
+                    <Alert>
+                        <AlertCircle className="size-4" />
+                        <AlertDescription>No time slots available</AlertDescription>
+                    </Alert>
+                </motion.div>
             ) : (
-                <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                    {uniqueTimes.map((time, index) => {
-                        const timeSlotValue = convertTimeToSlot(time);
-                        return (
-                            <TimeSlotButton
-                                key={`${time}-${index}`}
-                                time={time}
-                                resyLink={resyLink}
-                                onTimeSlotSelect={() => onTimeSlotSelect(timeSlotValue)}
-                            />
-                        );
-                    })}
-                </div>
+                <motion.div
+                    className="space-y-2 max-h-[400px] overflow-y-auto"
+                    variants={containerVariants}
+                    initial="hidden"
+                    animate="visible"
+                >
+                    <AnimatePresence mode="popLayout">
+                        {uniqueTimes.map((time, index) => {
+                            const timeSlotValue = convertTimeToSlot(time);
+                            return (
+                                <motion.div
+                                    key={`${time}-${index}`}
+                                    variants={slotVariants}
+                                    layout
+                                >
+                                    <TimeSlotButton
+                                        time={time}
+                                        resyLink={resyLink}
+                                        onTimeSlotSelect={() => onTimeSlotSelect(timeSlotValue)}
+                                    />
+                                </motion.div>
+                            );
+                        })}
+                    </AnimatePresence>
+                </motion.div>
             )}
         </div>
     );
