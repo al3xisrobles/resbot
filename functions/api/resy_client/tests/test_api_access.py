@@ -10,10 +10,10 @@ Tests cover:
 """
 import pytest
 import responses
-from requests.exceptions import HTTPError
 from datetime import datetime
 
-from resy_client.api_access import ResyApiAccess, build_session, REQUEST_TIMEOUT
+from resy_client.api_access import ResyApiAccess, build_resy_client
+from resy_client.http_client import REQUEST_TIMEOUT, ResyHttpClient
 from resy_client.models import (
     AuthRequestBody,
     FindRequestBody,
@@ -22,46 +22,46 @@ from resy_client.models import (
     PaymentMethod,
 )
 from resy_client.constants import RESY_BASE_URL, ResyEndpoints
-from resy_client.errors import RateLimitError
+from resy_client.errors import RateLimitError, ResyApiError, ResyAuthError, ResyTransientError
 
 
-class TestBuildSession:
-    """Tests for session builder function."""
+class TestResyHttpClientBuild:
+    """Tests for ResyHttpClient.build (session/headers)."""
 
-    def test_build_session_sets_authorization_header(self, resy_config):
-        """Session should include Authorization header with API key."""
-        session = build_session(resy_config)
-        assert "Authorization" in session.headers
-        assert resy_config.api_key in session.headers["Authorization"]
+    def test_build_sets_authorization_header(self, resy_config):
+        """Client session should include Authorization header with API key."""
+        client = ResyHttpClient.build(resy_config)
+        assert "Authorization" in client.session.headers
+        assert resy_config.api_key in client.session.headers["Authorization"]
 
-    def test_build_session_sets_auth_tokens(self, resy_config):
-        """Session should include both auth token headers."""
-        session = build_session(resy_config)
-        assert session.headers["X-Resy-Auth-Token"] == resy_config.token
-        assert session.headers["X-Resy-Universal-Auth"] == resy_config.token
+    def test_build_sets_auth_tokens(self, resy_config):
+        """Client session should include both auth token headers."""
+        client = ResyHttpClient.build(resy_config)
+        assert client.session.headers["X-Resy-Auth-Token"] == resy_config.token
+        assert client.session.headers["X-Resy-Universal-Auth"] == resy_config.token
 
-    def test_build_session_sets_origin_headers(self, resy_config):
-        """Session should include proper origin headers for Resy."""
-        session = build_session(resy_config)
-        assert session.headers["Origin"] == "https://resy.com"
-        assert session.headers["Referer"] == "https://resy.com/"
+    def test_build_sets_origin_headers(self, resy_config):
+        """Client session should include proper origin headers for Resy."""
+        client = ResyHttpClient.build(resy_config)
+        assert client.session.headers["Origin"] == "https://resy.com"
+        assert client.session.headers["Referer"] == "https://resy.com/"
 
-    def test_build_session_sets_user_agent(self, resy_config):
-        """Session should include a browser-like User-Agent."""
-        session = build_session(resy_config)
-        assert "Mozilla" in session.headers["User-Agent"]
-        assert "Chrome" in session.headers["User-Agent"]
+    def test_build_sets_user_agent(self, resy_config):
+        """Client session should include a browser-like User-Agent."""
+        client = ResyHttpClient.build(resy_config)
+        assert "Mozilla" in client.session.headers["User-Agent"]
+        assert "Chrome" in client.session.headers["User-Agent"]
 
 
 class TestResyApiAccessBuild:
     """Tests for ResyApiAccess factory method."""
 
-    def test_build_creates_instance_with_configured_session(self, resy_config):
-        """Build should create instance with properly configured session."""
+    def test_build_creates_instance_with_configured_client(self, resy_config):
+        """Build should create instance with ResyHttpClient (session inside client)."""
         api = ResyApiAccess.build(resy_config)
         assert isinstance(api, ResyApiAccess)
-        assert api.session is not None
-        assert resy_config.token in api.session.headers["X-Resy-Auth-Token"]
+        assert api.client is not None
+        assert resy_config.token in api.client.session.headers["X-Resy-Auth-Token"]
 
 
 class TestSearchVenues:
@@ -117,7 +117,7 @@ class TestSearchVenues:
 
     @responses.activate
     def test_search_venues_http_error(self, resy_config):
-        """Search should raise HTTPError on server error."""
+        """Search should raise ResyTransientError on 500 server error."""
         responses.add(
             responses.GET,
             f"{RESY_BASE_URL}{ResyEndpoints.VENUE_SEARCH.value}",
@@ -127,12 +127,14 @@ class TestSearchVenues:
 
         api = ResyApiAccess.build(resy_config)
 
-        with pytest.raises(HTTPError):
+        with pytest.raises(ResyTransientError) as exc_info:
             api.search_venues("Carbone")
+
+        assert exc_info.value.status_code == 500
 
     @responses.activate
     def test_search_venues_unauthorized(self, resy_config):
-        """Search should raise HTTPError on 401 unauthorized."""
+        """Search should raise ResyAuthError on 401 unauthorized."""
         responses.add(
             responses.GET,
             f"{RESY_BASE_URL}{ResyEndpoints.VENUE_SEARCH.value}",
@@ -142,10 +144,10 @@ class TestSearchVenues:
 
         api = ResyApiAccess.build(resy_config)
 
-        with pytest.raises(HTTPError) as exc_info:
+        with pytest.raises(ResyAuthError) as exc_info:
             api.search_venues("Carbone")
 
-        assert exc_info.value.response.status_code == 401
+        assert exc_info.value.status_code == 401
 
 
 class TestAuth:
@@ -174,7 +176,7 @@ class TestAuth:
 
     @responses.activate
     def test_auth_invalid_credentials(self, resy_config):
-        """Auth should raise HTTPError on invalid credentials."""
+        """Auth should raise ResyAuthError on invalid credentials."""
         responses.add(
             responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.PASSWORD_AUTH.value}",
@@ -185,10 +187,10 @@ class TestAuth:
         api = ResyApiAccess.build(resy_config)
         body = AuthRequestBody(email="wrong@example.com", password="wrongpassword")
 
-        with pytest.raises(HTTPError) as exc_info:
+        with pytest.raises(ResyAuthError) as exc_info:
             api.auth(body)
 
-        assert exc_info.value.response.status_code == 401
+        assert exc_info.value.status_code == 401
 
     @responses.activate
     def test_auth_sends_form_data(self, resy_config):
@@ -299,10 +301,10 @@ class TestFindBookingSlots:
         api = ResyApiAccess.build(resy_config)
         params = FindRequestBody(venue_id=60058, party_size=2, day="2026-02-14")
 
-        with pytest.raises(HTTPError) as exc_info:
+        with pytest.raises(ResyTransientError) as exc_info:
             api.find_booking_slots(params)
 
-        assert exc_info.value.response.status_code == 500
+        assert exc_info.value.status_code == 500
 
     @responses.activate
     def test_find_slots_rate_limit_raises_rate_limit_error(self, resy_config):
@@ -429,7 +431,7 @@ class TestGetBookingToken:
 
     @responses.activate
     def test_get_token_slot_already_taken(self, resy_config):
-        """Get token should raise HTTPError when slot is taken."""
+        """Get token should raise ResyApiError when slot is taken (410)."""
         responses.add(
             responses.GET,
             f"{RESY_BASE_URL}{ResyEndpoints.DETAILS.value}",
@@ -444,10 +446,10 @@ class TestGetBookingToken:
             day="2026-02-14",
         )
 
-        with pytest.raises(HTTPError) as exc_info:
+        with pytest.raises(ResyApiError) as exc_info:
             api.get_booking_token(params)
 
-        assert exc_info.value.response.status_code == 410
+        assert exc_info.value.status_code == 410
 
     @responses.activate
     def test_get_token_rate_limit_raises_rate_limit_error(self, resy_config):
@@ -535,7 +537,7 @@ class TestBookSlot:
 
     @responses.activate
     def test_book_slot_already_taken(self, resy_config):
-        """Book should raise HTTPError when slot is already taken."""
+        """Book should raise ResyApiError when slot is already taken (412)."""
         responses.add(
             responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.BOOK.value}",
@@ -549,16 +551,15 @@ class TestBookSlot:
             struct_payment_method=PaymentMethod(id=12345),
         )
 
-        with pytest.raises(HTTPError) as exc_info:
+        with pytest.raises(ResyApiError) as exc_info:
             api.book_slot(body)
 
-        assert exc_info.value.response.status_code == 412
-        # Verify response is properly attached (the bug we fixed)
-        assert exc_info.value.response is not None
+        assert exc_info.value.status_code == 412
+        assert exc_info.value.response_body is not None
 
     @responses.activate
     def test_book_slot_payment_declined(self, resy_config):
-        """Book should raise HTTPError when payment is declined."""
+        """Book should raise ResyApiError when payment is declined (402)."""
         responses.add(
             responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.BOOK.value}",
@@ -572,14 +573,14 @@ class TestBookSlot:
             struct_payment_method=PaymentMethod(id=12345),
         )
 
-        with pytest.raises(HTTPError) as exc_info:
+        with pytest.raises(ResyApiError) as exc_info:
             api.book_slot(body)
 
-        assert exc_info.value.response.status_code == 402
+        assert exc_info.value.status_code == 402
 
     @responses.activate
     def test_book_slot_server_error(self, resy_config):
-        """Book should raise HTTPError on 500 server error."""
+        """Book should raise ResyTransientError on 500 server error."""
         responses.add(
             responses.POST,
             f"{RESY_BASE_URL}{ResyEndpoints.BOOK.value}",
@@ -593,10 +594,10 @@ class TestBookSlot:
             struct_payment_method=PaymentMethod(id=12345),
         )
 
-        with pytest.raises(HTTPError) as exc_info:
+        with pytest.raises(ResyTransientError) as exc_info:
             api.book_slot(body)
 
-        assert exc_info.value.response.status_code == 500
+        assert exc_info.value.status_code == 500
 
     @responses.activate
     def test_book_slot_rate_limit_raises_rate_limit_error(self, resy_config):

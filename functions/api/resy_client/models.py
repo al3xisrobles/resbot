@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime, date, timedelta
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
@@ -149,3 +149,108 @@ class BookRequestBody(BaseModel):
 
 class BookResponseBody(BaseModel):
     resy_token: str
+
+
+# --- Calendar (/4/venue/calendar) ---
+
+
+class CalendarRequestParams(BaseModel):
+    """Query params for GET /4/venue/calendar."""
+
+    venue_id: str
+    num_seats: int = 2
+    start_date: str  # YYYY-MM-DD
+    end_date: str  # YYYY-MM-DD
+
+
+class CalendarInventory(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    reservation: Optional[str] = None  # 'available', 'sold-out', 'closed', etc.
+
+
+class CalendarEntry(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    date: str
+    inventory: Optional[CalendarInventory] = None
+
+
+class CalendarResponseBody(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    scheduled: List[CalendarEntry] = []
+
+
+# --- Venue (/3/venue) ---
+
+
+class VenueLocation(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    address_1: Optional[str] = None
+    locality: Optional[str] = None
+    region: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+class VenueResponseBody(BaseModel):
+    """Response from GET /3/venue. Fields we use + extra allowed."""
+
+    model_config = ConfigDict(extra="allow")
+    name: Optional[str] = None
+    type: Optional[str] = None
+    location: Optional[VenueLocation] = None
+    images: List[Any] = []
+    metadata: Optional[Dict[str, Any]] = None
+    content: Optional[Any] = None  # List of content sections (name, body) or dict
+    price_range_id: Optional[int] = None
+    rater: Optional[Dict[str, Any]] = None
+
+
+# --- Venue search advanced POST (/3/venuesearch/search) ---
+
+
+class VenueSearchRequestBody(BaseModel):
+    """POST body for /3/venuesearch/search (advanced search with geo, filters)."""
+
+    model_config = ConfigDict(extra="allow")
+    availability: bool = False
+    page: int = 1
+    per_page: int = 20
+    geo: Dict[str, Any] = {}  # latitude, longitude, radius or bounding_box
+    query: str = ""
+    types: List[str] = ["venue"]
+    order_by: Optional[str] = None
+    highlight: Optional[Dict[str, str]] = None
+    slot_filter: Optional[Dict[str, Any]] = None  # day, party_size
+
+
+class VenueSearchHit(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    _source: Optional[Dict[str, Any]] = None
+
+
+class VenueSearchMeta(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    total: int = 0
+
+
+class VenueSearchResponseBody(BaseModel):
+    """Response from POST /3/venuesearch/search."""
+
+    model_config = ConfigDict(extra="allow")
+    search: Optional[Dict[str, Any]] = None  # hits: List[VenueSearchHit]
+    meta: Optional[VenueSearchMeta] = None
+
+
+# --- City list (/3/cities/{slug}/list/{list_type}) ---
+
+
+class CityListResults(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    venues: List[Dict[str, Any]] = []
+
+
+class CityListResponseBody(BaseModel):
+    """Response from GET /3/cities/{slug}/list/climbing or top-rated."""
+
+    model_config = ConfigDict(extra="allow")
+    results: Optional[CityListResults] = None

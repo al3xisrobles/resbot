@@ -94,7 +94,9 @@ function UnifiedSearchControls({
                             <button
                                 key={size}
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     onPartySizeChange(size.toString());
                                     setPartySizeOpen(false);
                                 }}
@@ -168,7 +170,9 @@ function UnifiedSearchControls({
                                 <button
                                     key={slot.value}
                                     type="button"
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
                                         onTimeSlotChange(slot.value);
                                         setTimeOpen(false);
                                     }}

@@ -13,12 +13,12 @@ from hashlib import md5
 from time import time
 
 import sentry_sdk
-import requests
 from firebase_admin import firestore
 from google import genai
 
-from .resy_client.models import FindRequestBody, ResyConfig
-from .resy_client.api_access import ResyApiAccess
+from .resy_client.api_access import build_resy_client
+from .resy_client.errors import RateLimitError, ResyTransientError
+from .resy_client.models import CalendarRequestParams, FindRequestBody, ResyConfig
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -60,7 +60,6 @@ def update_search_progress(job_id: str | None, data: dict) -> None:
 # Configuration
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
 GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')
-TRANSIENT_STATUS_CODES = {500, 502}
 
 # Search results cache with TTL (5 minutes)
 # Format: {cache_key: {'results': [...], 'total': int, 'timestamp': float}}
@@ -171,28 +170,25 @@ def load_credentials(userId=None):
     return credentials
 
 
-def get_resy_headers(config):
-    """Build Resy API headers"""
-    headers = {
-        'Authorization': f'ResyAPI api_key="{config["api_key"]}"',
-        'Origin': 'https://resy.com',
-        'X-origin': 'https://resy.com',
-        'Referer': 'https://resy.com/',
-        'Accept': 'application/json, text/plain, */*',
-        'User-Agent': (
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        ),
-        'Content-Type': 'application/json'
-    }
-
-    # Only add auth token headers if token is provided
-    token = config.get('token')
-    if token:
-        headers['X-Resy-Auth-Token'] = token
-        headers['X-Resy-Universal-Auth'] = token
-
-    return headers
+def _retry_resy(func, max_attempts=3, base_delay=0.3):
+    """
+    Retry a callable on ResyTransientError or RateLimitError with backoff.
+    RateLimitError uses retry_after when present; otherwise exponential backoff.
+    """
+    last_error = None
+    for attempt in range(max_attempts):
+        try:
+            return func()
+        except (ResyTransientError, RateLimitError) as exc:
+            last_error = exc
+            if attempt == max_attempts - 1:
+                raise
+            delay = base_delay * (2 ** attempt)
+            if isinstance(exc, RateLimitError) and exc.retry_after is not None:
+                delay = max(delay, exc.retry_after)
+            time_module.sleep(delay)
+    if last_error:
+        raise last_error
 
 
 def get_search_cache_key(query, filters, geo_config, include_availability=False):
@@ -468,93 +464,9 @@ def build_search_payload(query, filters, geo_config, page=1):
     return payload
 
 
-def is_transient_resy_error(error):
-    """Return True if the error looks transient (timeouts/5xx) from Resy."""
-    if isinstance(
-        error,
-        (requests.exceptions.Timeout, requests.exceptions.ReadTimeout,
-         requests.exceptions.ConnectionError)
-    ):
-        return True
-
-    if isinstance(error, requests.exceptions.HTTPError):
-        status = getattr(error.response, "status_code", None)
-        if status in TRANSIENT_STATUS_CODES:
-            return True
-
-    message = str(error).lower()
-    if any(code in message for code in [" 500", " 502", "bad gateway", "read timed out"]):
-        return True
-
-    return False
-
-
-def retry_with_backoff(func, max_attempts=3, base_delay=0.3):
-    """
-    Retry a callable on transient Resy errors with exponential backoff.
-
-    Args:
-        func: Callable to execute.
-        max_attempts: Total attempts (including the first).
-        base_delay: Initial delay in seconds; doubles each retry.
-    """
-    last_error = None
-    for attempt in range(max_attempts):
-        try:
-            return func()
-        except Exception as exc:
-            last_error = exc
-            if not is_transient_resy_error(exc) or attempt == max_attempts - 1:
-                raise
-
-            delay = base_delay * (2 ** attempt)
-            time_module.sleep(delay)
-
-    if last_error:
-        raise last_error
-
-
-def _fetch_calendar(headers, params):
-    """Wrapper for the calendar GET so we can reuse retry logic."""
-    calendar_url = 'https://api.resy.com/4/venue/calendar'
-    
-    with sentry_sdk.start_span(
-        op="http.client",
-        name="resy.calendar",
-        description="GET /4/venue/calendar",
-    ) as span:
-        span.set_tag("http.url", calendar_url)
-        span.set_tag("http.method", "GET")
-        if "venue_id" in params:
-            span.set_tag("venue_id", params["venue_id"])
-        if "num_seats" in params:
-            span.set_data("party_size", params["num_seats"])
-        if "start_date" in params:
-            span.set_data("start_date", params["start_date"])
-        
-        response = requests.get(
-            calendar_url,
-            params=params,
-            headers=headers,
-            timeout=10
-        )
-        
-        span.set_tag("http.status_code", response.status_code)
-        
-        if response.status_code in TRANSIENT_STATUS_CODES:
-            span.set_status("internal_error")
-            raise requests.exceptions.HTTPError(
-                f"Calendar returned {response.status_code}",
-                response=response
-            )
-        
-        span.set_status("ok")
-        return response
-
-
 def get_venue_availability(venue_id, day, party_size, config):
     """
-    Fetch available time slots for a specific venue
+    Fetch available time slots for a specific venue via resy_client.
 
     Args:
         venue_id: The venue ID
@@ -569,162 +481,123 @@ def get_venue_availability(venue_id, day, party_size, config):
         Example: {'times': [], 'status': 'Sold out'}
         Example: {'times': [], 'status': 'Not released yet'}
     """
-    try:
-        # Store original config for headers (needs dict)
-        config_dict = config if isinstance(config, dict) else {
-            'api_key': config.api_key,
-            'token': config.token,
-            'payment_method_id': config.payment_method_id,
-            'email': config.email,
-            'password': config.password
-        }
+    from .resy_client.errors import ResyApiError, ResyTransientError
 
-        # Convert dict config to ResyConfig object if needed
+    try:
         if isinstance(config, dict):
             config = ResyConfig(**config)
+        client = build_resy_client(config)
 
-        # First, check the calendar API to determine the status for this specific day
-        headers = get_resy_headers(config_dict)
-
-        # Parse the day to get start and end dates for calendar query
         target_date = datetime.strptime(day, '%Y-%m-%d').date()
+        calendar_params = CalendarRequestParams(
+            venue_id=str(venue_id),
+            num_seats=int(party_size),
+            start_date=target_date.strftime('%Y-%m-%d'),
+            end_date=target_date.strftime('%Y-%m-%d'),
+        )
 
-        params = {
-            'venue_id': venue_id,
-            'num_seats': int(party_size),
-            'start_date': target_date.strftime('%Y-%m-%d'),
-            'end_date': target_date.strftime('%Y-%m-%d')
-        }
-
-        calendar_response = None
+        calendar_data = None
         try:
-            calendar_response = retry_with_backoff(
-                lambda: _fetch_calendar(headers, params),
+            calendar_data = _retry_resy(
+                lambda: client.get_calendar(calendar_params),
                 max_attempts=3,
-                base_delay=0.3
+                base_delay=0.3,
             )
-        except Exception as calendar_error:
-            if is_transient_resy_error(calendar_error):
-                print(f"[AVAILABILITY] Transient calendar error for venue {venue_id}: {calendar_error}")
-            else:
-                print(f"[AVAILABILITY] Calendar error for venue {venue_id}: {calendar_error}")
+        except (ResyTransientError, RateLimitError) as calendar_error:
+            print(
+                "[AVAILABILITY] Transient/rate-limit calendar error for venue %s: %s",
+                venue_id,
+                calendar_error,
+            )
+        except ResyApiError as calendar_error:
+            print("[AVAILABILITY] Calendar error for venue %s: %s", venue_id, calendar_error)
 
-        if calendar_response and calendar_response.status_code == 200:
-            calendar_data = calendar_response.json()
-            scheduled = calendar_data.get('scheduled', [])
-
-            # Check if the target date is in the scheduled list
+        if calendar_data and calendar_data.scheduled:
             date_found = False
             reservation_status = None
-
-            for entry in scheduled:
-                if entry.get('date') == day:
+            for entry in calendar_data.scheduled:
+                if entry.date == day:
                     date_found = True
-                    inventory = entry.get('inventory', {})
-                    reservation_status = inventory.get('reservation')
+                    reservation_status = (
+                        entry.inventory.reservation if entry.inventory else None
+                    )
                     break
 
-            # If date is not in scheduled list, it means it hasn't been released yet
             if not date_found:
-                print(f"[AVAILABILITY] Date {day} not in calendar for venue {venue_id} - not released yet")
+                print(
+                    "[AVAILABILITY] Date %s not in calendar for venue %s - not released yet",
+                    day,
+                    venue_id,
+                )
                 return {'times': [], 'status': 'Not released yet'}
-
-            # If the status is 'closed', restaurant is closed that day
             if reservation_status == 'closed':
-                print(f"[AVAILABILITY] Venue {venue_id} is closed on {day}")
+                print("[AVAILABILITY] Venue %s is closed on %s", venue_id, day)
                 return {'times': [], 'status': 'Closed'}
-
-            # If the status is 'sold-out' or 'not available', it's sold out
-            if reservation_status in ['sold-out', 'not available']:
-                print(f"[AVAILABILITY] Venue {venue_id} is sold out on {day}")
+            if reservation_status in ('sold-out', 'not available'):
+                print("[AVAILABILITY] Venue %s is sold out on %s", venue_id, day)
                 return {'times': [], 'status': 'Sold out'}
 
-        # If we get here, the calendar shows availability or we couldn't check the calendar
-        # Try to fetch actual time slots
-        api_access = ResyApiAccess.build(config)
-
-        # Create find request
         find_request = FindRequestBody(
             day=day,
             party_size=int(party_size),
-            venue_id=str(venue_id)
+            venue_id=str(venue_id),
         )
-
-        # Get slots with retry for transient failures
         try:
-            slots = retry_with_backoff(
-                lambda: api_access.find_booking_slots(find_request),
+            slots = _retry_resy(
+                lambda: client.find_booking_slots(find_request),
                 max_attempts=3,
-                base_delay=0.3
+                base_delay=0.3,
             )
-        except Exception as slot_error:
-            # Enhanced error logging
+        except (ResyTransientError, RateLimitError) as slot_error:
+            print(
+                "[AVAILABILITY] Transient/rate-limit slot error for venue %s: %s",
+                venue_id,
+                slot_error,
+            )
+            return {'times': [], 'status': 'Resy temporarily unavailable'}
+        except ResyApiError as slot_error:
             error_details = {
                 'error_type': type(slot_error).__name__,
                 'error_message': str(slot_error),
-                'error_args': getattr(slot_error, 'args', None),
-                'is_transient': is_transient_resy_error(slot_error),
                 'venue_id': venue_id,
                 'day': day,
                 'party_size': party_size,
+                'http_status': getattr(slot_error, 'status_code', None),
+                'http_response': getattr(slot_error, 'response_body', None),
             }
-
-            # Try to get HTTP status code if it's an HTTPError
-            if isinstance(slot_error, requests.exceptions.HTTPError):
-                response = getattr(slot_error, 'response', None)
-                if response is not None:
-                    error_details['http_status'] = response.status_code
-                    error_details['http_response'] = getattr(response, 'text', None)
-
-            print(f"[AVAILABILITY] Error fetching slots for venue {venue_id}: {error_details}")
-            print(f"[AVAILABILITY] Full traceback:\n{traceback.format_exc()}")
-
-            if is_transient_resy_error(slot_error):
-                return {'times': [], 'status': 'Resy temporarily unavailable'}
-
+            print("[AVAILABILITY] Error fetching slots for venue %s: %s", venue_id, error_details)
+            print("[AVAILABILITY] Full traceback:\n%s", traceback.format_exc())
             return {'times': [], 'status': 'Unable to fetch'}
 
         if not slots:
-            # No slots returned - check if calendar said available but we got no slots
-            # This could mean sold out or an error
-            print(f"[AVAILABILITY] No slots returned for venue {venue_id} on {day}")
+            print("[AVAILABILITY] No slots returned for venue %s on %s", venue_id, day)
             return {'times': [], 'status': 'Sold out'}
 
-        # Sort slots chronologically for display
         sorted_slots = sorted(slots, key=lambda slot: slot.date.start)
-
-        # If desired_time is provided, we could prioritize those times,
-        # but for now we'll just return all slots in chronological order
-        # The frontend will handle deduplication of times with different seating types
-
-        # Format the slots into time strings
-        available_times = []
-        for slot in sorted_slots:
-            # Format the time nicely
-            time_str = slot.date.start.strftime("%-I:%M %p")
-            available_times.append(time_str)
-
+        available_times = [
+            slot.date.start.strftime("%-I:%M %p")
+            for slot in sorted_slots
+        ]
         return {'times': available_times, 'status': None}
+
     except Exception as e:
-        # Enhanced error logging for top-level exception
         error_details = {
             'error_type': type(e).__name__,
             'error_message': str(e),
-            'error_args': getattr(e, 'args', None),
             'venue_id': venue_id,
             'day': day,
             'party_size': party_size,
         }
-
-        # Try to get HTTP status code if it's an HTTPError
-        if isinstance(e, requests.exceptions.HTTPError):
-            response = getattr(e, 'response', None)
-            if response is not None:
-                error_details['http_status'] = response.status_code
-                error_details['http_response'] = getattr(response, 'text', None)
-
-        print(f"[AVAILABILITY] Top-level error fetching availability for venue {venue_id}: {error_details}")
-        print(f"[AVAILABILITY] Full traceback:\n{traceback.format_exc()}")
+        if hasattr(e, 'status_code'):
+            error_details['http_status'] = e.status_code
+        if hasattr(e, 'response_body'):
+            error_details['http_response'] = e.response_body
+        print(
+            "[AVAILABILITY] Top-level error fetching availability for venue %s: %s",
+            venue_id,
+            error_details,
+        )
+        print("[AVAILABILITY] Full traceback:\n%s", traceback.format_exc())
         return {'times': [], 'status': 'Unable to fetch'}
 
 
@@ -866,65 +739,48 @@ def filter_and_format_venues(hits, filters, seen_ids=None, config=None, fetch_av
 
 def get_venue_availability_fast(venue_id, day, party_size, config):
     """
-    Fast availability check - only uses calendar API to determine release status.
+    Fast availability check - only uses calendar API via resy_client.
     Does NOT fetch actual time slots. Use for "not_released_only" filtering.
-    
+
     Returns:
         Dict with 'times' (always empty) and 'status' (release/availability status)
     """
+    from .resy_client.errors import ResyApiError, ResyTransientError
+
     try:
-        # Store original config for headers (needs dict)
-        config_dict = config if isinstance(config, dict) else {
-            'api_key': config.api_key,
-            'token': config.token,
-            'payment_method_id': config.payment_method_id,
-            'email': config.email,
-            'password': config.password
-        }
-
-        headers = get_resy_headers(config_dict)
+        if isinstance(config, dict):
+            config = ResyConfig(**config)
+        client = build_resy_client(config)
         target_date = datetime.strptime(day, '%Y-%m-%d').date()
-
-        params = {
-            'venue_id': venue_id,
-            'num_seats': int(party_size),
-            'start_date': target_date.strftime('%Y-%m-%d'),
-            'end_date': target_date.strftime('%Y-%m-%d')
-        }
-
+        calendar_params = CalendarRequestParams(
+            venue_id=str(venue_id),
+            num_seats=int(party_size),
+            start_date=target_date.strftime('%Y-%m-%d'),
+            end_date=target_date.strftime('%Y-%m-%d'),
+        )
         try:
-            calendar_response = retry_with_backoff(
-                lambda: _fetch_calendar(headers, params),
-                max_attempts=2,  # Fewer retries for speed
-                base_delay=0.2
+            calendar_data = _retry_resy(
+                lambda: client.get_calendar(calendar_params),
+                max_attempts=2,
+                base_delay=0.2,
             )
-        except Exception as calendar_error:
-            if is_transient_resy_error(calendar_error):
-                return {'times': [], 'status': 'Resy temporarily unavailable'}
+        except (ResyTransientError, RateLimitError):
+            return {'times': [], 'status': 'Resy temporarily unavailable'}
+        except ResyApiError:
             return {'times': [], 'status': 'Unable to fetch'}
 
-        if calendar_response and calendar_response.status_code == 200:
-            calendar_data = calendar_response.json()
-            scheduled = calendar_data.get('scheduled', [])
-
-            # Check if the target date is in the scheduled list
-            for entry in scheduled:
-                if entry.get('date') == day:
-                    inventory = entry.get('inventory', {})
-                    reservation_status = inventory.get('reservation')
-                    
+        if calendar_data and calendar_data.scheduled:
+            for entry in calendar_data.scheduled:
+                if entry.date == day:
+                    reservation_status = (
+                        entry.inventory.reservation if entry.inventory else None
+                    )
                     if reservation_status == 'closed':
                         return {'times': [], 'status': 'Closed'}
-                    if reservation_status in ['sold-out', 'not available']:
+                    if reservation_status in ('sold-out', 'not available'):
                         return {'times': [], 'status': 'Sold out'}
-                    # Date is released and has availability
                     return {'times': [], 'status': 'Available'}
-            
-            # Date not in scheduled list = not released yet
-            return {'times': [], 'status': 'Not released yet'}
-
-        return {'times': [], 'status': 'Unable to fetch'}
-        
+        return {'times': [], 'status': 'Not released yet'}
     except Exception as e:
-        print(f"[AVAILABILITY_FAST] Error for venue {venue_id}: {e}")
+        print("[AVAILABILITY_FAST] Error for venue %s: %s", venue_id, e)
         return {'times': [], 'status': 'Unable to fetch'}

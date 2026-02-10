@@ -4,17 +4,15 @@ Handles venue details and links
 """
 
 import logging
-import requests
 
+import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
 
+from .resy_client.api_access import build_resy_client
+from .resy_client.errors import ResyApiError
 from .sentry_utils import with_sentry_trace
-from .utils import (
-    load_credentials,
-    get_resy_headers,
-    GOOGLE_MAPS_API_KEY
-)
+from .utils import load_credentials, GOOGLE_MAPS_API_KEY
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -40,54 +38,52 @@ def venue(req: Request):
                 'error': 'Missing venue_id parameter'
             }, 400
 
-        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        # Load credentials and fetch venue via resy_client
         config = load_credentials(user_id)
-        headers = get_resy_headers(config)
+        client = build_resy_client(config)
+        venue_data = client.get_venue(venue_id)
 
-        response = requests.get(
-            'https://api.resy.com/3/venue',
-            params={'id': venue_id},
-            headers=headers,
-            timeout=30
-        )
-
-        if response.status_code != 200:
-            return {
-                'success': False,
-                'error': f'API returned status {response.status_code}'
-            }, 500
-
-        venue_data = response.json()
-        venue_name = venue_data.get('name')
-
-        # Get photo URLs directly from Resy API
-        photo_urls = venue_data.get('images', [])
-
-        # Get description from metadata
-        metadata = venue_data.get('metadata', {})
-        description = metadata.get('description', '')
+        venue_name = venue_data.name
+        photo_urls = venue_data.images or []
+        metadata = venue_data.metadata or {}
+        description = metadata.get('description', '') if isinstance(metadata, dict) else ''
+        location = venue_data.location
+        address_1 = location.address_1 if location else ''
+        locality = location.locality if location else ''
+        region = location.region if location else ''
+        neighborhood = location.neighborhood if location else ''
+        address = f"{address_1}, {locality}, {region}" if location else 'N/A'
+        rating = None
+        if venue_data.rater and isinstance(venue_data.rater, list) and venue_data.rater:
+            rating = venue_data.rater[0].get('score') if isinstance(venue_data.rater[0], dict) else None
+        elif venue_data.rater and isinstance(venue_data.rater, dict):
+            rating = venue_data.rater.get('score')
 
         return {
             'success': True,
             'data': {
                 'name': venue_name,
                 'venue_id': venue_id,
-                'type': venue_data.get('type', 'N/A'),
-                'address': (
-                    f"{venue_data.get('location', {}).get('address_1', '')}, "
-                    f"{venue_data.get('location', {}).get('locality', '')}, "
-                    f"{venue_data.get('location', {}).get('region', '')}"
-                    if venue_data.get('location')
-                    else 'N/A'
-                ),
-                'neighborhood': venue_data.get('location', {}).get('neighborhood', ''),
-                'price_range': venue_data.get('price_range_id', 0),
-                'rating': venue_data.get('rater', [])[0].get('score') if venue_data.get('rater') else None,
-                'photoUrls': photo_urls,  # List of photo URLs from Resy
-                'description': description,  # Description from metadata
+                'type': venue_data.type or 'N/A',
+                'address': address,
+                'neighborhood': neighborhood if isinstance(neighborhood, str) else '',
+                'price_range': venue_data.price_range_id or 0,
+                'rating': rating,
+                'photoUrls': photo_urls,
+                'description': description,
             }
         }
 
+    except ResyApiError as e:
+        logger.error(
+            "Resy API error fetching venue: %s %s",
+            e.status_code,
+            e.response_body[:200] if e.response_body else "",
+        )
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
     except Exception as e:
         logger.error("Error fetching venue: %s", e)
         return {
@@ -118,33 +114,26 @@ def venue_links(req: Request):
 
         logger.info("[VENUE-LINKS] Starting link search for venue_id: %s", venue_id)
 
-        # First get venue details to get the restaurant name
+        # First get venue details via resy_client
         logger.info("[VENUE-LINKS] Fetching venue details from Resy API...")
         credentials = load_credentials(user_id)
-        headers = get_resy_headers(credentials)
-
-        # Use the /3/venue endpoint which returns complete venue data
-        venue_response = requests.get(
-            'https://api.resy.com/3/venue',
-            params={'id': venue_id},
-            headers=headers,
-            timeout=30
-        )
-
-        if venue_response.status_code != 200:
+        client = build_resy_client(credentials)
+        try:
+            venue_data = client.get_venue(venue_id)
+        except ResyApiError as e:
             logger.error(
-                "[VENUE-LINKS] Failed to fetch venue details. Status: %s",
-                venue_response.status_code
+                "[VENUE-LINKS] Failed to fetch venue details. Status: %s %s",
+                e.status_code,
+                e.response_body[:200] if e.response_body else "",
             )
             return {
                 'success': False,
                 'error': 'Failed to fetch venue details'
             }, 500
 
-        venue_data = venue_response.json()
-        restaurant_name = venue_data.get('name', '')
-        location = venue_data.get('location', {})
-        city = location.get('locality', '')
+        restaurant_name = venue_data.name or ''
+        location = venue_data.location
+        city = location.locality if location else ''
 
         logger.info("[VENUE-LINKS] Found restaurant: '%s' in %s", restaurant_name, city)
 
@@ -180,10 +169,10 @@ def venue_links(req: Request):
             try:
                 logger.info("[VENUE-LINKS] Searching for Google Maps URL using Places API (New)...")
 
-                address_1 = location.get("address_1", "")
-                postal_code = location.get("postal_code", "")
-                state = location.get("region", "")
-                city = location.get("locality", "")
+                address_1 = location.address_1 if location else ""
+                postal_code = getattr(location, "postal_code", "") or ""
+                state = location.region if location else ""
+                city = location.locality if location else ""
 
                 address_parts = [restaurant_name]
                 if address_1:
@@ -267,22 +256,22 @@ def venue_links(req: Request):
         )
 
         # Debug: Log what we're getting from the API
-        logger.info("[VENUE-LINKS] Venue type: %s", venue_data.get('type'))
-        logger.info("[VENUE-LINKS] Location address_1: %s", location.get('address_1'))
-        logger.info("[VENUE-LINKS] Location neighborhood: %s", location.get('neighborhood'))
-        logger.info("[VENUE-LINKS] Price range ID: %s", venue_data.get('price_range_id'))
-        logger.info("[VENUE-LINKS] Rating: %s", venue_data.get('rating'))
+        logger.info("[VENUE-LINKS] Venue type: %s", venue_data.type)
+        logger.info("[VENUE-LINKS] Location address_1: %s", location.address_1 if location else None)
+        logger.info("[VENUE-LINKS] Location neighborhood: %s", getattr(location, "neighborhood", "") if location else "")
+        logger.info("[VENUE-LINKS] Price range ID: %s", venue_data.price_range_id)
+        logger.info("[VENUE-LINKS] Rating: %s", getattr(venue_data, "rating", None))
 
         response_data = {
             'success': True,
             'links': links,
             'venueData': {
                 'name': restaurant_name,
-                'type': venue_data.get('type', ''),
-                'address': location.get('address_1', ''),
-                'neighborhood': location.get('neighborhood', ''),
-                'priceRange': venue_data.get('price_range_id', 0),
-                'rating': venue_data.get('rating', 0)
+                'type': venue_data.type or '',
+                'address': location.address_1 if location else '',
+                'neighborhood': getattr(location, 'neighborhood', '') if location else '',
+                'priceRange': venue_data.price_range_id or 0,
+                'rating': getattr(venue_data, 'rating', 0) or 0
             }
         }
 

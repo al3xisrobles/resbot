@@ -1,29 +1,20 @@
 import React from "react";
-import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, Bookmark, Search, TrendingUp, Star, LogIn } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { SearchResultItem } from "@/components/SearchResultItem";
 import { SearchResultItemSkeleton } from "@/components/SearchResultItemSkeleton";
 import { useAtom, useAtomValue } from "jotai";
 import { reservationFormAtom } from "@/atoms/reservationAtoms";
+import { UnifiedSearchControls } from "@/components/ui/unified-search-controls";
 import { cityConfigAtom } from "@/atoms/cityAtom";
 import { isOnboardedAtom } from "@/atoms/authAtoms";
 import {
@@ -47,12 +38,6 @@ import { Stack, Group } from "@/components/ui/layout";
 import type { SearchSidebarProps, SearchMode } from "../lib/types";
 import { CUISINES, PRICE_RANGES } from "../lib/types";
 import { useAuth } from "@/contexts/AuthContext";
-
-const TIME_SLOT_OPTIONS = TIME_SLOTS.map((slot) => (
-    <SelectItem key={slot.value} value={slot.value}>
-        {slot.display}
-    </SelectItem>
-));
 
 export function SearchSidebar({
     filters,
@@ -218,89 +203,46 @@ export function SearchSidebar({
 
                                     {/* Reservation Inputs (Left) + Dropdowns (Right) */}
                                     <Group itemsSpacing={8} itemsAlignX="space-between" noWrap className="flex-wrap">
-                                        {/* Reservation Inputs - Circular */}
-                                        <Group itemsSpacing={4} noWrap className="flex-wrap">
-                                            {/* Party Size */}
-                                            <Select
-                                                value={reservationForm.partySize}
-                                                onValueChange={(value) =>
-                                                    setReservationForm({
-                                                        ...reservationForm,
-                                                        partySize: value,
-                                                    })
-                                                }
-                                            >
-                                                <SelectTrigger id="party-size-browse" className="h-9 rounded-full px-4">
-                                                    <SelectValue placeholder="Size" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {Array.from({ length: 6 }, (_, i) => i + 1).map(
-                                                        (size) => (
-                                                            <SelectItem key={size} value={size.toString()}>
-                                                                {size} {size === 1 ? "person" : "people"}
-                                                            </SelectItem>
-                                                        )
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
-
-                                            {/* Date */}
-                                            <Popover>
-                                                <PopoverTrigger asChild>
-                                                    <button
-                                                        className={cn(
-                                                            "flex h-9 items-center justify-center rounded-full border bg-background px-4 py-2 text-sm shadow-xs ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer hover:bg-accent/50 transition-colors whitespace-nowrap",
-                                                            !reservationForm.date && "text-muted-foreground"
-                                                        )}
-                                                    >
-                                                        {reservationForm.date ? (
-                                                            format(reservationForm.date, "MMM d")
-                                                        ) : (
-                                                            <span>Date</span>
-                                                        )}
-                                                    </button>
-                                                </PopoverTrigger>
-                                                <PopoverContent className="w-auto p-0" align="start">
-                                                    <Calendar
-                                                        mode="single"
-                                                        selected={reservationForm.date}
-                                                        onSelect={(date) =>
-                                                            setReservationForm({ ...reservationForm, date })
-                                                        }
-                                                    />
-                                                </PopoverContent>
-                                            </Popover>
-
-                                            {/* Time */}
-                                            <Select
-                                                value={reservationForm.timeSlot}
-                                                onValueChange={(value) =>
-                                                    setReservationForm({
-                                                        ...reservationForm,
-                                                        timeSlot: value,
-                                                    })
-                                                }
-                                            >
-                                                <SelectTrigger id="time-browse" className="h-9 rounded-full px-4">
-                                                    <SelectValue placeholder="Time" />
-                                                </SelectTrigger>
-                                                <SelectContent>{TIME_SLOT_OPTIONS}</SelectContent>
-                                            </Select>
-                                        </Group>
+                                        {/* Reservation Inputs - Unified Search Controls */}
+                                        <UnifiedSearchControls
+                                            partySize={reservationForm.partySize}
+                                            onPartySizeChange={(partySize) =>
+                                                setReservationForm({
+                                                    ...reservationForm,
+                                                    partySize,
+                                                })
+                                            }
+                                            date={reservationForm.date}
+                                            onDateChange={(date) =>
+                                                setReservationForm({
+                                                    ...reservationForm,
+                                                    date,
+                                                })
+                                            }
+                                            timeSlot={reservationForm.timeSlot}
+                                            onTimeSlotChange={(timeSlot) =>
+                                                setReservationForm({
+                                                    ...reservationForm,
+                                                    timeSlot,
+                                                })
+                                            }
+                                            timeSlots={TIME_SLOTS}
+                                            showSearchButton={false}
+                                            disabled={!isAuthenticated}
+                                        />
 
                                         {/* Dropdowns - Right Side */}
                                         <Group itemsSpacing={4} noWrap className="flex-wrap">
                                             {/* Availability Dropdown */}
                                             <Popover>
                                                 <PopoverTrigger asChild>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="border text-xs h-8 justify-between overflow-hidden rounded-full"
+                                                    <button
+                                                        type="button"
+                                                        className="flex items-center gap-1.5 px-5 py-3 text-sm font-medium hover:bg-accent/40 transition-colors cursor-pointer whitespace-nowrap border rounded-full justify-between overflow-hidden"
                                                     >
                                                         <span className="truncate">{selectedAvailability}</span>
-                                                        <ChevronDown className="ml-1 size-3 opacity-50 shrink-0" />
-                                                    </Button>
+                                                        <ChevronDown className="ml-1 size-3.5 opacity-50 shrink-0" />
+                                                    </button>
                                                 </PopoverTrigger>
                                                 <PopoverContent className="w-[200px] p-0" align="start">
                                                     <div className="p-2">
@@ -361,14 +303,13 @@ export function SearchSidebar({
                                             {/* Cuisine Multi-Select */}
                                             <Popover>
                                                 <PopoverTrigger asChild>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="border text-xs h-8 justify-between overflow-hidden rounded-full"
+                                                    <button
+                                                        type="button"
+                                                        className="flex items-center gap-1.5 px-5 py-3 text-sm font-medium hover:bg-accent/40 transition-colors cursor-pointer whitespace-nowrap border rounded-full justify-between overflow-hidden"
                                                     >
                                                         <span className="truncate">{selectedCuisines}</span>
-                                                        <ChevronDown className="ml-1 size-3 opacity-50 shrink-0" />
-                                                    </Button>
+                                                        <ChevronDown className="ml-1 size-3.5 opacity-50 shrink-0" />
+                                                    </button>
                                                 </PopoverTrigger>
                                                 <PopoverContent className="w-[200px] p-0" align="start">
                                                     <div className="max-h-[300px] overflow-y-auto p-2">
@@ -422,16 +363,15 @@ export function SearchSidebar({
                                             {/* Price Range Multi-Select */}
                                             <Popover>
                                                 <PopoverTrigger asChild>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="border text-xs h-8 justify-between overflow-hidden rounded-full"
+                                                    <button
+                                                        type="button"
+                                                        className="flex items-center gap-1.5 px-5 py-3 text-sm font-medium hover:bg-accent/40 transition-colors cursor-pointer whitespace-nowrap border rounded-full justify-between overflow-hidden"
                                                     >
                                                         <span className="truncate">
                                                             {selectedPriceRangeLabels}
                                                         </span>
-                                                        <ChevronDown className="ml-1 size-3 opacity-50 shrink-0" />
-                                                    </Button>
+                                                        <ChevronDown className="ml-1 size-3.5 opacity-50 shrink-0" />
+                                                    </button>
                                                 </PopoverTrigger>
                                                 <PopoverContent className="w-[200px] p-0" align="start">
                                                     <div className="max-h-[300px] overflow-y-auto p-2">

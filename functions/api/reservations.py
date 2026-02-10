@@ -7,14 +7,15 @@ import logging
 import traceback
 from datetime import date, timedelta
 
-import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
 
-from .sentry_utils import with_sentry_trace
-from .utils import load_credentials, get_resy_headers, get_venue_availability
-from .resy_client.models import ResyConfig, TimedReservationRequest
+from .resy_client.api_access import build_resy_client
+from .resy_client.errors import ResyApiError
 from .resy_client.manager import ResyManager
+from .resy_client.models import CalendarRequestParams, ResyConfig, TimedReservationRequest
+from .sentry_utils import with_sentry_trace
+from .utils import load_credentials, get_venue_availability
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -41,46 +42,32 @@ def calendar(req: Request):
                 'error': 'Missing venue_id parameter'
             }, 400
 
-        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        # Load credentials and use centralized Resy client
         config = load_credentials(user_id)
-        headers = get_resy_headers(config)
+        client = build_resy_client(config)
 
         # Get party size from query params (default to 2)
         party_size = req.args.get('partySize', '2')
 
-        # Query calendar API for 90 days
+        # Query calendar API for 90 days via resy_client
         today = date.today()
         end_date = today + timedelta(days=90)
 
-        params = {
-            'venue_id': venue_id,
-            'num_seats': int(party_size),
-            'start_date': today.strftime('%Y-%m-%d'),
-            'end_date': end_date.strftime('%Y-%m-%d')
-        }
-
-        response = requests.get(
-            'https://api.resy.com/4/venue/calendar',
-            params=params,
-            headers=headers,
-            timeout=10
+        params = CalendarRequestParams(
+            venue_id=venue_id,
+            num_seats=int(party_size),
+            start_date=today.strftime('%Y-%m-%d'),
+            end_date=end_date.strftime('%Y-%m-%d'),
         )
-
-        if response.status_code != 200:
-            return {
-                'success': False,
-                'error': f'API returned status {response.status_code}'
-            }, 500
-
-        calendar_data = response.json()
-        scheduled = calendar_data.get('scheduled', [])
+        calendar_data = client.get_calendar(params)
+        scheduled = calendar_data.scheduled or []
 
         # Transform the data for frontend
         availability = []
         for entry in scheduled:
-            date_str = entry.get('date')
-            inventory = entry.get('inventory', {})
-            reservation_status = inventory.get('reservation')
+            date_str = entry.date
+            inventory = entry.inventory
+            reservation_status = inventory.reservation if inventory else None
 
             availability.append({
                 'date': date_str,
@@ -98,6 +85,17 @@ def calendar(req: Request):
             }
         }
 
+    except ResyApiError as e:
+        logger.error(
+            "Resy API error fetching calendar: %s %s %s",
+            e.status_code,
+            e.endpoint,
+            e.response_body[:200] if e.response_body else "",
+        )
+        return {
+            'success': False,
+            'error': str(e)
+        }, 500
     except Exception as e:
         logger.error("Error fetching calendar: %s", e)
         return {

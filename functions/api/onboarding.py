@@ -6,14 +6,15 @@ Handles direct API authentication with Resy
 import logging
 import os
 import traceback
-from urllib.parse import urlencode
 
-import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions
 from firebase_admin import firestore
 from google.cloud import firestore as gc_firestore
 
+from .resy_client.api_access import build_resy_client
+from .resy_client.errors import ResyApiError, ResyAuthError
+from .resy_client.models import AuthRequestBody, ResyConfig
 from .sentry_utils import with_sentry_trace
 
 logger = logging.getLogger(__name__)
@@ -25,45 +26,37 @@ RESY_API_KEY = os.getenv("RESY_API_KEY", "VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5")
 
 def authenticate_with_resy(email: str, password: str) -> dict:
     """
-    Authenticate with Resy API using email and password.
+    Authenticate with Resy API using email and password via resy_client (/4/auth/password).
 
     Args:
         email: User's Resy email
         password: User's Resy password (will NOT be stored)
 
     Returns:
-        dict: Response data from Resy API
+        dict: Response data from Resy API (token, payment_methods)
 
     Raises:
         Exception: If authentication fails
     """
-    url = "https://api.resy.com/4/auth/password"
-
-    headers = {
-        "authorization": f'ResyAPI api_key="{RESY_API_KEY}"',
-        "content-type": "application/x-www-form-urlencoded",
-        "accept": "application/json, text/plain, */*",
-        "origin": "https://resy.com",
-        "x-origin": "https://resy.com",
-    }
-
-    # Form-encoded body - do NOT log this as it contains the password
-    body = urlencode({"email": email, "password": password})
-
     logger.info("Authenticating with Resy for email: %s", email)
 
+    config = ResyConfig(
+        api_key=RESY_API_KEY,
+        token="",
+        payment_method_id=0,
+    )
+    client = build_resy_client(config)
+
     try:
-        response = requests.post(url, headers=headers, data=body, timeout=10)
-
-        if response.status_code != 200:
-            logger.error("Resy authentication failed with status %s", response.status_code)
-            raise Exception("Invalid Resy login")
-
-        return response.json()
-
-    except requests.exceptions.RequestException as e:
-        logger.error("Request to Resy API failed: %s", e)
-        raise Exception("Failed to connect to Resy") from e
+        auth_response = client.auth(AuthRequestBody(email=email, password=password))
+        return auth_response.model_dump()
+    except (ResyAuthError, ResyApiError) as e:
+        logger.error(
+            "Resy authentication failed: %s %s",
+            getattr(e, "status_code", ""),
+            getattr(e, "response_body", "")[:200] or "",
+        )
+        raise Exception("Invalid Resy login") from e
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))

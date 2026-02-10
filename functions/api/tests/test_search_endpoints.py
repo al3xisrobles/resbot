@@ -27,6 +27,9 @@ class TestSearchEndpoint:
         request.args = Mock()
         request.args.get = Mock(side_effect=lambda key, default='': kwargs.get(key, default))
         request.args.to_dict = Mock(return_value=kwargs)
+        request.headers = Mock()
+        request.headers.get = Mock(return_value=None)
+        request.method = "GET"
         return request
 
     def call_endpoint(self, endpoint_func, request):
@@ -43,14 +46,13 @@ class TestSearchEndpoint:
             return response, status_code
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.build_search_payload')
-    @patch('api.search.requests.post')
-    def test_search_basic(self, _mock_post, _mock_build_payload, mock_fetch, mock_headers, mock_credentials):
+    def test_search_basic(self, _mock_build_payload, mock_fetch, mock_build_client, mock_credentials):
         """Basic search without filters."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         # Mock fetch_until_enough_results to return test data
         mock_venues = VenueFactory.create_batch(5)
@@ -90,20 +92,19 @@ class TestSearchEndpoint:
         assert 'pagination' in response
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.build_search_payload')
-    @patch('api.search.requests.post')
-    def test_search_with_cuisines(self, _mock_post, _mock_build_payload, mock_fetch, mock_headers, mock_credentials):
+    def test_search_with_cuisines(self, _mock_build_payload, mock_fetch, mock_build_client, mock_credentials):
         """Search with cuisine filter."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         mock_venues = VenueFactory.with_cuisine("Italian", 3)
         mock_fetch.return_value = (mock_venues, 50, False)
 
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         mock_venues = VenueFactory.with_cuisine("Italian", 3)
         formatted_venues = []
@@ -139,19 +140,18 @@ class TestSearchEndpoint:
         assert len(response['data']) == 3
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.build_search_payload')
-    @patch('api.search.requests.post')
     def test_search_with_price_ranges(
-        self, _mock_post, _mock_build_payload, mock_fetch, mock_headers, mock_credentials
+        self, _mock_build_payload, mock_fetch, mock_build_client, mock_credentials
     ):
         """Search with price range filter."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         mock_venues = VenueFactory.with_price_range(4, 2)
         formatted_venues = []
@@ -187,11 +187,11 @@ class TestSearchEndpoint:
         assert len(response['data']) == 2
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
-    def test_search_no_filters_error(self, mock_headers, mock_credentials):
+    @patch('api.search.build_resy_client')
+    def test_search_no_filters_error(self, mock_build_client, mock_credentials):
         """Search without any filters should return error."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         request = self.create_mock_request(
             userId='test_user',
@@ -204,17 +204,16 @@ class TestSearchEndpoint:
         assert 'error' in response
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.build_search_payload')
-    @patch('api.search.requests.post')
-    def test_search_pagination(self, _mock_post, _mock_build_payload, mock_fetch, mock_headers, mock_credentials):
+    def test_search_pagination(self, _mock_build_payload, mock_fetch, mock_build_client, mock_credentials):
         """Search with pagination (offset and perPage)."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         mock_venues = VenueFactory.create_batch(20)
         formatted_venues = []
@@ -262,6 +261,9 @@ class TestSearchMapEndpoint:
         request.args = Mock()
         request.args.get = Mock(side_effect=lambda key, default='': kwargs.get(key, default))
         request.args.to_dict = Mock(return_value=kwargs)
+        request.headers = Mock()
+        request.headers.get = Mock(return_value=None)
+        request.method = "GET"
         return request
 
     def call_endpoint(self, endpoint_func, request):
@@ -278,18 +280,18 @@ class TestSearchMapEndpoint:
             return response, status_code
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.get_search_cache_key')
     @patch('api.search.get_cached_search_results')
     @patch('api.search.save_search_results_to_cache')
     def test_search_map_basic(
         self, _mock_save_cache, mock_get_cache, mock_cache_key,
-        mock_fetch, mock_headers, mock_credentials
+        mock_fetch, mock_build_client, mock_credentials
     ):
         """Basic map search without filters."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
         mock_get_cache.return_value = None  # Cache miss
         mock_cache_key.return_value = 'test_cache_key'
 
@@ -312,17 +314,17 @@ class TestSearchMapEndpoint:
         assert 'pagination' in response
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.get_search_cache_key')
     @patch('api.search.get_cached_search_results')
     def test_search_map_uses_cache(
         self, mock_get_cache, mock_cache_key,
-        mock_fetch, mock_headers, mock_credentials
+        mock_fetch, mock_build_client, mock_credentials
     ):
         """Map search should use cached results when available."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
         mock_cache_key.return_value = 'test_cache_key'
 
         # Return cached data - enough for the requested page (offset=0, perPage=20)
@@ -373,18 +375,18 @@ class TestSearchMapEndpoint:
         mock_fetch.assert_not_called()
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.get_search_cache_key')
     @patch('api.search.get_cached_search_results')
     @patch('api.search.save_search_results_to_cache')
     def test_search_map_available_only(
         self, _mock_save_cache, mock_get_cache, mock_cache_key,
-        mock_fetch, mock_headers, mock_credentials
+        mock_fetch, mock_build_client, mock_credentials
     ):
         """Map search with available_only filter."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
         mock_get_cache.return_value = None
         mock_cache_key.return_value = 'test_cache_key'
 
@@ -416,18 +418,18 @@ class TestSearchMapEndpoint:
         assert call_args[1]['fetch_availability'] is True
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.get_search_cache_key')
     @patch('api.search.get_cached_search_results')
     @patch('api.search.save_search_results_to_cache')
     def test_search_map_not_released_only(
         self, _mock_save_cache, mock_get_cache, mock_cache_key,
-        mock_fetch, mock_headers, mock_credentials
+        mock_fetch, mock_build_client, mock_credentials
     ):
         """Map search with not_released_only filter."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
         mock_get_cache.return_value = None
         mock_cache_key.return_value = 'test_cache_key'
 
@@ -459,17 +461,17 @@ class TestSearchMapEndpoint:
         assert call_args[1]['fetch_availability'] is True
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.get_search_cache_key')
     @patch('api.search.get_cached_search_results')
     def test_search_map_pagination_over_filtered(
         self, mock_get_cache, mock_cache_key,
-        mock_fetch, mock_headers, mock_credentials
+        mock_fetch, mock_build_client, mock_credentials
     ):
         """Map search pagination when filtering by availability."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
         mock_get_cache.return_value = None
         mock_cache_key.return_value = 'test_cache_key'
 
@@ -498,22 +500,23 @@ class TestSearchMapEndpoint:
         assert status_code == 200
         assert response['success'] is True
         assert len(response['data']) == 20
-        # When paginating over filtered results, total should be filtered count
-        assert response['pagination']['total'] == 20
+        # When paginating over availability-filtered results, total is omitted; use foundSoFar
+        assert response['pagination'].get('isFiltered') is True
+        assert response['pagination']['foundSoFar'] == 20
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
+    @patch('api.search.build_resy_client')
     @patch('api.search.fetch_until_enough_results')
     @patch('api.search.get_search_cache_key')
     @patch('api.search.get_cached_search_results')
     @patch('api.search.update_search_progress')
     def test_search_map_with_job_id(
         self, mock_progress, mock_get_cache, mock_cache_key,
-        mock_fetch, mock_headers, mock_credentials
+        mock_fetch, mock_build_client, mock_credentials
     ):
         """Map search with job ID for progress tracking."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
         mock_get_cache.return_value = None
         mock_cache_key.return_value = 'test_cache_key'
 
@@ -536,11 +539,11 @@ class TestSearchMapEndpoint:
         assert mock_progress.call_count > 0
 
     @patch('api.search.load_credentials')
-    @patch('api.search.get_resy_headers')
-    def test_search_map_error_handling(self, mock_headers, mock_credentials):
+    @patch('api.search.build_resy_client')
+    def test_search_map_error_handling(self, mock_build_client, mock_credentials):
         """Map search should handle errors gracefully."""
         mock_credentials.return_value = {'api_key': 'test', 'token': 'test'}
-        mock_headers.return_value = {'Authorization': 'test'}
+        mock_build_client.return_value = Mock()
 
         # Simulate error in fetch_until_enough_results
         with patch('api.search.fetch_until_enough_results') as mock_fetch:

@@ -4,15 +4,16 @@ Handles trending/climbing and top-rated restaurant lists
 """
 
 import logging
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
 
-from .sentry_utils import with_sentry_trace
-from .utils import load_credentials, get_resy_headers
 from .cities import get_city_config
+from .resy_client.api_access import build_resy_client
+from .resy_client.errors import ResyApiError
+from .sentry_utils import with_sentry_trace
+from .utils import load_credentials
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -70,58 +71,42 @@ def climbing(req: Request):
         user_id = req.args.get('userId')
         city_id = req.args.get('city', 'nyc')
 
-        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        # Load credentials and build Resy client
         config = load_credentials(user_id)
-        headers = get_resy_headers(config)
+        client = build_resy_client(config)
 
         # Get city configuration and URL slug
         city_config = get_city_config(city_id)
         url_slug = city_config.get('url_slug', 'new-york-ny')
 
-        # Query the climbing endpoint
-        url = f'https://api.resy.com/3/cities/{url_slug}/list/climbing?limit={limit}'
-        logger.info("Fetching climbing restaurants from: %s", url)
-
-        response = requests.get(url, headers=headers, timeout=10)
-
-        if response.status_code != 200:
+        logger.info("Fetching climbing restaurants for city slug: %s", url_slug)
+        try:
+            data = client.get_city_list(url_slug, 'climbing', int(limit))
+        except ResyApiError as e:
+            logger.error("Resy API error fetching climbing list: %s %s", e.status_code, e.endpoint)
             return {
                 'success': False,
-                'error': f'API returned status {response.status_code}'
+                'error': str(e)
             }, 500
 
-        data = response.json()
-        venues = data.get('results', {}).get('venues', [])
+        venues = data.results.venues if data.results else []
         logger.info("Resy API returned %s venues", len(venues))
 
         # The list endpoint doesn't return geo coordinates, so we need to fetch them
-        # from the /3/venue endpoint for each venue
+        # from the /3/venue endpoint for each venue via client
         def fetch_venue_coords(venue_id):
             """Fetch coordinates for a single venue"""
             try:
-                venue_response = requests.get(
-                    'https://api.resy.com/3/venue',
-                    params={'id': venue_id},
-                    headers=headers,
-                    timeout=10
-                )
-                if venue_response.status_code == 200:
-                    venue_data = venue_response.json()
-                    location = venue_data.get('location', {})
-                    
-                    # Coordinates are directly in location object as 'latitude' and 'longitude'
-                    lat = location.get('latitude')
-                    lng = location.get('longitude')
-                    
-                    return {
-                        'lat': lat,
-                        'lng': lng
-                    }
-                else:
-                    logger.warning("Venue %s: API returned status %s", venue_id, venue_response.status_code)
+                venue_data = client.get_venue(venue_id)
+                location = venue_data.location
+                lat = location.latitude if location else None
+                lng = location.longitude if location else None
+                return {'lat': lat, 'lng': lng}
+            except ResyApiError:
+                return {'lat': None, 'lng': None}
             except Exception as e:
                 logger.warning("Failed to fetch coordinates for venue %s: %s", venue_id, e)
-            return {'lat': None, 'lng': None}
+                return {'lat': None, 'lng': None}
 
         # Fetch coordinates in parallel
         venue_coords = {}
@@ -209,58 +194,42 @@ def top_rated(req: Request):
         user_id = req.args.get('userId')
         city_id = req.args.get('city', 'nyc')
 
-        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        # Load credentials and build Resy client
         config = load_credentials(user_id)
-        headers = get_resy_headers(config)
+        client = build_resy_client(config)
 
         # Get city configuration and URL slug
         city_config = get_city_config(city_id)
         url_slug = city_config.get('url_slug', 'new-york-ny')
 
-        # Query the top-rated endpoint
-        url = f'https://api.resy.com/3/cities/{url_slug}/list/top-rated?limit={limit}'
-        logger.info("Fetching top-rated restaurants from: %s", url)
-
-        response = requests.get(url, headers=headers, timeout=10)
-
-        if response.status_code != 200:
+        logger.info("Fetching top-rated restaurants for city slug: %s", url_slug)
+        try:
+            data = client.get_city_list(url_slug, 'top-rated', int(limit))
+        except ResyApiError as e:
+            logger.error("Resy API error fetching top-rated list: %s %s", e.status_code, e.endpoint)
             return {
                 'success': False,
-                'error': f'API returned status {response.status_code}'
+                'error': str(e)
             }, 500
 
-        data = response.json()
-        venues = data.get('results', {}).get('venues', [])
+        venues = data.results.venues if data.results else []
         logger.info("Resy API returned %s venues", len(venues))
 
         # The list endpoint doesn't return geo coordinates, so we need to fetch them
-        # from the /3/venue endpoint for each venue
+        # from the /3/venue endpoint for each venue via client
         def fetch_venue_coords(venue_id):
             """Fetch coordinates for a single venue"""
             try:
-                venue_response = requests.get(
-                    'https://api.resy.com/3/venue',
-                    params={'id': venue_id},
-                    headers=headers,
-                    timeout=10
-                )
-                if venue_response.status_code == 200:
-                    venue_data = venue_response.json()
-                    location = venue_data.get('location', {})
-                    
-                    # Coordinates are directly in location object as 'latitude' and 'longitude'
-                    lat = location.get('latitude')
-                    lng = location.get('longitude')
-                    
-                    return {
-                        'lat': lat,
-                        'lng': lng
-                    }
-                else:
-                    logger.warning("Venue %s: API returned status %s", venue_id, venue_response.status_code)
+                venue_data = client.get_venue(venue_id)
+                location = venue_data.location
+                lat = location.latitude if location else None
+                lng = location.longitude if location else None
+                return {'lat': lat, 'lng': lng}
+            except ResyApiError:
+                return {'lat': None, 'lng': None}
             except Exception as e:
                 logger.warning("Failed to fetch coordinates for venue %s: %s", venue_id, e)
-            return {'lat': None, 'lng': None}
+                return {'lat': None, 'lng': None}
 
         # Fetch coordinates in parallel
         venue_coords = {}

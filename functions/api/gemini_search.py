@@ -6,14 +6,16 @@ Handles AI-powered restaurant reservation information using Google Gemini with G
 import logging
 from datetime import date, timedelta
 
-import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
 
 from google.genai import types
-from .sentry_utils import with_sentry_trace
-from .utils import load_credentials, get_resy_headers, gemini_client
+
 from .cities import get_city_config
+from .resy_client.api_access import build_resy_client
+from .resy_client.models import CalendarRequestParams
+from .sentry_utils import with_sentry_trace
+from .utils import load_credentials, gemini_client
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -55,20 +57,19 @@ def gemini_search(req: Request):
                 'error': 'Gemini API not configured. Please set GEMINI_API_KEY environment variable.'
             }, 503
 
-        # Load credentials and headers once if venue_id is provided (for both calendar and venue API calls)
-        headers = None
+        # Load Resy client once if venue_id is provided (for both calendar and venue API calls)
+        client = None
         if venue_id:
             try:
-                # Load credentials (from Firestore if userId provided, else from credentials.json)
                 credentials = load_credentials(user_id)
-                headers = get_resy_headers(credentials)
+                client = build_resy_client(credentials)
             except Exception as e:
                 logger.warning("Failed to load credentials: %s", e)
-                headers = None
+                client = None
 
         # First, query Resy API to check available dates and determine booking window
         resy_findings = ""
-        if venue_id and headers:
+        if venue_id and client:
             try:
 
                 # Use calendar API to get complete availability overview
@@ -77,48 +78,29 @@ def gemini_search(req: Request):
 
                 logger.info("Checking booking window for venue %s using calendar API", venue_id)
 
-                # Query calendar API
-                params = {
-                    'venue_id': venue_id,
-                    'num_seats': 2,
-                    'start_date': today.strftime('%Y-%m-%d'),
-                    'end_date': end_date.strftime('%Y-%m-%d')
-                }
+                calendar_params = CalendarRequestParams(
+                    venue_id=venue_id,
+                    num_seats=2,
+                    start_date=today.strftime('%Y-%m-%d'),
+                    end_date=end_date.strftime('%Y-%m-%d'),
+                )
 
                 try:
-                    resp = requests.get(
-                        'https://api.resy.com/4/venue/calendar',
-                        params=params,
-                        headers=headers,
-                        timeout=5
-                    )
-
+                    calendar_data = client.get_calendar(calendar_params)
+                    scheduled = calendar_data.scheduled or []
                     max_booking_window = 0
 
-                    if resp.ok:
-                        calendar_data = resp.json()
-                        scheduled = calendar_data.get('scheduled', [])
+                    for entry in scheduled:
+                        entry_date = entry.date
+                        if entry_date:
+                            entry_date_obj = date.fromisoformat(entry_date)
+                            days_ahead = (entry_date_obj - today).days
+                            max_booking_window = max(max_booking_window, days_ahead)
 
-                        # Find the furthest date in the scheduled array
-                        # Each date in 'scheduled' is a date the restaurant has made available for reservations
-                        # (regardless of whether slots are sold out or not)
-                        for entry in scheduled:
-                            entry_date = entry.get('date')
-                            if entry_date:
-                                # Calculate days from today
-                                entry_date_obj = date.fromisoformat(entry_date)
-                                days_ahead = (entry_date_obj - today).days
-
-                                max_booking_window = max(max_booking_window, days_ahead)
-
-                        logger.info(
-                            f"Final booking window from calendar: {max_booking_window} days "
-                            "(furthest scheduled date)"
-                        )
-                    else:
-                        logger.warning("Calendar API returned status %s", resp.status_code)
-                        max_booking_window = 0
-
+                    logger.info(
+                        "Final booking window from calendar: %s days (furthest scheduled date)",
+                        max_booking_window,
+                    )
                 except Exception as e:
                     logger.warning("Calendar API request failed: %s", e)
                     max_booking_window = 0
@@ -143,25 +125,18 @@ def gemini_search(req: Request):
 
         # Fetch venue content from /3/venue API for authoritative reservation info
         resy_venue_info = ""
-        if venue_id and headers:
+        if venue_id and client:
             try:
                 logger.info("Fetching venue content for venue %s", venue_id)
 
-                # Query /3/venue API for content
-                venue_response = requests.get(
-                    'https://api.resy.com/3/venue',
-                    params={'id': venue_id},
-                    headers=headers,
-                    timeout=5
-                )
-
-                if venue_response.ok:
-                    venue_data = venue_response.json()
-                    content_array = venue_data.get('content', [])
+                venue_data = client.get_venue(venue_id)
+                content_array = venue_data.content if isinstance(venue_data.content, list) else []
 
                     # Extract relevant content sections
                     extracted_content = []
                     for content_item in content_array:
+                        if not isinstance(content_item, dict):
+                            continue
                         content_name = content_item.get('name', '')
                         content_body = content_item.get('body', '')
 
@@ -188,11 +163,6 @@ def gemini_search(req: Request):
                             "Extracted %s content sections from venue API",
                             len(extracted_content)
                         )
-                else:
-                    logger.warning(
-                        "Venue API returned status %s for venue %s",
-                        venue_response.status_code, venue_id
-                    )
 
             except Exception as e:
                 logger.warning("Failed to fetch venue content: %s", e)

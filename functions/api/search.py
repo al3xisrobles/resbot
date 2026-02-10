@@ -7,15 +7,16 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
 from google.cloud import firestore as gc_firestore
 
+from .cities import get_city_config
+from .resy_client.api_access import build_resy_client
+from .resy_client.models import VenueSearchRequestBody
 from .sentry_utils import with_sentry_trace
 from .utils import (
     load_credentials,
-    get_resy_headers,
     parse_search_filters,
     fetch_until_enough_results,
     build_search_payload,
@@ -25,7 +26,6 @@ from .utils import (
     get_venue_availability,
     update_search_progress
 )
-from .cities import get_city_config
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -70,9 +70,9 @@ def search(req: Request):
                 'error': 'At least one search parameter is required (query, cuisines, or priceRanges)'
             }, 400
 
-        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        # Load credentials and build Resy client
         config = load_credentials(user_id)
-        headers = get_resy_headers(config)
+        client = build_resy_client(config)
 
         # Get city configuration (default to NYC if not provided)
         city_id = req.args.get('city', 'nyc')
@@ -94,24 +94,13 @@ def search(req: Request):
             "radius": geo_center['radius']
         }
 
-        # Create fetch function for Resy API
+        # Create fetch function using resy_client
         def fetch_resy_page(page_num):
             payload = build_search_payload(query, filters, geo_config, page=page_num)
-
-            response = requests.post(
-                'https://api.resy.com/3/venuesearch/search',
-                json=payload,
-                headers=headers,
-                timeout=30
-            )
-
-            if response.status_code != 200:
-                raise Exception(f'API returned status {response.status_code}: {response.text[:200]}')
-
-            data = response.json()
-            hits = data.get('search', {}).get('hits', [])
-            total = data.get('meta', {}).get('total', 0)
-
+            body = VenueSearchRequestBody(**payload)
+            response = client.search_venues_advanced(body)
+            hits = response.search.get("hits", []) if response.search else []
+            total = response.meta.total if response.meta else 0
             return hits, total
 
         # Fetch enough results to satisfy offset + perPage
@@ -224,9 +213,9 @@ def search_map(req: Request):
         )
         print(f"[MAP SEARCH] Parsed filters - cuisines: {filters['cuisines']}, priceRanges: {filters['price_ranges']}")
 
-        # Load credentials (from Firestore if userId provided, else from credentials.json)
+        # Load credentials and build Resy client
         config = load_credentials(user_id)
-        headers = get_resy_headers(config)
+        client = build_resy_client(config)
 
         # Build geo config for bounding box
         geo_config = {
@@ -292,24 +281,13 @@ def search_map(req: Request):
             # Cache miss - fetch from API
             print("[MAP SEARCH] Cache miss - fetching from Resy API")
 
-            # Create fetch function for Resy API
+            # Create fetch function using resy_client
             def fetch_resy_page(page_num):
                 payload = build_search_payload(query, filters, geo_config, page=page_num)
-
-                response = requests.post(
-                    'https://api.resy.com/3/venuesearch/search',
-                    json=payload,
-                    headers=headers,
-                    timeout=30
-                )
-
-                if response.status_code != 200:
-                    raise Exception(f'API returned status {response.status_code}: {response.text[:200]}')
-
-                data = response.json()
-                hits = data.get('search', {}).get('hits', [])
-                total = data.get('meta', {}).get('total', 0)
-
+                body = VenueSearchRequestBody(**payload)
+                response = client.search_venues_advanced(body)
+                hits = response.search.get("hits", []) if response.search else []
+                total = response.meta.total if response.meta else 0
                 return hits, total
 
             # Fetch enough results

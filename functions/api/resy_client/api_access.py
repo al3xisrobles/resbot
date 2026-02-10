@@ -1,79 +1,68 @@
 import logging
 from typing import Dict, List
 
-import sentry_sdk
-from requests import Session
+from pydantic import ValidationError
 
-from .constants import RESY_BASE_URL, ResyEndpoints
-from .errors import RateLimitError
+from .constants import ResyEndpoints
+from .errors import ResyApiError
+from .http_client import REQUEST_TIMEOUT, ResyHttpClient
 from .models import (
-    ResyConfig,
     AuthRequestBody,
     AuthResponseBody,
-    FindRequestBody,
-    FindResponseBody,
-    Slot,
-    DetailsRequestBody,
-    DetailsResponseBody,
     BookRequestBody,
     BookResponseBody,
+    CalendarRequestParams,
+    CalendarResponseBody,
+    CityListResponseBody,
+    DetailsRequestBody,
+    DetailsResponseBody,
+    FindRequestBody,
+    FindResponseBody,
+    ResyConfig,
+    Slot,
+    VenueResponseBody,
+    VenueSearchRequestBody,
+    VenueSearchResponseBody,
 )
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 
 
-def _check_rate_limit(resp) -> None:
-    """Check if response is a rate limit error and raise RateLimitError if so."""
-    if resp.status_code == 429:
-        # Try to get retry-after header if available
-        retry_after = resp.headers.get('Retry-After')
-        retry_seconds = float(retry_after) if retry_after else None
-        logger.warning("Rate limited by Resy API (429). Retry-After: %s", retry_after)
-        raise RateLimitError(
-            f"Rate limit exceeded: {resp.text[:200] if resp.text else 'No details'}",
-            retry_after=retry_seconds
-        )
-
-# Timeout in seconds for API requests (connect timeout, read timeout)
-# Keep these aggressive for time-sensitive snipes
-REQUEST_TIMEOUT = (5, 10)  # 5s connect, 10s read
-
-
-def build_session(config: ResyConfig) -> Session:
-    session = Session()
-    headers = {
-        "Authorization": config.get_authorization(),
-        "X-Resy-Auth-Token": config.token,
-        "X-Resy-Universal-Auth": config.token,
-        "Origin": "https://resy.com",
-        "X-origin": "https://resy.com",
-        "Referer": "https://resy.com/",
-        "Referrer": "https://resy.com/",
-        "Accept": "application/json, text/plain, */*",
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        ),
-    }
-
-    session.headers.update(headers)
-
-    return session
+def _parse_json_or_raise(resp, model_class, endpoint: str):
+    """Parse response JSON into Pydantic model; on ValidationError raise ResyApiError with body."""
+    try:
+        data = resp.json()
+    except ValueError as e:
+        raise ResyApiError(
+            f"Invalid JSON from {endpoint}: {e}",
+            status_code=resp.status_code,
+            response_body=resp.text,
+            endpoint=endpoint,
+        ) from e
+    try:
+        return model_class(**data)
+    except ValidationError as e:
+        raise ResyApiError(
+            f"Response schema mismatch for {endpoint}: {e}",
+            status_code=resp.status_code,
+            response_body=resp.text,
+            endpoint=endpoint,
+        ) from e
 
 
 class ResyApiAccess:
     @classmethod
     def build(cls, config: ResyConfig) -> "ResyApiAccess":
-        session = build_session(config)
-        return cls(session)
+        client = ResyHttpClient.build(config)
+        return cls(client)
 
-    def __init__(self, session: Session):
-        self.session = session
+    def __init__(self, client: ResyHttpClient):
+        self.client = client
 
     def search_venues(self, query: str) -> List[Dict]:
         """
-        Search for venues by name
+        Search for venues by name (GET with query param).
 
         Args:
             query: Restaurant name search query
@@ -81,147 +70,79 @@ class ResyApiAccess:
         Returns:
             List of venue dictionaries with id, name, location info
         """
-        search_url = RESY_BASE_URL + ResyEndpoints.VENUE_SEARCH.value
+        resp = self.client.get(
+            ResyEndpoints.VENUE_SEARCH.value,
+            params={"query": query},
+            timeout=REQUEST_TIMEOUT,
+        )
+        data = resp.json()
+        results = []
+        if "search" in data and "hits" in data["search"]:
+            for hit in data["search"]["hits"]:
+                venue = hit.get("_source", {})
+                results.append({
+                    "id": venue.get("id", {}).get("resy"),
+                    "name": venue.get("name"),
+                    "locality": venue.get("locality"),
+                    "region": venue.get("region"),
+                    "neighborhood": venue.get("neighborhood"),
+                    "type": venue.get("type"),
+                    "price_range": venue.get("price_range_id", 0),
+                })
+        return results
 
-        with sentry_sdk.start_span(
-            op="http.client",
-            name="resy.search_venues",
-            description=f"GET {ResyEndpoints.VENUE_SEARCH.value}",
-        ) as span:
-            span.set_tag("http.url", search_url)
-            span.set_tag("http.method", "GET")
-            span.set_data("query", query)
+    def search_venues_advanced(self, body: VenueSearchRequestBody) -> VenueSearchResponseBody:
+        """
+        Search venues with full POST body (geo, filters, pagination).
 
-            resp = self.session.get(search_url, params={"query": query}, timeout=REQUEST_TIMEOUT)
+        Args:
+            body: VenueSearchRequestBody
 
-            span.set_tag("http.status_code", resp.status_code)
-
-            if not resp.ok:
-                span.set_status("internal_error")
-                resp.raise_for_status()  # This properly attaches response to HTTPError
-
-            span.set_status("ok")
-            data = resp.json()
-
-            # Extract venue results
-            results = []
-            if "search" in data and "hits" in data["search"]:
-                for hit in data["search"]["hits"]:
-                    venue = hit.get("_source", {})
-                    results.append({
-                        "id": venue.get("id", {}).get("resy"),
-                        "name": venue.get("name"),
-                        "locality": venue.get("locality"),
-                        "region": venue.get("region"),
-                        "neighborhood": venue.get("neighborhood"),
-                        "type": venue.get("type"),
-                        "price_range": venue.get("price_range_id", 0),
-                    })
-
-            span.set_data("results_count", len(results))
-            return results
+        Returns:
+            VenueSearchResponseBody with search.hits and meta.total
+        """
+        endpoint = ResyEndpoints.VENUE_SEARCH.value
+        resp = self.client.post_json(
+            endpoint,
+            body=body.model_dump(exclude_none=True),
+            timeout=(5, 30),
+        )
+        return _parse_json_or_raise(resp, VenueSearchResponseBody, endpoint)
 
     def auth(self, body: AuthRequestBody) -> AuthResponseBody:
-        auth_url = RESY_BASE_URL + ResyEndpoints.PASSWORD_AUTH.value
-
-        with sentry_sdk.start_span(
-            op="http.client",
-            name="resy.auth",
-            description=f"POST {ResyEndpoints.PASSWORD_AUTH.value}",
-        ) as span:
-            span.set_tag("http.url", auth_url)
-            span.set_tag("http.method", "POST")
-            # Don't log email/password in span data for security
-
-            resp = self.session.post(
-                auth_url,
-                data=body.model_dump(),
-                headers={"content-type": "application/x-www-form-urlencoded"},
-                timeout=REQUEST_TIMEOUT,
-            )
-
-            span.set_tag("http.status_code", resp.status_code)
-
-            if not resp.ok:
-                span.set_status("internal_error")
-                resp.raise_for_status()
-
-            span.set_status("ok")
-            return AuthResponseBody(**resp.json())
+        """Authenticate with Resy using /4/auth/password. Returns token and payment methods."""
+        endpoint = ResyEndpoints.PASSWORD_AUTH.value
+        resp = self.client.post_form(
+            endpoint,
+            data=body.model_dump(),
+            extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=REQUEST_TIMEOUT,
+        )
+        return _parse_json_or_raise(resp, AuthResponseBody, endpoint)
 
     def find_booking_slots(self, params: FindRequestBody) -> List[Slot]:
-        find_url = RESY_BASE_URL + ResyEndpoints.FIND.value
-
+        endpoint = ResyEndpoints.FIND.value
         logger.info("Sending request to find booking slots with params: %s", params.model_dump())
-
-        with sentry_sdk.start_span(
-            op="http.client",
-            name="resy.find",
-            description=f"POST {ResyEndpoints.FIND.value}",
-        ) as span:
-            span.set_tag("http.url", find_url)
-            span.set_tag("http.method", "POST")
-            params_dict = params.model_dump()
-            if "venue_id" in params_dict:
-                span.set_tag("venue_id", params_dict["venue_id"])
-            if "party_size" in params_dict:
-                span.set_data("party_size", params_dict["party_size"])
-            if "day" in params_dict:
-                span.set_data("day", params_dict["day"])
-
-            headers = {
-                "Content-Type": "application/json",
-            }
-            resp = self.session.post(
-                find_url,
-                json=params_dict,
-                headers=headers,
-                timeout=REQUEST_TIMEOUT
-            )
-
-            span.set_tag("http.status_code", resp.status_code)
-            logger.info("Received response from find booking slots: %s", resp.text)
-
-            if not resp.ok:
-                _check_rate_limit(resp)  # Check for 429 before generic error
-                span.set_status("internal_error")
-                resp.raise_for_status()
-
-            span.set_status("ok")
-            parsed_resp = FindResponseBody(**resp.json())
-
-            slots = []
-            if parsed_resp.results and parsed_resp.results.venues:
-                slots = parsed_resp.results.venues[0].slots
-            
-            span.set_data("slots_count", len(slots))
-            return slots
+        resp = self.client.post_json(
+            endpoint,
+            body=params.model_dump(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        logger.info("Received response from find booking slots: %s", resp.text)
+        parsed = _parse_json_or_raise(resp, FindResponseBody, endpoint)
+        slots = []
+        if parsed.results and parsed.results.venues:
+            slots = parsed.results.venues[0].slots
+        return slots
 
     def get_booking_token(self, params: DetailsRequestBody) -> DetailsResponseBody:
-        details_url = RESY_BASE_URL + ResyEndpoints.DETAILS.value
-
-        with sentry_sdk.start_span(
-            op="http.client",
-            name="resy.details",
-            description=f"GET {ResyEndpoints.DETAILS.value}",
-        ) as span:
-            span.set_tag("http.url", details_url)
-            span.set_tag("http.method", "GET")
-            params_dict = params.model_dump()
-            if "config_id" in params_dict:
-                span.set_data("config_id", params_dict["config_id"])
-
-            resp = self.session.get(details_url, params=params_dict, timeout=REQUEST_TIMEOUT)
-
-            span.set_tag("http.status_code", resp.status_code)
-
-            if not resp.ok:
-                _check_rate_limit(resp)  # Check for 429 before generic error
-                span.set_status("internal_error")
-                resp.raise_for_status()
-
-            span.set_status("ok")
-            return DetailsResponseBody(**resp.json())
+        endpoint = ResyEndpoints.DETAILS.value
+        resp = self.client.get(
+            endpoint,
+            params=params.model_dump(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        return _parse_json_or_raise(resp, DetailsResponseBody, endpoint)
 
     def _dump_book_request_body_to_dict(self, body: BookRequestBody) -> Dict:
         """
@@ -234,43 +155,63 @@ class ResyApiAccess:
         return body_dict
 
     def book_slot(self, body: BookRequestBody) -> str:
-        book_url = RESY_BASE_URL + ResyEndpoints.BOOK.value
-
+        endpoint = ResyEndpoints.BOOK.value
         body_dict = self._dump_book_request_body_to_dict(body)
-
-        headers = {
+        extra_headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Origin": "https://widgets.resy.com",
             "X-Origin": "https://widgets.resy.com",
             "Referrer": "https://widgets.resy.com/",
             "Cache-Control": "no-cache",
         }
+        resp = self.client.post_form(
+            endpoint,
+            data=body_dict,
+            extra_headers=extra_headers,
+            timeout=REQUEST_TIMEOUT,
+        )
+        logger.info("%s", resp.json())
+        parsed = _parse_json_or_raise(resp, BookResponseBody, endpoint)
+        return parsed.resy_token
 
-        with sentry_sdk.start_span(
-            op="http.client",
-            name="resy.book",
-            description=f"POST {ResyEndpoints.BOOK.value}",
-        ) as span:
-            span.set_tag("http.url", book_url)
-            span.set_tag("http.method", "POST")
-            # Don't log sensitive booking data in span
+    def get_calendar(self, params: CalendarRequestParams) -> CalendarResponseBody:
+        """GET /4/venue/calendar. Returns scheduled dates with inventory/reservation status."""
+        endpoint = ResyEndpoints.CALENDAR.value
+        resp = self.client.get(
+            endpoint,
+            params=params.model_dump(),
+            timeout=REQUEST_TIMEOUT,
+        )
+        return _parse_json_or_raise(resp, CalendarResponseBody, endpoint)
 
-            resp = self.session.post(
-                book_url,
-                data=body_dict,
-                headers=headers,
-                timeout=REQUEST_TIMEOUT,
-            )
+    def get_venue(self, venue_id: str) -> VenueResponseBody:
+        """GET /3/venue. Returns venue details (name, location, images, etc.)."""
+        endpoint = ResyEndpoints.VENUE.value
+        resp = self.client.get(
+            endpoint,
+            params={"id": venue_id},
+            timeout=(5, 30),
+        )
+        return _parse_json_or_raise(resp, VenueResponseBody, endpoint)
 
-            span.set_tag("http.status_code", resp.status_code)
+    def get_city_list(
+        self,
+        slug: str,
+        list_type: str,
+        limit: int = 10,
+    ) -> CityListResponseBody:
+        """GET /3/cities/{slug}/list/{list_type}. E.g. slug='new-york-ny', list_type='climbing'."""
+        path = ResyEndpoints.CITY_LIST.value.replace("{slug}", slug).replace("{list_type}", list_type)
+        resp = self.client.get(
+            path,
+            params={"limit": limit},
+            timeout=REQUEST_TIMEOUT,
+        )
+        return _parse_json_or_raise(resp, CityListResponseBody, path)
 
-            if not resp.ok:
-                _check_rate_limit(resp)  # Check for 429 before generic error
-                span.set_status("internal_error")
-                resp.raise_for_status()
 
-            span.set_status("ok")
-            logger.info(resp.json())
-            parsed_resp = BookResponseBody(**resp.json())
-
-            return parsed_resp.resy_token
+def build_resy_client(config: dict | ResyConfig) -> ResyApiAccess:
+    """One-liner to build a ready-to-use API client from credentials dict or ResyConfig."""
+    if isinstance(config, dict):
+        config = ResyConfig(**config)
+    return ResyApiAccess.build(config)

@@ -5,7 +5,14 @@ import time
 import logging
 from requests import HTTPError
 from requests.exceptions import Timeout, ConnectionError as RequestsConnectionError
-from .errors import NoSlotsError, ExhaustedRetriesError, SlotTakenError, RateLimitError
+from .errors import (
+    NoSlotsError,
+    ExhaustedRetriesError,
+    SlotTakenError,
+    RateLimitError,
+    ResyTransientError,
+    ResyAuthError,
+)
 from .constants import (
     N_RETRIES,
     SECONDS_TO_WAIT_BETWEEN_RETRIES,
@@ -93,14 +100,27 @@ class ResyManager:
             logger.info("Attempting to book slot...")
             resy_token = self.api_access.book_slot(booking_request)
             return resy_token
+        except ResyAuthError as e:
+            logger.error("Auth error - token may be expired: %s", e)
+            raise
         except HTTPError as e:
-            # Safely get status code - e.response may be None when HTTPError is raised manually
-            status_code = 'N/A'
-            if hasattr(e, 'response') and e.response is not None:
-                status_code = e.response.status_code
-            logger.error(f"Booking failed - Error type: {type(e).__name__}, Status: {status_code}, Message: %s")
-            # Raise SlotTakenError to allow retry logic to handle it
-            raise SlotTakenError(f"Failed to book slot: {str(e)}") from e
+            status_code = getattr(getattr(e, "response", None), "status_code", "N/A")
+            logger.error(
+                "Booking failed - Error type: %s, Status: %s, Message: %s",
+                type(e).__name__,
+                status_code,
+                str(e),
+            )
+            raise SlotTakenError("Failed to book slot: %s" % str(e)) from e
+        except Exception as e:
+            if hasattr(e, "status_code"):
+                logger.error(
+                    "Booking failed - %s %s: %s",
+                    getattr(e, "status_code", ""),
+                    getattr(e, "endpoint", ""),
+                    getattr(e, "response_body", "")[:200] or str(e),
+                )
+            raise SlotTakenError("Failed to book slot: %s" % str(e)) from e
 
     def _try_book_slot(self, slot, reservation_request: ReservationRequest) -> str:
         """
@@ -168,40 +188,61 @@ class ResyManager:
 
             except NoSlotsError as e:
                 logger.info(
-                    f"no slots ({str(e)}), retrying; currently {datetime.now().isoformat()}"
+                    "no slots (%s), retrying; currently %s",
+                    str(e),
+                    datetime.now().isoformat(),
                 )
 
             except SlotTakenError:
                 if not self.config.retry_on_taken_slot:
-                    # If retry_on_taken_slot is False, propagate the error immediately
                     raise
                 logger.info(
-                    f"slot taken (attempt {attempt + 1}/{self.retry_config.n_retries}), "
-                    f"retrying; currently {datetime.now().isoformat()}"
+                    "slot taken (attempt %s/%s), retrying; currently %s",
+                    attempt + 1,
+                    self.retry_config.n_retries,
+                    datetime.now().isoformat(),
                 )
 
+            except ResyTransientError as transient_err:
+                logger.warning(
+                    "Transient Resy error (attempt %s/%s): %s %s - %s",
+                    attempt + 1,
+                    self.retry_config.n_retries,
+                    transient_err.status_code,
+                    transient_err.endpoint,
+                    (transient_err.response_body[:200] if transient_err.response_body else "no body"),
+                )
+
+            except ResyAuthError as auth_err:
+                logger.error("Auth error - token may be expired: %s", auth_err)
+                raise
+
             except RateLimitError as rate_err:
-                # Use retry_after from API if available, otherwise use exponential backoff
                 wait_time = rate_err.retry_after if rate_err.retry_after else rate_limit_wait
                 wait_time = min(wait_time, RATE_LIMIT_MAX_WAIT)
                 logger.warning(
-                    f"Rate limited (attempt {attempt + 1}/{self.retry_config.n_retries}), "
-                    f"waiting {wait_time:.1f}s before retry; currently {datetime.now().isoformat()}"
+                    "Rate limited (attempt %s/%s), waiting %s s before retry; currently %s",
+                    attempt + 1,
+                    self.retry_config.n_retries,
+                    wait_time,
+                    datetime.now().isoformat(),
                 )
                 time.sleep(wait_time)
-                # Increase wait time for next rate limit (exponential backoff)
                 rate_limit_wait = min(rate_limit_wait * RATE_LIMIT_MULTIPLIER, RATE_LIMIT_MAX_WAIT)
-                continue  # Don't count rate limits against normal retry sleep
+                continue
 
             except (Timeout, RequestsConnectionError) as net_err:
                 logger.warning(
-                    f"Network error (attempt {attempt + 1}/{self.retry_config.n_retries}): "
-                    f"{type(net_err).__name__} - {str(net_err)}, retrying; "
-                    f"currently {datetime.now().isoformat()}"
+                    "Network error (attempt %s/%s): %s - %s, retrying; currently %s",
+                    attempt + 1,
+                    self.retry_config.n_retries,
+                    type(net_err).__name__,
+                    str(net_err),
+                    datetime.now().isoformat(),
                 )
 
         raise ExhaustedRetriesError(
-            f"Retried {self.retry_config.n_retries} times, " "without finding a slot"
+            "Retried %s times, without finding a slot" % self.retry_config.n_retries
         )
 
     def make_reservation_parallel_with_retries(
@@ -218,40 +259,63 @@ class ResyManager:
 
             except NoSlotsError as e:
                 logger.info(
-                    f"no slots ({str(e)}), retrying; currently {datetime.now().isoformat()}"
+                    "no slots (%s), retrying; currently %s",
+                    str(e),
+                    datetime.now().isoformat(),
                 )
 
             except SlotTakenError:
                 if not self.config.retry_on_taken_slot:
                     raise
                 logger.info(
-                    f"all parallel slots taken (attempt {attempt + 1}/{self.retry_config.n_retries}), "
-                    f"retrying; currently {datetime.now().isoformat()}"
+                    "all parallel slots taken (attempt %s/%s), retrying; currently %s",
+                    attempt + 1,
+                    self.retry_config.n_retries,
+                    datetime.now().isoformat(),
                 )
+
+            except ResyTransientError as transient_err:
+                logger.warning(
+                    "Transient Resy error (attempt %s/%s): %s %s - %s",
+                    attempt + 1,
+                    self.retry_config.n_retries,
+                    transient_err.status_code,
+                    transient_err.endpoint,
+                    (transient_err.response_body[:200] if transient_err.response_body else "no body"),
+                )
+
+            except ResyAuthError as auth_err:
+                logger.error("Auth error - token may be expired: %s", auth_err)
+                raise
 
             except RateLimitError as rate_err:
                 # Use retry_after from API if available, otherwise use exponential backoff
                 wait_time = rate_err.retry_after if rate_err.retry_after else rate_limit_wait
                 wait_time = min(wait_time, RATE_LIMIT_MAX_WAIT)
                 logger.warning(
-                    f"Rate limited (attempt {attempt + 1}/{self.retry_config.n_retries}), "
-                    f"waiting {wait_time:.1f}s before retry; currently {datetime.now().isoformat()}"
+                    "Rate limited (attempt %s/%s), waiting %s s before retry; currently %s",
+                    attempt + 1,
+                    self.retry_config.n_retries,
+                    wait_time,
+                    datetime.now().isoformat(),
                 )
                 time.sleep(wait_time)
-                # Increase wait time for next rate limit (exponential backoff)
                 rate_limit_wait = min(rate_limit_wait * RATE_LIMIT_MULTIPLIER, RATE_LIMIT_MAX_WAIT)
-                continue  # Don't count rate limits against normal retry sleep
+                continue
 
             except (Timeout, RequestsConnectionError) as net_err:
                 logger.warning(
-                    f"Network error (attempt {attempt + 1}/{self.retry_config.n_retries}): "
-                    f"{type(net_err).__name__} - {str(net_err)}, retrying; "
-                    f"currently {datetime.now().isoformat()}"
+                    "Network error (attempt %s/%s): %s - %s, retrying; currently %s",
+                    attempt + 1,
+                    self.retry_config.n_retries,
+                    type(net_err).__name__,
+                    str(net_err),
+                    datetime.now().isoformat(),
                 )
 
         raise ExhaustedRetriesError(
-            f"Retried {self.retry_config.n_retries} times with parallel booking, "
-            f"without securing a slot"
+            "Retried %s times with parallel booking, without securing a slot"
+            % self.retry_config.n_retries
         )
 
     def _get_drop_time(self, reservation_request: TimedReservationRequest) -> datetime:
