@@ -23,6 +23,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ResySessionProvider } from "@/contexts/ResySessionContext";
 import { ResySessionExpiredModal } from "@/components/ResySessionExpiredModal";
 import ProfilePage from "./pages/ProfilePage";
+import { DebugPage } from "./pages/DebugPage";
 // Firebase is initialized in services/firebase.ts
 import "@/services/firebase";
 
@@ -63,6 +64,7 @@ function AppContent() {
 
         {/* Public routes */}
         <Route path="/search" element={<SearchPage />} />
+        <Route path="/debug" element={<DebugPage />} />
 
         {/* Authenticated routes - require authentication only */}
         <Route

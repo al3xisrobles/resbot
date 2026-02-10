@@ -43,6 +43,8 @@ export const API_ENDPOINTS = {
     updateSnipe: "/update_snipe",
     cancelSnipe: "/cancel_snipe",
     runSnipe: "/run_snipe",
+    // Debug
+    resyDebug: "/resy_debug",
 } as const;
 
 /**

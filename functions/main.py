@@ -33,6 +33,7 @@ from api.snipe import run_snipe, summarize_snipe_logs  # noqa: F401
 from api.schedule import create_snipe, update_snipe, cancel_snipe  # noqa: F401
 from api.onboarding import start_resy_onboarding, resy_account  # noqa: F401
 from api.me import me  # noqa: F401
+from api.debug import resy_debug  # noqa: F401
 
 # Initialize Firebase Admin (Firestore, etc.)
 initialize_app()

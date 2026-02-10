@@ -1,14 +1,1 @@
-{
-  "executionEnvironments": [
-    {
-      "root": ".",
-      "pythonVersion": "3.13",
-      "pythonPlatform": "Darwin",
-      "extraPaths": [
-        "api"
-      ]
-    }
-  ],
-  "reportMissingImports": true,
-  "reportMissingTypeStubs": false
-}
+{"executionEnvironments":[{"root":".","pythonVersion":"3.12","pythonPlatform":"Darwin","extraPaths":["api"]}],"reportMissingImports":true,"reportMissingTypeStubs":false}

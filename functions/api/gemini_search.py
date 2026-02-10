@@ -132,37 +132,37 @@ def gemini_search(req: Request):
                 venue_data = client.get_venue(venue_id)
                 content_array = venue_data.content if isinstance(venue_data.content, list) else []
 
-                    # Extract relevant content sections
-                    extracted_content = []
-                    for content_item in content_array:
-                        if not isinstance(content_item, dict):
-                            continue
-                        content_name = content_item.get('name', '')
-                        content_body = content_item.get('body', '')
+                # Extract relevant content sections
+                extracted_content = []
+                for content_item in content_array:
+                    if not isinstance(content_item, dict):
+                        continue
+                    content_name = content_item.get('name', '')
+                    content_body = content_item.get('body', '')
 
-                        # Prioritize need_to_know (reservation policy), then about, then why_we_like_it
-                        if content_name == 'need_to_know' and content_body:
-                            extracted_content.append(
-                                f"RESERVATION POLICY: {content_body}"
-                            )
-                        elif content_name == 'about' and content_body:
-                            extracted_content.append(
-                                f"ABOUT: {content_body}"
-                            )
-                        elif content_name == 'why_we_like_it' and content_body:
-                            extracted_content.append(
-                                f"WHY WE LIKE IT: {content_body}"
-                            )
+                    # Prioritize need_to_know (reservation policy), then about, then why_we_like_it
+                    if content_name == 'need_to_know' and content_body:
+                        extracted_content.append(
+                            f"RESERVATION POLICY: {content_body}"
+                        )
+                    elif content_name == 'about' and content_body:
+                        extracted_content.append(
+                            f"ABOUT: {content_body}"
+                        )
+                    elif content_name == 'why_we_like_it' and content_body:
+                        extracted_content.append(
+                            f"WHY WE LIKE IT: {content_body}"
+                        )
 
-                    if extracted_content:
-                        resy_venue_info = (
-                            "\n\nOFFICIAL RESY VENUE INFO (from restaurant's Resy page):\n"
-                            + "\n\n".join(extracted_content)
-                        )
-                        logger.info(
-                            "Extracted %s content sections from venue API",
-                            len(extracted_content)
-                        )
+                if extracted_content:
+                    resy_venue_info = (
+                        "\n\nOFFICIAL RESY VENUE INFO (from restaurant's Resy page):\n"
+                        + "\n\n".join(extracted_content)
+                    )
+                    logger.info(
+                        "Extracted %s content sections from venue API",
+                        len(extracted_content)
+                    )
 
             except Exception as e:
                 logger.warning("Failed to fetch venue content: %s", e)

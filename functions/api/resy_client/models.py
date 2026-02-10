@@ -202,7 +202,7 @@ class VenueResponseBody(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     content: Optional[Any] = None  # List of content sections (name, body) or dict
     price_range_id: Optional[int] = None
-    rater: Optional[Dict[str, Any]] = None
+    rater: Optional[List[Dict[str, Any]]] = None  # API returns list of rater objects
 
 
 # --- Venue search advanced POST (/3/venuesearch/search) ---

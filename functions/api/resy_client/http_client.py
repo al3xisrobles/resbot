@@ -126,6 +126,77 @@ class ResyHttpClient:
             timeout=timeout,
         )
 
+    def request_no_raise(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
+        timeout: tuple[int, int] = REQUEST_TIMEOUT,
+    ) -> requests.Response:
+        """
+        Make request and return response without raising on non-2xx.
+        For use by debug/tooling that needs to inspect status, headers, and body.
+        """
+        url = RESY_BASE_URL + endpoint
+        log_params = _redact_for_log(params)
+        log_body = _redact_for_log(json if json is not None else data)
+
+        with sentry_sdk.start_span(
+            op="http.client",
+            name=f"resy {method} {endpoint}",
+            description=f"{method} {endpoint}",
+        ) as span:
+            span.set_tag("http.url", url)
+            span.set_tag("http.method", method)
+            span.set_tag("resy.endpoint", endpoint)
+
+            headers = dict(extra_headers) if extra_headers else {}
+            if json is not None:
+                headers.setdefault("Content-Type", "application/json")
+            if data is not None and "Content-Type" not in headers:
+                headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+
+            logger.info(
+                "Resy request %s %s params=%s body=%s",
+                method,
+                endpoint,
+                log_params,
+                log_body,
+            )
+
+            try:
+                resp = self.session.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json,
+                    data=data,
+                    headers=headers if headers else None,
+                    timeout=timeout,
+                )
+            except requests.exceptions.RequestException as e:
+                logger.error("Resy request failed %s %s: %s", method, endpoint, e)
+                span.set_status("internal_error")
+                raise
+
+            span.set_tag("http.status_code", resp.status_code)
+            resp_body_preview = resp.text
+            if not resp.ok and resp_body_preview:
+                resp_body_preview = _truncate(resp_body_preview)
+            logger.info(
+                "Resy response %s %s status=%s body=%s",
+                method,
+                endpoint,
+                resp.status_code,
+                resp_body_preview if not resp.ok else "(success)",
+            )
+            span.set_status("ok" if resp.ok else "internal_error")
+            return resp
+
     def _request(
         self,
         method: str,
