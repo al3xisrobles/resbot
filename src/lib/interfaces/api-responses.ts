@@ -9,8 +9,7 @@ import type {
   CalendarData,
   GeminiSearchResponse,
   TrendingRestaurant,
-  VenueLinks,
-  VenueBasicData,
+  VenueLinksResponse,
 } from "./app-types";
 
 /**
@@ -27,27 +26,19 @@ export interface ApiResponse<T> {
 /**
  * Search API response structure
  * Used by /search and /search_map endpoints
- * Unlike other endpoints, this has both data and pagination at the top level
+ * Standardized: data contains results and pagination
  */
 export interface SearchApiResponse {
   success: boolean;
-  data: SearchResult[];
-  pagination: SearchPagination;
-  error?: string;
-}
-
-/**
- * Venue links API response structure
- * Used by /venue_links endpoint
- */
-export interface VenueLinksApiResponse {
-  success: boolean;
-  links: VenueLinks;
-  venueData: VenueBasicData;
+  data?: {
+    results: SearchResult[];
+    pagination: SearchPagination;
+  };
   error?: string;
 }
 
 // Re-export common response wrappers for convenience
+export type VenueLinksApiResponse = ApiResponse<VenueLinksResponse>;
 export type CalendarApiResponse = ApiResponse<CalendarData>;
 export type GeminiSearchApiResponse = ApiResponse<GeminiSearchResponse>;
 export type TrendingRestaurantsApiResponse = ApiResponse<TrendingRestaurant[]>;

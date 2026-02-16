@@ -10,6 +10,14 @@ from datetime import date, timedelta
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
 
+from .response_schemas import (
+    CalendarData,
+    CalendarAvailabilityEntry,
+    ReservationCreatedData,
+    SlotsData,
+    error_response,
+    success_response,
+)
 from .resy_client.api_access import build_resy_client
 from .resy_client.errors import ResyApiError
 from .resy_client.manager import ResyManager
@@ -37,10 +45,8 @@ def calendar(req: Request):
         user_id = req.args.get('userId')
 
         if not venue_id:
-            return {
-                'success': False,
-                'error': 'Missing venue_id parameter'
-            }, 400
+            resp, code = error_response('Missing venue_id parameter', 400)
+            return resp, code
 
         # Load credentials and use centralized Resy client
         config = load_credentials(user_id)
@@ -69,21 +75,21 @@ def calendar(req: Request):
             inventory = entry.inventory
             reservation_status = inventory.reservation if inventory else None
 
-            availability.append({
-                'date': date_str,
-                'available': reservation_status == 'available',
-                'soldOut': reservation_status in ('sold-out', 'not available'),
-                'closed': reservation_status == 'closed'
-            })
+            availability.append(
+                CalendarAvailabilityEntry(
+                    date=date_str,
+                    available=reservation_status == 'available',
+                    soldOut=reservation_status in ('sold-out', 'not available'),
+                    closed=reservation_status == 'closed',
+                )
+            )
 
-        return {
-            'success': True,
-            'data': {
-                'availability': availability,
-                'startDate': today.strftime('%Y-%m-%d'),
-                'endDate': end_date.strftime('%Y-%m-%d')
-            }
-        }
+        calendar_data = CalendarData(
+            availability=availability,
+            startDate=today.strftime('%Y-%m-%d'),
+            endDate=end_date.strftime('%Y-%m-%d'),
+        )
+        return success_response(calendar_data)
 
     except ResyApiError as e:
         logger.error(
@@ -92,16 +98,12 @@ def calendar(req: Request):
             e.endpoint,
             e.response_body[:200] if e.response_body else "",
         )
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code
     except Exception as e:
         logger.error("Error fetching calendar: %s", e)
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]), timeout_sec=60, memory=MemoryOption.GB_1)
@@ -132,10 +134,11 @@ def reservation(req: Request):
         missing_fields = [field for field in required_fields if field not in data]
 
         if missing_fields:
-            return {
-                'success': False,
-                'error': f"Missing required fields: {', '.join(missing_fields)}"
-            }, 400
+            resp, code = error_response(
+                f"Missing required fields: {', '.join(missing_fields)}",
+                400,
+            )
+            return resp, code
 
         # Load credentials (from Firestore if userId provided, else from credentials.json)
         credentials = load_credentials(user_id)
@@ -163,18 +166,16 @@ def reservation(req: Request):
         manager = ResyManager.build(config)
         resy_token = manager.make_reservation_at_opening_time(timed_request)
 
-        return {
-            'success': True,
-            'message': 'Reservation request submitted successfully',
-            'resy_token': resy_token
-        }
+        reservation_data = ReservationCreatedData(
+            message='Reservation request submitted successfully',
+            resy_token=resy_token,
+        )
+        return success_response(reservation_data)
 
     except Exception as e:
         logger.error("Error making reservation: %s", e)
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=60, memory=MemoryOption.GB_1)
@@ -200,16 +201,12 @@ def slots(req: Request):
         )
 
         if not venue_id:
-            return {
-                'success': False,
-                'error': 'Missing venueId parameter'
-            }, 400
+            resp, code = error_response('Missing venueId parameter', 400)
+            return resp, code
 
         if not date_str:
-            return {
-                'success': False,
-                'error': 'Missing date parameter'
-            }, 400
+            resp, code = error_response('Missing date parameter', 400)
+            return resp, code
 
         # Load credentials (from Firestore if userId provided, else from credentials.json)
         config = load_credentials(user_id)
@@ -225,13 +222,11 @@ def slots(req: Request):
             config=config
         )
 
-        return {
-            'success': True,
-            'data': {
-                'times': availability_data.get('times', []),
-                'status': availability_data.get('status')
-            }
-        }
+        slots_data = SlotsData(
+            times=availability_data.get('times', []),
+            status=availability_data.get('status'),
+        )
+        return success_response(slots_data)
 
     except Exception as e:
         error_details = {
@@ -245,7 +240,5 @@ def slots(req: Request):
         }
         logger.error("Error fetching slots: %s", error_details)
         logger.error("Full traceback:\n%s", traceback.format_exc())
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code

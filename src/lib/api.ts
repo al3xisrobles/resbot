@@ -2,20 +2,29 @@
  * API client for Resy Bot backend
  * Now using Cloud Functions instead of Flask server
  * Uses centralized apiClient for trace header propagation
+ * Types from generated schemas (single source of truth with backend)
  */
 import { apiGet, apiPost, apiDelete, API_ENDPOINTS } from "./apiClient";
+import type {
+  SearchApiResponse,
+  VenueLinksApiResponse,
+  OnboardingApiResponse,
+  MeResponse,
+  GeminiSearchApiResponse,
+} from "./api-schema-registry";
 
 import type {
   SearchFilters,
   SearchResponse,
-  SearchApiResponse,
   VenueData,
-  GeminiSearchResponse,
   CalendarData,
   TrendingRestaurant,
   VenueLinksResponse,
   MapSearchFilters,
   ApiResponse,
+  GeminiSearchResponse,
+  SearchResult,
+  SearchPagination,
 } from "./interfaces";
 
 /**
@@ -92,13 +101,13 @@ export async function searchRestaurants(
   }
 
   return {
-    results: result.data || [],
-    pagination: result.pagination || {
+    results: (result.data?.results || []) as SearchResult[],
+    pagination: (result.data?.pagination || {
       offset: 0,
       perPage: 20,
       nextOffset: null,
       hasMore: false,
-    },
+    }) as SearchPagination,
   };
 }
 
@@ -189,13 +198,13 @@ export async function searchRestaurantsByMap(
   }
 
   return {
-    results: result.data || [],
-    pagination: result.pagination || {
+    results: (result.data?.results || []) as SearchResult[],
+    pagination: (result.data?.pagination || {
       offset: 0,
       perPage: 20,
       nextOffset: null,
       hasMore: false,
-    },
+    }) as SearchPagination,
   };
 }
 
@@ -235,7 +244,7 @@ export async function getGeminiSearch(
   const body: Record<string, string> = { restaurantName, city };
   if (venueId) body.venueId = venueId;
 
-  const result = await apiPost<ApiResponse<GeminiSearchResponse>>(
+  const result = await apiPost<GeminiSearchApiResponse>(
     API_ENDPOINTS.geminiSearch,
     body,
     { userId }
@@ -245,7 +254,7 @@ export async function getGeminiSearch(
     throw new Error(result.error || "Failed to get AI summary");
   }
 
-  return result.data;
+  return result.data as unknown as GeminiSearchResponse;
 }
 
 /**
@@ -260,7 +269,7 @@ export async function getSnipeLogsSummary(
   );
 
   if (!result.success || !result.data) {
-    throw new Error(result.error || "Failed to get log summary");
+    throw new Error(result.error || "Failed to get log summary. Results looks like this: " + JSON.stringify(result));
   }
 
   return result.data.summary;
@@ -285,7 +294,7 @@ export async function getCalendar(
   const result = await apiGet<ApiResponse<CalendarData>>(API_ENDPOINTS.calendar, params);
 
   if (!result.success || !result.data) {
-    throw new Error(result.error || "Failed to fetch calendar");
+    throw new Error(result.error || "Failed to fetch calendar. Results looks like this: " + JSON.stringify(result));
   }
 
   return result.data;
@@ -351,7 +360,7 @@ export async function healthCheck(): Promise<boolean> {
   try {
     const data = await apiGet<{ status: string }>(API_ENDPOINTS.health);
     return data.status === "ok";
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -429,28 +438,28 @@ export async function getVenueLinks(
   const startTime = performance.now();
 
   try {
-    const result = await apiGet<VenueLinksResponse & { success: boolean; error?: string }>(
+    const result = await apiGet<VenueLinksApiResponse>(
       API_ENDPOINTS.venueLinks,
       { id: venueId, userId }
     );
 
-    if (!result.success) {
+    if (!result.success || !result.data) {
       console.error(`[API] API returned error:`, result.error);
       throw new Error(result.error || "Failed to fetch venue links");
     }
 
     const elapsedTime = (performance.now() - startTime).toFixed(0);
-    const foundCount = Object.values(result.links).filter(
+    const foundCount = Object.values(result.data.links).filter(
       (link) => link !== null
     ).length;
     console.log(
       `[API] ✓ Successfully fetched venue links in ${elapsedTime}ms. Found ${foundCount}/2 links:`,
-      result.links
+      result.data.links
     );
 
     return {
-      links: result.links,
-      venueData: result.venueData,
+      links: result.data.links as VenueLinksResponse["links"],
+      venueData: result.data.venueData,
     };
   } catch (error) {
     const elapsedTime = (performance.now() - startTime).toFixed(0);
@@ -476,16 +485,18 @@ export async function connectResyAccount(
   error?: string;
 }> {
   try {
-    const result = await apiPost<{
-      success: boolean;
-      hasPaymentMethod?: boolean;
-      paymentMethodId?: number;
-      error?: string;
-    }>(
+    const result = await apiPost<OnboardingApiResponse>(
       API_ENDPOINTS.startResyOnboarding,
       { email, password, userId }
     );
-    return result;
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+    return {
+      success: result.success,
+      hasPaymentMethod: result.data?.hasPaymentMethod ?? undefined,
+      paymentMethodId: result.data?.paymentMethodId ?? undefined,
+    };
   } catch (error) {
     console.error("[API] Error connecting Resy account:", error);
     throw error;
@@ -508,19 +519,19 @@ export async function getMe(userId: string): Promise<{
   error?: string;
 }> {
   try {
-    const result = await apiGet<{
-      success: boolean;
-      onboardingStatus: 'not_started' | 'completed';
-      hasPaymentMethod: boolean;
-      resy: {
-        email: string;
-        firstName: string;
-        lastName: string;
-        paymentMethodId: number | null;
-      } | null;
-      error?: string;
-    }>(API_ENDPOINTS.me, { userId });
-    return result;
+    const result = await apiGet<MeResponse>(API_ENDPOINTS.me, { userId });
+    
+    // Extract data from the nested response structure
+    if (!result.success || !result.data) {
+      throw new Error(result.error || "Failed to get user session data");
+    }
+    
+    return {
+      success: result.success,
+      onboardingStatus: result.data.onboardingStatus as 'not_started' | 'completed',
+      hasPaymentMethod: result.data.hasPaymentMethod,
+      resy: result.data.resy,
+    };
   } catch (error) {
     console.error("[API] Error getting user session data:", error);
     throw error;

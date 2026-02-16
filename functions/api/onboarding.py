@@ -16,6 +16,15 @@ from .resy_client.api_access import build_resy_client
 from .resy_client.errors import ResyApiError, ResyAuthError, ResyInvalidCredentialsError
 from .resy_client.models import AuthRequestBody, ResyConfig
 from .sentry_utils import with_sentry_trace
+from .response_schemas import (
+    success_response,
+    error_response,
+    OnboardingData,
+    AccountStatusData,
+    PaymentMethodUpdateData,
+    DisconnectData,
+    ResyPaymentMethod,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -98,10 +107,7 @@ def start_resy_onboarding(req: Request):
         # Parse request body
         request_json = req.get_json(silent=True)
         if not request_json:
-            return {
-                'success': False,
-                'error': 'Invalid request body'
-            }, 400
+            return error_response('Invalid request body', 400)
 
         email = request_json.get('email')
         password = request_json.get('password')
@@ -109,10 +115,7 @@ def start_resy_onboarding(req: Request):
 
         # Validate required fields
         if not email or not password or not firebase_uid:
-            return {
-                'success': False,
-                'error': 'Missing required fields: email, password, userId'
-            }, 400
+            return error_response('Missing required fields: email, password, userId', 400)
 
         logger.info("Starting Resy onboarding for Firebase user: %s", firebase_uid)
 
@@ -171,20 +174,18 @@ def start_resy_onboarding(req: Request):
             logger.error(f"[ONBOARDING] Full traceback:\n{traceback.format_exc()}")
             raise Exception(error_msg) from firestore_error
 
-        return {
-            'success': True,
-            'hasPaymentMethod': has_payment_method,
-            'paymentMethodId': payment_method_id
-        }, 200
+        return success_response(
+            OnboardingData(
+                hasPaymentMethod=has_payment_method,
+                paymentMethodId=payment_method_id
+            )
+        ), 200
 
     except ValueError as e:
         # User input errors (e.g., invalid credentials) - don't log to Sentry as bugs
         error_message = str(e)
         logger.info("Resy onboarding failed due to user error: %s", error_message)
-        return {
-            'success': False,
-            'error': error_message
-        }, 400
+        return error_response(error_message, 400)
     except Exception as e:
         # Unexpected errors - these should be logged to Sentry
         error_message = str(e)
@@ -192,14 +193,8 @@ def start_resy_onboarding(req: Request):
 
         # Return appropriate error response
         if "Invalid Resy login" in error_message:
-            return {
-                'success': False,
-                'error': 'Invalid Resy login'
-            }, 400
-        return {
-            'success': False,
-            'error': 'Failed to connect Resy account'
-        }, 502
+            return error_response('Invalid Resy login', 400)
+        return error_response('Failed to connect Resy account', 502)
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET", "POST", "DELETE"]))
@@ -219,10 +214,7 @@ def resy_account(req: Request):
     try:
         firebase_uid = req.args.get('userId')
         if not firebase_uid:
-            return {
-                'success': False,
-                'error': 'userId is required'
-            }, 400
+            return error_response('userId is required', 400)
 
         db = firestore.client()
         doc_ref = db.collection('resyCredentials').document(firebase_uid)
@@ -236,47 +228,41 @@ def resy_account(req: Request):
                 payment_methods = data.get('paymentMethods', [])
                 payment_method_id = data.get('paymentMethodId')
                 
-                return {
-                    'success': True,
-                    'connected': True,
-                    'hasPaymentMethod': payment_method_id is not None,
-                    'paymentMethodId': payment_method_id,
-                    'paymentMethods': payment_methods,
-                    'email': data.get('email'),
-                    'firstName': data.get('firstName', ''),
-                    'lastName': data.get('lastName', ''),
-                    'name': f"{data.get('firstName', '')} {data.get('lastName', '')}".strip(),
-                    'mobileNumber': data.get('mobileNumber'),
-                    'userId': data.get('userId')  # Resy user ID
-                }, 200
-            return {
-                'success': True,
-                'connected': False
-            }, 200
+                # Convert payment methods to Pydantic models
+                payment_method_models = [
+                    ResyPaymentMethod(**pm)
+                    for pm in payment_methods if isinstance(pm, dict)
+                ]
+                
+                return success_response(
+                    AccountStatusData(
+                        connected=True,
+                        hasPaymentMethod=payment_method_id is not None,
+                        paymentMethodId=payment_method_id,
+                        paymentMethods=payment_method_models,
+                        email=data.get('email'),
+                        firstName=data.get('firstName', ''),
+                        lastName=data.get('lastName', ''),
+                        mobileNumber=data.get('mobileNumber'),
+                        userId=data.get('userId')
+                    )
+                )
+            return success_response(AccountStatusData(connected=False))
 
         if req.method == 'POST':
             # Update payment method
             request_json = req.get_json(silent=True)
             if not request_json:
-                return {
-                    'success': False,
-                    'error': 'Invalid request body'
-                }, 400
+                return error_response('Invalid request body', 400)
 
             payment_method_id = request_json.get('paymentMethodId')
             if payment_method_id is None:
-                return {
-                    'success': False,
-                    'error': 'paymentMethodId is required'
-                }, 400
+                return error_response('paymentMethodId is required', 400)
 
             # Check if credentials exist
             doc = doc_ref.get()
             if not doc.exists:
-                return {
-                    'success': False,
-                    'error': 'Resy account not connected'
-                }, 404
+                return error_response('Resy account not connected', 404)
 
             data = doc.to_dict()
             payment_methods = data.get('paymentMethods', [])
@@ -284,10 +270,7 @@ def resy_account(req: Request):
             # Validate that the payment method exists in the user's payment methods
             payment_method_ids = [pm.get('id') if isinstance(pm, dict) else pm for pm in payment_methods]
             if payment_method_id not in payment_method_ids:
-                return {
-                    'success': False,
-                    'error': 'Payment method not found in user\'s payment methods'
-                }, 400
+                return error_response('Payment method not found in user\'s payment methods', 400)
 
             # Update the payment method ID
             doc_ref.update({
@@ -296,24 +279,19 @@ def resy_account(req: Request):
             })
             
             logger.info("Updated payment method for Firebase user %s to %s", firebase_uid, payment_method_id)
-            return {
-                'success': True,
-                'message': 'Payment method updated',
-                'paymentMethodId': payment_method_id
-            }, 200
+            return success_response(
+                PaymentMethodUpdateData(
+                    message='Payment method updated',
+                    paymentMethodId=payment_method_id
+                )
+            )
 
         if req.method == 'DELETE':
             # Delete credentials
             doc_ref.delete()
             logger.info("Deleted Resy credentials for Firebase user %s", firebase_uid)
-            return {
-                'success': True,
-                'message': 'Resy account disconnected'
-            }, 200
+            return success_response(DisconnectData(message='Resy account disconnected'))
 
     except Exception as e:
         logger.error("Error in resy_account endpoint: %s", e)
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        return error_response(str(e), 500)

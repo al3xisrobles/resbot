@@ -49,7 +49,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    // Provide a more helpful error message with debugging information
+    const error = new Error(
+      "useAuth must be used within an AuthProvider. " +
+      "This error can occur if: 1) The component is rendered outside the AuthProvider, " +
+      "2) During hot module reload, or 3) The AuthProvider hasn't mounted yet."
+    );
+    Sentry.captureException(error);
+    throw error;
   }
   return context;
 }

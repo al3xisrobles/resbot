@@ -34,9 +34,22 @@ import { CitySelector } from "@/common/components/CitySelector";
 
 export function Header() {
   const isAuthLoading = useAtomValue(isAuthLoadingAtom);
-  const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Try to get auth context, but handle gracefully if it's not available yet
+  let currentUser = null;
+  let logout = async () => {};
+  try {
+    const auth = useAuth();
+    currentUser = auth.currentUser;
+    logout = auth.logout;
+  } catch (error) {
+    // If auth context is not available yet (e.g., during HMR or initial render),
+    // treat as unauthenticated and log the error
+    console.warn("Auth context not available in Header, treating as unauthenticated");
+    Sentry.captureException(error);
+  }
 
   async function handleLogout() {
     try {

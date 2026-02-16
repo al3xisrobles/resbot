@@ -12,6 +12,7 @@ from firebase_functions.options import CorsOptions, MemoryOption
 from google.cloud import firestore as gc_firestore
 
 from .cities import get_city_config
+from .response_schemas import SearchData, SearchPagination, SearchResultItem, error_response, success_response
 from .resy_client.api_access import build_resy_client
 from .resy_client.models import VenueSearchRequestBody
 from .sentry_utils import with_sentry_trace
@@ -65,10 +66,11 @@ def search(req: Request):
 
         # At least one filter must be provided
         if not query and not filters['cuisines'] and not filters['price_ranges']:
-            return {
-                'success': False,
-                'error': 'At least one search parameter is required (query, cuisines, or priceRanges)'
-            }, 400
+            resp, code = error_response(
+                'At least one search parameter is required (query, cuisines, or priceRanges)',
+                400,
+            )
+            return resp, code
 
         # Load credentials and build Resy client
         config = load_credentials(user_id)
@@ -132,24 +134,22 @@ def search(req: Request):
             else None
         )
 
-        return {
-            'success': True,
-            'data': results,
-            'pagination': {
-                'offset': filters['offset'],
-                'perPage': filters['per_page'],
-                'nextOffset': next_offset,
-                'hasMore': next_offset is not None,
-                'total': total_resy_results  # from Resy API (unfiltered estimate)
-            }
-        }
+        search_data = SearchData(
+            results=[SearchResultItem.model_validate(r) for r in results],
+            pagination=SearchPagination(
+                offset=filters['offset'],
+                perPage=filters['per_page'],
+                nextOffset=next_offset,
+                hasMore=next_offset is not None,
+                total=total_resy_results,
+            ),
+        )
+        return success_response(search_data)
 
     except Exception as e:
         logger.exception("Error searching venues")
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=120, memory=MemoryOption.GB_1)
@@ -421,7 +421,7 @@ def search_map(req: Request):
             })
 
         # Build pagination response
-        pagination_response = {
+        pagination_kwargs = {
             'offset': filters['offset'],
             'perPage': filters['per_page'],
             'nextOffset': next_offset,
@@ -430,17 +430,17 @@ def search_map(req: Request):
 
         # For filtered pagination, provide progressive count info instead of total
         if is_filtered_pagination:
-            pagination_response['isFiltered'] = True
-            pagination_response['foundSoFar'] = len(all_results)  # How many matches found
+            pagination_kwargs['isFiltered'] = True
+            pagination_kwargs['foundSoFar'] = len(all_results)  # How many matches found
             # total is omitted intentionally - we don't know true total
         else:
-            pagination_response['total'] = display_total
+            pagination_kwargs['total'] = display_total
 
-        return {
-            'success': True,
-            'data': results,
-            'pagination': pagination_response
-        }
+        search_data = SearchData(
+            results=[SearchResultItem.model_validate(r) for r in results],
+            pagination=SearchPagination(**pagination_kwargs),
+        )
+        return success_response(search_data)
 
     except Exception as e:
         logger.error("Error searching venues by map: %s", e)
@@ -452,7 +452,5 @@ def search_map(req: Request):
                 "error": str(e),
                 "durationMs": duration_ms,
             })
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code

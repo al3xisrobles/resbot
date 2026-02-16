@@ -18,6 +18,12 @@ from .resy_client.manager import ResyManager
 from .resy_client.errors import RateLimitError
 from .constants import GEMINI_MODEL
 from .utils import load_credentials, gemini_client
+from .response_schemas import (
+    success_response,
+    error_response,
+    SummaryData,
+    SnipeResultData,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -115,7 +121,7 @@ def run_snipe(req: Request):
     # 2) Only process real POSTs
     if req.method != "POST":
         print(f"[run_snipe] ✗ Method not allowed: {req.method}")
-        return {"error": "Method not allowed"}, 405
+        return error_response("Method not allowed", 405)
 
     try:
         logger.info("[run_snipe] Received request")
@@ -124,13 +130,13 @@ def run_snipe(req: Request):
         job_id = body.get("jobId")
         print(f"[run_snipe] Request body: {body}")
         if not job_id:
-            return {"error": "Missing jobId"}, 400
+            return error_response("Missing jobId", 400)
 
         job_ref = get_db().collection("reservationJobs").document(job_id)
         snap = job_ref.get()
         if not snap.exists:
             logger.error("[run_snipe] Job %s not found", job_id)
-            return {"error": "Job not found"}, 404
+            return error_response("Job not found", 404)
 
         job_data = snap.to_dict()
         user_id = job_data.get('userId')
@@ -139,7 +145,7 @@ def run_snipe(req: Request):
         # targetTimeIso stored as ISO 8601 with timezone, e.g. "2025-12-01T00:00:00-05:00"
         target_iso = job_data.get("targetTimeIso")
         if not target_iso:
-            return {"error": "Job missing targetTimeIso"}, 400
+            return error_response("Job missing targetTimeIso", 400)
 
         target_dt = dt.datetime.fromisoformat(target_iso)
         now = dt.datetime.now(tz=target_dt.tzinfo)
@@ -234,11 +240,9 @@ def run_snipe(req: Request):
             }
         )
 
-        return {
-            "status": status,
-            "jobId": job_id,
-            "resyToken": resy_token,
-        }
+        return success_response(
+            SnipeResultData(status=status, jobId=job_id, resyToken=resy_token)
+        )
 
     except Exception as e:
         # best-effort logging & marking as failed
@@ -261,7 +265,7 @@ def run_snipe(req: Request):
         except Exception:
             pass
 
-        return {"error": str(e)}, 500
+        return error_response(str(e), 500)
 
 
 @on_request(
@@ -287,27 +291,27 @@ def summarize_snipe_logs(req: Request):
 
     # 2) Only process real POSTs
     if req.method != "POST":
-        return {"error": "Method not allowed"}, 405
+        return error_response("Method not allowed", 405)
 
     try:
         if not gemini_client:
-            return {
-                "success": False,
-                "error": "Gemini API not configured. Please set GEMINI_API_KEY environment variable."
-            }, 503
+            return error_response(
+                "Gemini API not configured. Please set GEMINI_API_KEY environment variable.",
+                503
+            )
 
         body = req.get_json(silent=True) or {}
         job_id = body.get("jobId")
 
         if not job_id:
-            return {"error": "Missing jobId"}, 400
+            return error_response("Missing jobId", 400)
 
         # Load job from Firestore
         job_ref = get_db().collection("reservationJobs").document(job_id)
         snap = job_ref.get()
 
         if not snap.exists:
-            return {"error": "Job not found"}, 404
+            return error_response("Job not found", 404)
 
         job_data = snap.to_dict()
         execution_logs = job_data.get("executionLogs", [])
@@ -316,10 +320,10 @@ def summarize_snipe_logs(req: Request):
 
         # If no logs and no error message, return early
         if not execution_logs and not error_message:
-            return {
-                "success": True,
-                "summary": "No execution logs available for this reservation attempt."
-            }
+            logger.info("[summarize_snipe_logs] No execution logs for job %s", job_id)
+            return success_response(
+                SummaryData(summary="No execution logs available for this reservation attempt.")
+            )
 
         # Build prompt for Gemini
         logs_text = ""
@@ -372,14 +376,8 @@ If the status is "done", simply state that the reservation was successful."""
         except Exception as update_error:
             logger.warning("[summarize_snipe_logs] Failed to cache summary: %s", update_error)
 
-        return {
-            "success": True,
-            "data": {"summary": summary},
-        }
+        return success_response(SummaryData(summary=summary))
 
     except Exception as e:
         logger.error("[summarize_snipe_logs] Error: %s", e)
-        return {
-            "success": False,
-            "error": str(e)
-        }, 500
+        return error_response(str(e), 500)

@@ -10,6 +10,7 @@ from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
 
 from .cities import get_city_config
+from .response_schemas import TrendingRestaurantItem, TrendingRestaurantLocation, error_response, success_response
 from .resy_client.api_access import build_resy_client
 from .resy_client.errors import ResyApiError
 from .sentry_utils import with_sentry_trace
@@ -84,10 +85,8 @@ def climbing(req: Request):
             data = client.get_city_list(url_slug, 'climbing', int(limit))
         except ResyApiError as e:
             logger.error("Resy API error fetching climbing list: %s %s", e.status_code, e.endpoint)
-            return {
-                'success': False,
-                'error': str(e)
-            }, 500
+            resp, code = error_response(str(e), 500)
+            return resp, code
 
         venues = data.results.venues if data.results else []
         logger.info("Resy API returned %s venues", len(venues))
@@ -145,37 +144,34 @@ def climbing(req: Request):
             if lat is None or lng is None:
                 venues_without_geo += 1
 
-            restaurants.append({
-                'id': venue_id,
-                'name': venue.get('name', ''),
-                'type': venue.get('type', ''),
-                'priceRange': venue.get('price_range_id', 0),
-                'location': {
-                    'neighborhood': location.get('neighborhood', ''),
-                    'locality': location.get('locality', ''),
-                    'region': location.get('region', ''),
-                    'address': location.get('address_1', '')
-                },
-                'imageUrl': image_url,
-                'rating': venue.get('rater', [{}])[0].get('score') if venue.get('rater') else None,
-                'lat': lat,
-                'lng': lng
-            })
+            restaurants.append(
+                TrendingRestaurantItem(
+                    id=venue_id,
+                    name=venue.get('name', ''),
+                    type=venue.get('type', ''),
+                    priceRange=venue.get('price_range_id', 0),
+                    location=TrendingRestaurantLocation(
+                        neighborhood=location.get('neighborhood', ''),
+                        locality=location.get('locality', ''),
+                        region=location.get('region', ''),
+                        address=location.get('address_1', ''),
+                    ),
+                    imageUrl=image_url,
+                    rating=venue.get('rater', [{}])[0].get('score') if venue.get('rater') else None,
+                    lat=lat,
+                    lng=lng,
+                )
+            )
 
-        logger.info("Fetched %s climbing restaurants (%s without geo coordinates)", 
-                  len(restaurants), venues_without_geo)
+        logger.info("Fetched %s climbing restaurants (%s without geo coordinates)",
+                   len(restaurants), venues_without_geo)
 
-        return {
-            'success': True,
-            'data': restaurants
-        }
+        return success_response(restaurants)
 
     except Exception as e:
         logger.error("Error fetching climbing restaurants: %s", e)
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["GET"]), timeout_sec=60, memory=MemoryOption.GB_1)
@@ -207,10 +203,8 @@ def top_rated(req: Request):
             data = client.get_city_list(url_slug, 'top-rated', int(limit))
         except ResyApiError as e:
             logger.error("Resy API error fetching top-rated list: %s %s", e.status_code, e.endpoint)
-            return {
-                'success': False,
-                'error': str(e)
-            }, 500
+            resp, code = error_response(str(e), 500)
+            return resp, code
 
         venues = data.results.venues if data.results else []
         logger.info("Resy API returned %s venues", len(venues))
@@ -234,10 +228,10 @@ def top_rated(req: Request):
         # Fetch coordinates in parallel
         venue_coords = {}
         venue_ids = [str(v.get('id', {}).get('resy', '')) for v in venues if v.get('id', {}).get('resy')]
-        
+
         with ThreadPoolExecutor(max_workers=10) as executor:
             future_to_venue = {
-                executor.submit(fetch_venue_coords, venue_id): venue_id 
+                executor.submit(fetch_venue_coords, venue_id): venue_id
                 for venue_id in venue_ids
             }
             for future in as_completed(future_to_venue):
@@ -264,38 +258,35 @@ def top_rated(req: Request):
             coords = venue_coords.get(venue_id, {'lat': None, 'lng': None})
             lat = coords.get('lat')
             lng = coords.get('lng')
-            
+
             if lat is None or lng is None:
                 venues_without_geo += 1
 
-            restaurants.append({
-                'id': venue_id,
-                'name': venue.get('name', ''),
-                'type': venue.get('type', ''),
-                'priceRange': venue.get('price_range_id', 0),
-                'location': {
-                    'neighborhood': location.get('neighborhood', ''),
-                    'locality': location.get('locality', ''),
-                    'region': location.get('region', ''),
-                    'address': location.get('address_1', '')
-                },
-                'imageUrl': image_url,
-                'rating': venue.get('rater', [{}])[0].get('score') if venue.get('rater') else None,
-                'lat': lat,
-                'lng': lng
-            })
+            restaurants.append(
+                TrendingRestaurantItem(
+                    id=venue_id,
+                    name=venue.get('name', ''),
+                    type=venue.get('type', ''),
+                    priceRange=venue.get('price_range_id', 0),
+                    location=TrendingRestaurantLocation(
+                        neighborhood=location.get('neighborhood', ''),
+                        locality=location.get('locality', ''),
+                        region=location.get('region', ''),
+                        address=location.get('address_1', ''),
+                    ),
+                    imageUrl=image_url,
+                    rating=venue.get('rater', [{}])[0].get('score') if venue.get('rater') else None,
+                    lat=lat,
+                    lng=lng,
+                )
+            )
 
-        logger.info("Fetched %s top-rated restaurants (%s without geo coordinates)", 
-                  len(restaurants), venues_without_geo)
+        logger.info("Fetched %s top-rated restaurants (%s without geo coordinates)",
+                   len(restaurants), venues_without_geo)
 
-        return {
-            'success': True,
-            'data': restaurants
-        }
+        return success_response(restaurants)
 
     except Exception as e:
         logger.error("Error fetching top-rated restaurants: %s", e)
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code

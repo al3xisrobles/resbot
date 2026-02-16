@@ -11,6 +11,15 @@ from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
 from google.cloud import firestore as gc_firestore
 
+from .response_schemas import (
+    VenueBasicData,
+    VenueDetailData,
+    VenueLinksData,
+    VenueLinksModel,
+    VenuePaymentRequirementData,
+    error_response,
+    success_response,
+)
 from .resy_client.api_access import build_resy_client
 from .resy_client.errors import ResyApiError
 from .resy_client.models import CalendarRequestParams, FindRequestBody
@@ -62,20 +71,18 @@ def venue(req: Request):
         elif venue_data.rater and isinstance(venue_data.rater, dict):
             rating = venue_data.rater.get('score')
 
-        return {
-            'success': True,
-            'data': {
-                'name': venue_name,
-                'venue_id': venue_id,
-                'type': venue_data.type or 'N/A',
-                'address': address,
-                'neighborhood': neighborhood if isinstance(neighborhood, str) else '',
-                'price_range': venue_data.price_range_id or 0,
-                'rating': rating,
-                'photoUrls': photo_urls,
-                'description': description,
-            }
-        }
+        venue_detail = VenueDetailData(
+            name=venue_name,
+            venue_id=venue_id,
+            type=venue_data.type or 'N/A',
+            address=address,
+            neighborhood=neighborhood if isinstance(neighborhood, str) else '',
+            price_range=venue_data.price_range_id or 0,
+            rating=rating,
+            photoUrls=photo_urls,
+            description=description,
+        )
+        return success_response(venue_detail)
 
     except ResyApiError as e:
         logger.error(
@@ -265,20 +272,18 @@ def venue_links(req: Request):
         logger.info("[VENUE-LINKS] Price range ID: %s", venue_data.price_range_id)
         logger.info("[VENUE-LINKS] Rating: %s", getattr(venue_data, "rating", None))
 
-        response_data = {
-            'success': True,
-            'links': links,
-            'venueData': {
-                'name': restaurant_name,
-                'type': venue_data.type or '',
-                'address': location.address_1 if location else '',
-                'neighborhood': getattr(location, 'neighborhood', '') if location else '',
-                'priceRange': venue_data.price_range_id or 0,
-                'rating': getattr(venue_data, 'rating', 0) or 0
-            }
-        }
-
-        return response_data
+        venue_links_data = VenueLinksData(
+            links=VenueLinksModel(googleMaps=links.get('googleMaps'), resy=links.get('resy')),
+            venueData=VenueBasicData(
+                name=restaurant_name,
+                type=venue_data.type or '',
+                address=location.address_1 if location else '',
+                neighborhood=getattr(location, 'neighborhood', '') if location else '',
+                priceRange=venue_data.price_range_id or 0,
+                rating=getattr(venue_data, 'rating', 0) or 0
+            )
+        )
+        return success_response(venue_links_data)
 
     except Exception as e:
         logger.error("[VENUE-LINKS] ✗ Error getting venue links: %s", e)
@@ -310,7 +315,8 @@ def check_venue_payment_requirement(req: Request):
         party_size = int(req.args.get('partySize', 2))
 
         if not venue_id:
-            return {'success': False, 'error': 'Missing venue_id'}, 400
+            resp, code = error_response('Missing venue_id', 400)
+            return resp, code
 
         db = _get_firestore_client()
         venue_doc = db.collection('venues').document(venue_id).get()
@@ -324,11 +330,12 @@ def check_venue_payment_requirement(req: Request):
                     venue_id,
                     requires_payment,
                 )
-                return {
-                    'success': True,
-                    'requiresPaymentMethod': requires_payment,
-                    'source': 'cache',
-                }
+                return success_response(
+                    VenuePaymentRequirementData(
+                        requiresPaymentMethod=requires_payment,
+                        source='cache',
+                    )
+                )
 
         config = load_credentials(user_id)
         client = build_resy_client(config)
@@ -383,11 +390,12 @@ def check_venue_payment_requirement(req: Request):
                     "No slots or templates found on any candidate date for venue %s",
                     venue_id,
                 )
-                return {
-                    'success': True,
-                    'requiresPaymentMethod': None,
-                    'source': 'no_slots_found',
-                }
+                return success_response(
+                    VenuePaymentRequirementData(
+                        requiresPaymentMethod=None,
+                        source='no_slots_found',
+                    )
+                )
         else:
             # Date was provided, use it directly
             find_request = FindRequestBody(
@@ -400,11 +408,12 @@ def check_venue_payment_requirement(req: Request):
 
         if not venue_result:
             logger.info("No venue result for venue %s on %s", venue_id, date_used)
-            return {
-                'success': True,
-                'requiresPaymentMethod': None,
-                'source': 'find_no_slots',
-            }
+            return success_response(
+                VenuePaymentRequirementData(
+                    requiresPaymentMethod=None,
+                    source='find_no_slots',
+                )
+            )
 
         requires_payment = False
         source = 'find_slots'
@@ -446,15 +455,14 @@ def check_venue_payment_requirement(req: Request):
             source,
         )
 
-        out = {
-            'success': True,
-            'requiresPaymentMethod': requires_payment,
-            'source': source,
-        }
-        if slots_analyzed:
-            out['slotsAnalyzed'] = slots_analyzed
-        return out
+        data = VenuePaymentRequirementData(
+            requiresPaymentMethod=requires_payment,
+            source=source,
+            slotsAnalyzed=slots_analyzed if slots_analyzed else None,
+        )
+        return success_response(data)
 
     except Exception as e:
         logger.error("Error checking venue payment requirement: %s", e)
-        return {'success': False, 'error': str(e)}, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code

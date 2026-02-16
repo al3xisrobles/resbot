@@ -3,6 +3,7 @@ import { useAtomValue } from "jotai";
 import { useAuth } from "@/contexts/AuthContext";
 import { isOnboardedAtom, isAuthLoadingAtom } from "@/atoms/authAtoms";
 import { LoaderSpinner } from "@/components/ui/loader-spinner";
+import * as Sentry from "@sentry/react";
 
 function RouteLoadingScreen() {
   return (
@@ -22,8 +23,19 @@ export function AuthenticatedRoute({
 }: {
   children: React.ReactNode;
 }) {
-  const { currentUser } = useAuth();
   const isAuthLoading = useAtomValue(isAuthLoadingAtom);
+  
+  // Try to get auth context, but handle gracefully if it's not available yet
+  let currentUser = null;
+  try {
+    const auth = useAuth();
+    currentUser = auth.currentUser;
+  } catch (error) {
+    // If auth context is not available yet (e.g., during HMR), show loading screen
+    Sentry.captureException(error);
+    console.warn("Auth context not available in AuthenticatedRoute, showing loading screen");
+    return <RouteLoadingScreen />;
+  }
 
   // Wait for auth state to resolve before making routing decisions
   if (isAuthLoading) {
@@ -44,9 +56,20 @@ export function AuthenticatedRoute({
  * Redirects to /connect-resy if authenticated but not onboarded
  */
 export function OnboardedRoute({ children }: { children: React.ReactNode }) {
-  const { currentUser } = useAuth();
   const isOnboarded = useAtomValue(isOnboardedAtom);
   const isAuthLoading = useAtomValue(isAuthLoadingAtom);
+  
+  // Try to get auth context, but handle gracefully if it's not available yet
+  let currentUser = null;
+  try {
+    const auth = useAuth();
+    currentUser = auth.currentUser;
+  } catch (error) {
+    // If auth context is not available yet (e.g., during HMR), show loading screen
+    Sentry.captureException(error);
+    console.warn("Auth context not available in OnboardedRoute, showing loading screen");
+    return <RouteLoadingScreen />;
+  }
 
   // Wait for auth state to resolve before making routing decisions
   if (isAuthLoading) {
@@ -74,9 +97,20 @@ export function AuthenticatedOnboardedRoute({
 }: {
   children: React.ReactNode;
 }) {
-  const { currentUser } = useAuth();
   const isOnboarded = useAtomValue(isOnboardedAtom);
   const isAuthLoading = useAtomValue(isAuthLoadingAtom);
+  
+  // Try to get auth context, but handle gracefully if it's not available yet
+  let currentUser = null;
+  try {
+    const auth = useAuth();
+    currentUser = auth.currentUser;
+  } catch (error) {
+    // If auth context is not available yet (e.g., during HMR), show loading screen
+    Sentry.captureException(error);
+    console.warn("Auth context not available in AuthenticatedOnboardedRoute, showing loading screen");
+    return <RouteLoadingScreen />;
+  }
 
   // Wait for auth state to resolve before making routing decisions
   if (isAuthLoading) {
@@ -100,8 +134,19 @@ export function AuthenticatedOnboardedRoute({
  * Redirects to / if already authenticated (after auth state resolves)
  */
 export function GuestOnlyRoute({ children }: { children: React.ReactNode }) {
-  const { currentUser } = useAuth();
   const isAuthLoading = useAtomValue(isAuthLoadingAtom);
+  
+  // Try to get auth context, but handle gracefully if it's not available yet
+  let currentUser = null;
+  try {
+    const auth = useAuth();
+    currentUser = auth.currentUser;
+  } catch (error) {
+    // If auth context is not available yet (e.g., during HMR), show loading screen
+    Sentry.captureException(error);
+    console.warn("Auth context not available in GuestOnlyRoute, showing loading screen");
+    return <RouteLoadingScreen />;
+  }
 
   // Wait for auth state to resolve before making routing decisions
   if (isAuthLoading) {

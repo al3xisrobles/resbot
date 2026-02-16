@@ -15,7 +15,7 @@ This project uses feature slicing with unidirectional data flow: `Common → Fea
 - Use `.private.ts/tsx` suffix for internal feature files
 - Pages compose features; features are self-contained units
 - Common layer contains truly shared code used by multiple features
-- Whenever interacting with the resy API, be sure to use the logic inside functions/api/resy_client
+- Whenever interacting with the resy API, be sure to use the logic inside functions/api/resy_client. Also ensure to look at the schemas for responses inside response_schemas.py.
 
 ---
 

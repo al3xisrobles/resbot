@@ -12,6 +12,7 @@ from firebase_functions.options import CorsOptions, MemoryOption
 from google.genai import types
 
 from .cities import get_city_config
+from .response_schemas import GeminiSearchData, error_response, success_response
 from .resy_client.api_access import build_resy_client
 from .resy_client.models import CalendarRequestParams
 from .sentry_utils import with_sentry_trace
@@ -47,16 +48,15 @@ def gemini_search(req: Request):
         city_name = city_config['name']
 
         if not restaurant_name:
-            return {
-                'success': False,
-                'error': 'Missing restaurant name'
-            }, 400
+            resp, code = error_response('Missing restaurant name', 400)
+            return resp, code
 
         if not gemini_client:
-            return {
-                'success': False,
-                'error': 'Gemini API not configured. Please set GEMINI_API_KEY environment variable.'
-            }, 503
+            resp, code = error_response(
+                'Gemini API not configured. Please set GEMINI_API_KEY environment variable.',
+                503,
+            )
+            return resp, code
 
         # Load Resy client once if venue_id is provided (for both calendar and venue API calls)
         client = None
@@ -209,10 +209,8 @@ IMPORTANT: If "OFFICIAL RESY VENUE INFO" is provided above, prioritize that info
         # Extract grounding metadata
         candidate = response.candidates[0] if response.candidates else None
         if not candidate:
-            return {
-                'success': False,
-                'error': 'No response from Gemini API'
-            }, 500
+            resp, code = error_response('No response from Gemini API', 500)
+            return resp, code
 
         grounding_metadata = candidate.grounding_metadata
 
@@ -269,32 +267,28 @@ IMPORTANT: If "OFFICIAL RESY VENUE INFO" is provided above, prioritize that info
 
         print("\nSUMMARY:\n", summary)
 
-        # Build response matching the requested structure
-        response_data = {
-            'summary': summary,
-            'keyFacts': key_facts,
-            'webSearchQueries': web_search_queries,
-            'groundingChunks': grounding_chunks,
-            'groundingSupports': grounding_supports,
-            'rawGroundingMetadata': {
-                'retrievalQueries': web_search_queries,
-                'searchEntryPoint': (
-                    grounding_metadata.search_entry_point.rendered_content
-                    if grounding_metadata and grounding_metadata.search_entry_point
-                    else None
-                )
-            },
-            'suggestedFollowUps': suggested_follow_ups[:3]
+        # Build response using schema
+        raw_metadata = {
+            'retrievalQueries': web_search_queries,
+            'searchEntryPoint': (
+                grounding_metadata.search_entry_point.rendered_content
+                if grounding_metadata and grounding_metadata.search_entry_point
+                else None
+            ),
         }
 
-        return {
-            'success': True,
-            'data': response_data
-        }
+        gemini_data = GeminiSearchData(
+            summary=summary,
+            keyFacts=key_facts,
+            webSearchQueries=web_search_queries,
+            groundingChunks=grounding_chunks,
+            groundingSupports=grounding_supports,
+            rawGroundingMetadata=raw_metadata,
+            suggestedFollowUps=suggested_follow_ups[:3],
+        )
+        return success_response(gemini_data)
 
     except Exception as e:
         logger.error("Error calling Gemini API: %s", e)
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        resp, code = error_response(str(e), 500)
+        return resp, code

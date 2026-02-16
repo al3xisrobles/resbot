@@ -68,12 +68,30 @@ class AuthRequestBody(BaseModel):
 
 
 class PaymentMethod(BaseModel):
+    """Payment method from Resy /4/auth/password response."""
     id: int
+    type: Optional[str] = None
+    display: Optional[str] = None
+    exp_month: Optional[int] = None
+    exp_year: Optional[int] = None
+    is_default: Optional[bool] = None
+    provider_id: Optional[int] = None
+    provider_name: Optional[str] = None
+    issuing_bank: Optional[str] = None
 
 
 class AuthResponseBody(BaseModel):
+    model_config = ConfigDict(extra='allow')  # Allow extra fields from Resy API
     payment_methods: List[PaymentMethod]
     token: str
+    payment_method_id: Optional[int] = None
+    em_address: Optional[str] = None  # User email
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    guest_id: Optional[int] = None  # Resy guest ID
+    id: Optional[int] = None  # Resy user ID
+    mobile_number: Optional[str] = None
+    legacy_token: Optional[str] = None
 
 
 class FindRequestBody(BaseModel):

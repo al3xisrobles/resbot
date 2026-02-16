@@ -1,0 +1,1862 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Resy Bot API",
+    "version": "1.0.0",
+    "description": "API for Resy Bot - restaurant reservation automation"
+  },
+  "paths": {
+    "/me": {
+      "get": {
+        "summary": "Get user session data",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MeData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/venue": {
+      "get": {
+        "summary": "Get venue details",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_VenueDetailData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/venue_links": {
+      "get": {
+        "summary": "Get venue links",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_VenueLinksData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/check_venue_payment_requirement": {
+      "get": {
+        "summary": "Check venue payment requirement",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_VenuePaymentRequirementData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "summary": "Search restaurants",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SearchData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search_map": {
+      "get": {
+        "summary": "Search restaurants by map",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SearchData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/calendar": {
+      "get": {
+        "summary": "Get calendar availability",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CalendarData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/slots": {
+      "get": {
+        "summary": "Get available slots",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SlotsData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reservation": {
+      "post": {
+        "summary": "Create reservation",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ReservationCreatedData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gemini_search": {
+      "post": {
+        "summary": "AI-powered reservation info",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_GeminiSearchData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/climbing": {
+      "get": {
+        "summary": "Get climbing restaurants",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TrendingRestaurantsData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/top_rated": {
+      "get": {
+        "summary": "Get top-rated restaurants",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TrendingRestaurantsData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/start_resy_onboarding": {
+      "post": {
+        "summary": "Start Resy onboarding",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_OnboardingData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/resy_account": {
+      "get": {
+        "summary": "Get Resy account status",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_AccountStatusData"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Update payment method",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_PaymentMethodUpdateData"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Disconnect Resy account",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_DisconnectData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/summarize_snipe_logs": {
+      "post": {
+        "summary": "Summarize snipe logs",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SummaryData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/create_snipe": {
+      "post": {
+        "summary": "Create snipe job",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_JobCreatedData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/update_snipe": {
+      "post": {
+        "summary": "Update snipe job",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_JobUpdatedData"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cancel_snipe": {
+      "post": {
+        "summary": "Cancel snipe job",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_JobCancelledData"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "MeData": {
+        "description": "Data model for /me endpoint.",
+        "properties": {
+          "onboardingStatus": {
+            "description": "'not_started' or 'completed'",
+            "title": "Onboardingstatus",
+            "type": "string"
+          },
+          "hasPaymentMethod": {
+            "title": "Haspaymentmethod",
+            "type": "boolean"
+          },
+          "resy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResyUserData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "onboardingStatus",
+          "hasPaymentMethod"
+        ],
+        "title": "MeData",
+        "type": "object"
+      },
+      "ResyUserData": {
+        "description": "Nested Resy user data for me endpoint.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "firstName": {
+            "title": "Firstname",
+            "type": "string"
+          },
+          "lastName": {
+            "title": "Lastname",
+            "type": "string"
+          },
+          "paymentMethodId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Paymentmethodid"
+          }
+        },
+        "required": [
+          "email",
+          "firstName",
+          "lastName"
+        ],
+        "title": "ResyUserData",
+        "type": "object"
+      },
+      "TrendingRestaurantItem": {
+        "description": "Single trending/climbing/top-rated restaurant.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "priceRange": {
+            "title": "Pricerange",
+            "type": "integer"
+          },
+          "location": {
+            "$ref": "#/components/schemas/TrendingRestaurantLocation"
+          },
+          "imageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Imageurl"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rating"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lat"
+          },
+          "lng": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lng"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "priceRange",
+          "location"
+        ],
+        "title": "TrendingRestaurantItem",
+        "type": "object"
+      },
+      "TrendingRestaurantLocation": {
+        "description": "Location for trending restaurant.",
+        "properties": {
+          "neighborhood": {
+            "title": "Neighborhood",
+            "type": "string"
+          },
+          "locality": {
+            "title": "Locality",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          }
+        },
+        "required": [
+          "neighborhood",
+          "locality",
+          "region",
+          "address"
+        ],
+        "title": "TrendingRestaurantLocation",
+        "type": "object"
+      },
+      "OnboardingData": {
+        "description": "Data model for onboarding POST endpoint.",
+        "properties": {
+          "hasPaymentMethod": {
+            "title": "Haspaymentmethod",
+            "type": "boolean"
+          },
+          "paymentMethodId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Paymentmethodid"
+          }
+        },
+        "required": [
+          "hasPaymentMethod"
+        ],
+        "title": "OnboardingData",
+        "type": "object"
+      },
+      "VenueDetailData": {
+        "description": "Data model for venue detail endpoint.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "neighborhood": {
+            "title": "Neighborhood",
+            "type": "string"
+          },
+          "price_range": {
+            "title": "Price Range",
+            "type": "integer"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rating"
+          },
+          "photoUrls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Photourls",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "venue_id",
+          "type",
+          "address",
+          "neighborhood",
+          "price_range"
+        ],
+        "title": "VenueDetailData",
+        "type": "object"
+      },
+      "VenueLinksData": {
+        "description": "Data model for venue_links endpoint.",
+        "properties": {
+          "links": {
+            "$ref": "#/components/schemas/VenueLinksModel"
+          },
+          "venueData": {
+            "$ref": "#/components/schemas/VenueBasicData"
+          }
+        },
+        "required": [
+          "links",
+          "venueData"
+        ],
+        "title": "VenueLinksData",
+        "type": "object"
+      },
+      "VenueBasicData": {
+        "description": "Basic venue info for venue links response.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "neighborhood": {
+            "title": "Neighborhood",
+            "type": "string"
+          },
+          "priceRange": {
+            "title": "Pricerange",
+            "type": "integer"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "address",
+          "neighborhood",
+          "priceRange",
+          "rating"
+        ],
+        "title": "VenueBasicData",
+        "type": "object"
+      },
+      "VenueLinksModel": {
+        "description": "Links for a venue (Google Maps, Resy).",
+        "properties": {
+          "googleMaps": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Googlemaps"
+          },
+          "resy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resy"
+          }
+        },
+        "title": "VenueLinksModel",
+        "type": "object"
+      },
+      "VenuePaymentRequirementData": {
+        "description": "Data model for check_venue_payment_requirement endpoint.",
+        "properties": {
+          "requiresPaymentMethod": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Requirespaymentmethod"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "slotsAnalyzed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Slotsanalyzed"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "VenuePaymentRequirementData",
+        "type": "object"
+      },
+      "SearchData": {
+        "description": "Data model for search and search_map endpoints.",
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResultItem"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/SearchPagination"
+          }
+        },
+        "required": [
+          "results",
+          "pagination"
+        ],
+        "title": "SearchData",
+        "type": "object"
+      },
+      "SearchPagination": {
+        "description": "Pagination info for search results.",
+        "properties": {
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "perPage": {
+            "title": "Perpage",
+            "type": "integer"
+          },
+          "nextOffset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Nextoffset"
+          },
+          "hasMore": {
+            "title": "Hasmore",
+            "type": "boolean"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "isFiltered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Isfiltered"
+          },
+          "foundSoFar": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Foundsofar"
+          }
+        },
+        "required": [
+          "offset",
+          "perPage",
+          "hasMore"
+        ],
+        "title": "SearchPagination",
+        "type": "object"
+      },
+      "SearchResultItem": {
+        "additionalProperties": true,
+        "description": "Single search result item.",
+        "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "locality": {
+            "default": "",
+            "title": "Locality",
+            "type": "string"
+          },
+          "region": {
+            "default": "",
+            "title": "Region",
+            "type": "string"
+          },
+          "neighborhood": {
+            "default": "",
+            "title": "Neighborhood",
+            "type": "string"
+          },
+          "type": {
+            "default": "",
+            "title": "Type",
+            "type": "string"
+          },
+          "price_range": {
+            "default": 0,
+            "title": "Price Range",
+            "type": "integer"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Longitude"
+          },
+          "imageUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Imageurl"
+          },
+          "availableTimes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Availabletimes"
+          },
+          "availabilityStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Availabilitystatus"
+          }
+        },
+        "title": "SearchResultItem",
+        "type": "object"
+      },
+      "CalendarData": {
+        "description": "Data model for calendar endpoint.",
+        "properties": {
+          "availability": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarAvailabilityEntry"
+            },
+            "title": "Availability",
+            "type": "array"
+          },
+          "startDate": {
+            "title": "Startdate",
+            "type": "string"
+          },
+          "endDate": {
+            "title": "Enddate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "availability",
+          "startDate",
+          "endDate"
+        ],
+        "title": "CalendarData",
+        "type": "object"
+      },
+      "CalendarAvailabilityEntry": {
+        "description": "Single calendar availability entry.",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "soldOut": {
+            "title": "Soldout",
+            "type": "boolean"
+          },
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "date",
+          "available",
+          "soldOut",
+          "closed"
+        ],
+        "title": "CalendarAvailabilityEntry",
+        "type": "object"
+      },
+      "SlotsData": {
+        "description": "Data model for slots endpoint.",
+        "properties": {
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Times",
+            "type": "array"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          }
+        },
+        "title": "SlotsData",
+        "type": "object"
+      },
+      "ReservationCreatedData": {
+        "description": "Data model for reservation POST endpoint.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "resy_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Resy Token"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "ReservationCreatedData",
+        "type": "object"
+      },
+      "GeminiSearchData": {
+        "description": "Data model for gemini_search endpoint.",
+        "properties": {
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "keyFacts": {
+            "items": {
+              "$ref": "#/components/schemas/KeyFactItem"
+            },
+            "title": "Keyfacts",
+            "type": "array"
+          },
+          "webSearchQueries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Websearchqueries",
+            "type": "array"
+          },
+          "groundingChunks": {
+            "items": {
+              "$ref": "#/components/schemas/GroundingChunkItem"
+            },
+            "title": "Groundingchunks",
+            "type": "array"
+          },
+          "groundingSupports": {
+            "items": {
+              "$ref": "#/components/schemas/GroundingSupportItem"
+            },
+            "title": "Groundingsupports",
+            "type": "array"
+          },
+          "rawGroundingMetadata": {
+            "additionalProperties": true,
+            "title": "Rawgroundingmetadata",
+            "type": "object"
+          },
+          "suggestedFollowUps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestedfollowups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "title": "GeminiSearchData",
+        "type": "object"
+      },
+      "GroundingChunkItem": {
+        "description": "Single grounding chunk.",
+        "properties": {
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Uri"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Snippet"
+          }
+        },
+        "required": [
+          "index",
+          "title"
+        ],
+        "title": "GroundingChunkItem",
+        "type": "object"
+      },
+      "GroundingSupportItem": {
+        "description": "Single grounding support.",
+        "properties": {
+          "segment": {
+            "$ref": "#/components/schemas/GroundingSupportSegment"
+          },
+          "groundingChunkIndices": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Groundingchunkindices",
+            "type": "array"
+          },
+          "confidenceScores": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Confidencescores",
+            "type": "array"
+          }
+        },
+        "required": [
+          "segment"
+        ],
+        "title": "GroundingSupportItem",
+        "type": "object"
+      },
+      "GroundingSupportSegment": {
+        "description": "Segment for grounding support.",
+        "properties": {
+          "startIndex": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Startindex"
+          },
+          "endIndex": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endindex"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Text"
+          }
+        },
+        "title": "GroundingSupportSegment",
+        "type": "object"
+      },
+      "KeyFactItem": {
+        "description": "Key fact with citation indices.",
+        "properties": {
+          "fact": {
+            "title": "Fact",
+            "type": "string"
+          },
+          "citationIndices": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Citationindices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fact"
+        ],
+        "title": "KeyFactItem",
+        "type": "object"
+      },
+      "SummaryData": {
+        "description": "Data model for summarize_snipe_logs endpoint.",
+        "properties": {
+          "summary": {
+            "description": "AI-generated summary of reservation attempt",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "title": "SummaryData",
+        "type": "object"
+      },
+      "SnipeResultData": {
+        "description": "Data model for run_snipe endpoint.",
+        "properties": {
+          "status": {
+            "description": "Final status: 'done' or 'failed'",
+            "title": "Status",
+            "type": "string"
+          },
+          "jobId": {
+            "description": "Reservation job ID",
+            "title": "Jobid",
+            "type": "string"
+          },
+          "resyToken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Resy confirmation token if successful",
+            "title": "Resytoken"
+          }
+        },
+        "required": [
+          "status",
+          "jobId"
+        ],
+        "title": "SnipeResultData",
+        "type": "object"
+      },
+      "JobCreatedData": {
+        "description": "Data model for create_snipe endpoint.",
+        "properties": {
+          "jobId": {
+            "description": "Created reservation job ID",
+            "title": "Jobid",
+            "type": "string"
+          },
+          "targetTimeIso": {
+            "description": "ISO timestamp when snipe will execute",
+            "title": "Targettimeiso",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "targetTimeIso"
+        ],
+        "title": "JobCreatedData",
+        "type": "object"
+      },
+      "JobUpdatedData": {
+        "description": "Data model for update_snipe endpoint.",
+        "properties": {
+          "jobId": {
+            "description": "Updated reservation job ID",
+            "title": "Jobid",
+            "type": "string"
+          },
+          "targetTimeIso": {
+            "description": "ISO timestamp when snipe will execute",
+            "title": "Targettimeiso",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "targetTimeIso"
+        ],
+        "title": "JobUpdatedData",
+        "type": "object"
+      },
+      "JobCancelledData": {
+        "description": "Data model for cancel_snipe endpoint.",
+        "properties": {
+          "jobId": {
+            "description": "Cancelled reservation job ID",
+            "title": "Jobid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "title": "JobCancelledData",
+        "type": "object"
+      },
+      "AccountStatusData": {
+        "description": "Data model for resy_account GET endpoint.",
+        "properties": {
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "hasPaymentMethod": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Haspaymentmethod"
+          },
+          "paymentMethods": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ResyPaymentMethod"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Paymentmethods"
+          },
+          "paymentMethodId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Paymentmethodid"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Email"
+          },
+          "firstName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Firstname"
+          },
+          "lastName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Lastname"
+          },
+          "mobileNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mobilenumber"
+          },
+          "userId": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Userid"
+          }
+        },
+        "required": [
+          "connected"
+        ],
+        "title": "AccountStatusData",
+        "type": "object"
+      },
+      "ResyPaymentMethod": {
+        "description": "Payment method details.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "title": "ResyPaymentMethod",
+        "type": "object"
+      },
+      "PaymentMethodUpdateData": {
+        "description": "Data model for payment method update.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "paymentMethodId": {
+            "title": "Paymentmethodid",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message",
+          "paymentMethodId"
+        ],
+        "title": "PaymentMethodUpdateData",
+        "type": "object"
+      },
+      "DisconnectData": {
+        "description": "Data model for account disconnect.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "DisconnectData",
+        "type": "object"
+      },
+      "ApiResponse_MeData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MeData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_TrendingRestaurantItem": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/TrendingRestaurantItem"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_OnboardingData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OnboardingData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_VenueDetailData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/VenueDetailData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_VenueLinksData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/VenueLinksData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_VenuePaymentRequirementData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/VenuePaymentRequirementData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_SearchData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SearchData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_CalendarData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CalendarData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_SlotsData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SlotsData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_ReservationCreatedData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ReservationCreatedData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_GeminiSearchData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/GeminiSearchData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_SummaryData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SummaryData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_SnipeResultData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SnipeResultData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_JobCreatedData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/JobCreatedData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_JobUpdatedData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/JobUpdatedData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_JobCancelledData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/JobCancelledData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_AccountStatusData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AccountStatusData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_PaymentMethodUpdateData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PaymentMethodUpdateData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_DisconnectData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "$ref": "#/components/schemas/DisconnectData"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiResponse_TrendingRestaurantsData": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrendingRestaurantItem"
+            }
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

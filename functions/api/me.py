@@ -9,6 +9,7 @@ from firebase_functions.options import CorsOptions
 from firebase_admin import firestore
 
 from .sentry_utils import with_sentry_trace
+from .response_schemas import success_response, error_response, MeData, ResyUserData
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -36,10 +37,7 @@ def me(req: Request):
     try:
         firebase_uid = req.args.get('userId')
         if not firebase_uid:
-            return {
-                'success': False,
-                'error': 'userId is required'
-            }, 400
+            return error_response('userId is required', 400)
 
         db = firestore.client()
         doc_ref = db.collection('resyCredentials').document(firebase_uid)
@@ -51,29 +49,28 @@ def me(req: Request):
             payment_method_id = data.get('paymentMethodId')
             has_payment_method = payment_method_id is not None
 
-            return {
-                'success': True,
-                'onboardingStatus': 'completed',
-                'hasPaymentMethod': has_payment_method,
-                'resy': {
-                    'email': data.get('email'),
-                    'firstName': data.get('firstName', ''),
-                    'lastName': data.get('lastName', ''),
-                    'paymentMethodId': payment_method_id
-                }
-            }, 200
+            return success_response(
+                MeData(
+                    onboardingStatus='completed',
+                    hasPaymentMethod=has_payment_method,
+                    resy=ResyUserData(
+                        email=data.get('email', ''),
+                        firstName=data.get('firstName', ''),
+                        lastName=data.get('lastName', ''),
+                        paymentMethodId=payment_method_id
+                    )
+                )
+            )
 
         # No credentials found - user hasn't onboarded
-        return {
-            'success': True,
-            'onboardingStatus': 'not_started',
-            'hasPaymentMethod': False,
-            'resy': None
-        }, 200
+        return success_response(
+            MeData(
+                onboardingStatus='not_started',
+                hasPaymentMethod=False,
+                resy=None
+            )
+        )
 
     except Exception as e:
         logger.error("Error in /me endpoint: %s", e)
-        return {
-            'success': False,
-            'error': str(e)
-        }, 500
+        return error_response(str(e), 500)

@@ -33,3 +33,6 @@ saved_data/
 debug/
 functions/debug/
 functions/api/debug/
+
+# Generated API schemas - committed for reproducibility
+# Run 'npm run generate:api' when backend schemas change

@@ -1,0 +1,47 @@
+name: Schema Validation
+
+on: [pull_request]
+
+jobs:
+  validate-schemas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: cd functions && pip install -r requirements.txt
+
+      - name: Validate Pydantic schemas
+        run: cd functions && python -c "from api.response_schemas import *; print('✓ All schemas valid')"
+
+      - name: Generate OpenAPI spec
+        run: cd functions && python scripts/generate_openapi.py
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Node deps
+        run: npm ci
+
+      - name: Generate TypeScript types and schemas
+        run: npm run generate:types && npm run generate:schemas
+
+      - name: Check for schema drift
+        run: |
+          if [ -n "$(git status --porcelain src/lib/generated/)" ]; then
+            echo "❌ Generated schemas are out of sync with Pydantic models!"
+            echo "Run: npm run generate:api"
+            git diff src/lib/generated/
+            exit 1
+          fi
+
+      - name: TypeScript compile check
+        run: npm run build

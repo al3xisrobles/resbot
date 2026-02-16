@@ -276,9 +276,12 @@ export async function apiDelete<T>(
 /** Response shape from check_venue_payment_requirement */
 interface CheckVenuePaymentRequirementResponse {
     success: boolean;
-    requiresPaymentMethod?: boolean | null;
-    source?: string;
-    slotsAnalyzed?: number;
+    data?: {
+        requiresPaymentMethod?: boolean | null;
+        source?: string;
+        slotsAnalyzed?: number;
+    };
+    error?: string;
 }
 
 /**
@@ -300,5 +303,5 @@ export async function checkVenuePaymentRequirement(
         API_ENDPOINTS.checkVenuePaymentRequirement,
         params
     );
-    return data.requiresPaymentMethod ?? null;
+    return data.data?.requiresPaymentMethod ?? null;
 }
