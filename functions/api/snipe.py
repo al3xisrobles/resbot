@@ -344,9 +344,16 @@ The reservation attempt had a final status of: {status}
 
 {logs_text}
 
-Provide a concise 1-2 sentence summary explaining what happened during this reservation attempt. Focus on what occurred and why it might have failed. Be clear and user-friendly. Do not mention technical details like "execution logs" or "retry attempts" - just explain what happened in plain language.
+Provide a concise 1-2 sentence summary explaining what happened during this reservation attempt. Focus on why it might have failed. Be clear and user-friendly. Do not mention technical details like "execution logs" or "retry attempts" - just explain what happened in plain language.
 
-Example format: "The booking was unsuccessful due to rate limiting causing delays."
+GOOD EXAMPLES:
+"The booking was unsuccessful due to rate limiting causing delays."
+"No slots were available for the requested time."
+"BUG: The /find endpoint returned a 500 server error. Maybe the request was malformed?"
+
+BAD EXAMPLES:
+"Retried 30 times with parallel booking, without securing a slot"
+"The booking was unsuccessful"
 
 If the status is "done", simply state that the reservation was successful."""
 

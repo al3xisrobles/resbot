@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { searchRestaurant, getVenueLinks } from "@/lib/api";
+import { checkVenuePaymentRequirement } from "@/lib/apiClient";
 import type { VenueLinksResponse } from "@/lib/interfaces";
 import { getVenueCache, saveVenueCache } from "@/services/firebase";
 import { useAuth } from "@/contexts/AuthContext";
@@ -64,6 +65,14 @@ export function useVenueData(venueId: string | null) {
             description: cachedData.description,
           });
           setLoadingVenue(false);
+          // Fetch payment requirement (non-blocking)
+          checkVenuePaymentRequirement(venueId, auth.currentUser?.uid)
+            .then((requiresPaymentMethod) => {
+              setVenueData((prev) =>
+                prev ? { ...prev, requiresPaymentMethod } : null
+              );
+            })
+            .catch(() => {});
         } else {
           // No cache, or cache has empty photoUrls - fetch from API
           const user = auth.currentUser;
@@ -90,6 +99,15 @@ export function useVenueData(venueId: string | null) {
             photoUrls: venueDataResponse.photoUrls || [],
             description: venueDataResponse.description,
           });
+
+          // Fetch payment requirement (non-blocking)
+          checkVenuePaymentRequirement(venueId, user?.uid)
+            .then((requiresPaymentMethod) => {
+              setVenueData((prev) =>
+                prev ? { ...prev, requiresPaymentMethod } : null
+              );
+            })
+            .catch(() => {});
 
           // Save links and venue data to Firebase cache
           await saveVenueCache(venueId, {

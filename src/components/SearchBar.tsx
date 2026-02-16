@@ -15,7 +15,8 @@ import { SearchResultItem } from "@/components/SearchResultItem";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAtom, useAtomValue } from "jotai";
 import { cityAtom } from "@/atoms/cityAtom";
-import { isOnboardedAtom } from "@/atoms/authAtoms";
+import { isAuthLoadingAtom, isOnboardedAtom } from "@/atoms/authAtoms";
+import { LoaderSpinner } from "@/components/ui/loader-spinner";
 
 interface SearchBarProps {
   className?: string;
@@ -40,6 +41,7 @@ export function SearchBar({
   const auth = useAuth();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isAuthenticated = !!auth.currentUser;
+  const isAuthLoading = useAtomValue(isAuthLoadingAtom);
   const isOnboarded = useAtomValue(isOnboardedAtom);
   const [selectedCity] = useAtom(cityAtom);
 
@@ -144,6 +146,32 @@ export function SearchBar({
     setInputFocused(false);
     navigate("/search");
   };
+
+  // If still loading credentials, show loading overlay
+  if (isAuthLoading) {
+    return (
+      <div
+        className={`relative group ${className}`}
+        style={{ position: "relative", zIndex: 10001 }}
+      >
+        {/* Loading overlay */}
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/95 dark:bg-muted/95 rounded-md border border-border">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <LoaderSpinner size="sm" />
+            <span>Loading credentials...</span>
+          </div>
+        </div>
+
+        {/* Disabled input */}
+        <Input
+          placeholder={placeholderText}
+          disabled
+          className={`shadow-md bg-background ${inputClassName ?? ""}`}
+        />
+        <Search className="absolute right-6 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+      </div>
+    );
+  }
 
   // If not authenticated, show a disabled search bar with login prompt on hover/click
   if (!isAuthenticated) {

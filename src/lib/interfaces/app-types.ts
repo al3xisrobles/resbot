@@ -16,6 +16,7 @@ export interface VenueData {
   rating: number | null;
   photoUrls: string[]; // List of photo URLs from Resy API
   description?: string; // Description from metadata
+  requiresPaymentMethod?: boolean | null; // true = required, false = not required, null = unknown */
 }
 
 /**

@@ -126,15 +126,6 @@ export function VenueDetailPage() {
         reservationForm.partySize
     );
 
-    // Track if we've loaded initial data to avoid showing skeletons on updates
-    const [hasInitialData, setHasInitialData] = useState(false);
-
-    useEffect(() => {
-        if (venueData && calendarData && venueLinks && !hasInitialData) {
-            setHasInitialData(true);
-        }
-    }, [venueData, calendarData, venueLinks, hasInitialData]);
-
     // Memoize callbacks to prevent CalendarWithSlots from re-rendering
     const handleDateSelect = useCallback((date: Date | undefined) => {
         setReservationForm((prev) => ({ ...prev, date }));
@@ -152,9 +143,14 @@ export function VenueDetailPage() {
         reservationScheduled,
     } = useScheduleReservation(venueId, reservationForm, reserveOnEmulation);
 
-    // Critical loading state - show main content once venue, calendar, and links are loaded
-    // After initial load, don't show skeletons on calendar updates (party size changes)
-    const isLoadingCritical = !hasInitialData && (loadingVenue || loadingCalendar || loadingLinks);
+    // Critical loading state - show skeletons if:
+    // 1. We're actively loading, OR
+    // 2. The loaded data doesn't match the current venueId (switching venues)
+    const isLoadingCritical =
+        loadingVenue ||
+        loadingCalendar ||
+        loadingLinks ||
+        (venueData?.venue_id !== venueId);
 
     if (!venueId) {
         return (
@@ -353,6 +349,7 @@ export function VenueDetailPage() {
                                     reservationScheduled={reservationScheduled}
                                     reserveOnEmulation={reserveOnEmulation}
                                     setReserveOnEmulation={setReserveOnEmulation}
+                                    venueData={venueData}
                                 />
                             </motion.div>
                         )}

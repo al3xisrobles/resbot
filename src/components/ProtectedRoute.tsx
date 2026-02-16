@@ -2,6 +2,15 @@ import { Navigate } from "react-router-dom";
 import { useAtomValue } from "jotai";
 import { useAuth } from "@/contexts/AuthContext";
 import { isOnboardedAtom, isAuthLoadingAtom } from "@/atoms/authAtoms";
+import { LoaderSpinner } from "@/components/ui/loader-spinner";
+
+function RouteLoadingScreen() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
+      <LoaderSpinner size="lg" />
+    </div>
+  );
+}
 
 /**
  * Route guard that requires authentication only
@@ -18,7 +27,7 @@ export function AuthenticatedRoute({
 
   // Wait for auth state to resolve before making routing decisions
   if (isAuthLoading) {
-    return null;
+    return <RouteLoadingScreen />;
   }
 
   if (!currentUser) {
@@ -41,7 +50,7 @@ export function OnboardedRoute({ children }: { children: React.ReactNode }) {
 
   // Wait for auth state to resolve before making routing decisions
   if (isAuthLoading) {
-    return null;
+    return <RouteLoadingScreen />;
   }
 
   if (!currentUser) {
@@ -71,7 +80,7 @@ export function AuthenticatedOnboardedRoute({
 
   // Wait for auth state to resolve before making routing decisions
   if (isAuthLoading) {
-    return null;
+    return <RouteLoadingScreen />;
   }
 
   if (!currentUser) {
@@ -96,7 +105,7 @@ export function GuestOnlyRoute({ children }: { children: React.ReactNode }) {
 
   // Wait for auth state to resolve before making routing decisions
   if (isAuthLoading) {
-    return null;
+    return <RouteLoadingScreen />;
   }
 
   if (currentUser) {

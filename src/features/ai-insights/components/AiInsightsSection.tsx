@@ -150,31 +150,18 @@ export function AiInsightsSection({
           {aiSummary && (
             <motion.div className="space-y-4" variants={itemVariants}>
               {/* Summary */}
-              <motion.div
-                className="prose prose-sm max-w-none"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, ease: EASE_OUT_QUAD, delay: 0.15 }}
-              >
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+              <div className="prose prose-sm max-w-none">
+                <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
                   {renderMarkdownBold(aiSummary.summary)}
                 </p>
-              </motion.div>
+              </div>
 
               {/* Show Details Button */}
               {((aiSummary.groundingChunks &&
                 aiSummary.groundingChunks.length > 0) ||
                 (aiSummary.webSearchQueries &&
                   aiSummary.webSearchQueries.length > 0)) && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{
-                    duration: 0.25,
-                    ease: EASE_OUT_QUAD,
-                    delay: 0.2,
-                  }}
-                >
+                <div>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -269,7 +256,7 @@ export function AiInsightsSection({
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </motion.div>
+                </div>
               )}
             </motion.div>
           )}

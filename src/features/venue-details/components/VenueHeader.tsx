@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Bookmark, Share } from "lucide-react";
 import { motion } from "framer-motion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { VenueData } from "../lib/types";
@@ -60,16 +61,36 @@ export function VenueHeader({ venueData }: VenueHeaderProps) {
         </motion.div>
       </div>
       <motion.div
-        className="flex items-center gap-2 text-muted-foreground mt-2"
+        className="flex items-center gap-2 text-muted-foreground mt-2 flex-wrap"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.25, ease: EASE_OUT_QUAD, delay: 0.2 }}
       >
         <span>{venueData.type}</span>
-        {venueData.price_range && (
+        {venueData.price_range ? (
           <>
             <span className="text-muted-foreground/60">•</span>
             <span>{"$".repeat(venueData.price_range)}</span>
+          </>
+        ) : null}
+        {venueData.requiresPaymentMethod === true && (
+          <>
+            <span className="text-muted-foreground/60">•</span>
+            <Badge variant="destructive">Card Required</Badge>
+          </>
+        )}
+        {venueData.requiresPaymentMethod === false && (
+          <>
+            <span className="text-muted-foreground/60">•</span>
+            <span>No Card Required</span>
+          </>
+        )}
+        {venueData.requiresPaymentMethod === null && (
+          <>
+            <span className="text-muted-foreground/60">•</span>
+            <Badge variant="secondary" className="gap-1">
+              Payment req unknown
+            </Badge>
           </>
         )}
       </motion.div>

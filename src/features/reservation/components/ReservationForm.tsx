@@ -23,6 +23,8 @@ import { UnifiedSearchControls } from "@/components/ui/unified-search-controls";
 import { TIME_SLOTS } from "@/lib/time-slots";
 import { useAuth } from "@/contexts/AuthContext";
 import { cityTimezoneAbbrAtom } from "@/atoms/cityAtom";
+import { meAtom } from "@/atoms/authAtoms";
+import type { VenueData } from "@/lib/interfaces/app-types";
 import type { ReservationFormState, DropSchedule } from "../atoms/reservationFormAtom";
 import { Stack, Group } from "@/components/ui/layout";
 
@@ -39,6 +41,7 @@ interface ReservationFormProps {
   reservationScheduled: boolean;
   reserveOnEmulation: boolean;
   setReserveOnEmulation: (value: boolean) => void;
+  venueData?: VenueData | null;
 }
 
 export function ReservationForm({
@@ -50,9 +53,15 @@ export function ReservationForm({
   reservationScheduled,
   reserveOnEmulation,
   setReserveOnEmulation,
+  venueData,
 }: ReservationFormProps) {
   const auth = useAuth();
+  const [me] = useAtom(meAtom);
   const [timezoneAbbr] = useAtom(cityTimezoneAbbrAtom);
+  const hasPaymentMethod = me?.hasPaymentMethod ?? false;
+  const requiresPaymentButUserHasNone =
+    venueData?.requiresPaymentMethod === true && !hasPaymentMethod;
+  const paymentRequirementUnknown = venueData?.requiresPaymentMethod === null;
 
   return (
     <Stack itemsSpacing={24}>
@@ -266,6 +275,43 @@ export function ReservationForm({
         </Stack>
       </Stack>
 
+      {paymentRequirementUnknown && (
+        <Alert
+          variant="default"
+          className="border-yellow-500/50 bg-yellow-500/10"
+        >
+          <AlertCircle className="size-4 text-yellow-500" />
+          <AlertDescription className="text-sm">
+            Payment requirement unknown. Check the{" "}
+            <a
+              href={`https://resy.com/cities/ny/${venueData?.name
+                ?.toLowerCase()
+                .replace(/\s+/g, "-")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-medium"
+            >
+              Resy website
+            </a>{" "}
+            to ensure no payment method is required before scheduling.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {requiresPaymentButUserHasNone && (
+        <Alert variant="destructive">
+          <AlertCircle className="size-4" />
+          <AlertDescription className="text-sm">
+            This restaurant requires a payment method on file. Please add a
+            payment method in your{" "}
+            <a href="/profile" className="underline font-medium">
+              profile settings
+            </a>{" "}
+            to schedule reservations.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {useEmulators && (
         <Group itemsSpacing={8}>
           <Button
@@ -308,7 +354,8 @@ export function ReservationForm({
           reservationForm.dropSchedules.length === 0 ||
           reservationForm.dropSchedules.some(
             (schedule) => !schedule.dropDate
-          )
+          ) ||
+          requiresPaymentButUserHasNone
         }
         className="w-full"
       >

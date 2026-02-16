@@ -25,6 +25,7 @@ export const API_ENDPOINTS = {
     searchMap: "/search_map",
     venue: "/venue",
     venueLinks: "/venue_links",
+    checkVenuePaymentRequirement: "/check_venue_payment_requirement",
     calendar: "/calendar",
     slots: "/slots",
     reservation: "/reservation",
@@ -270,4 +271,34 @@ export async function apiDelete<T>(
     }
 
     return apiRequest<T>(url, { method: "DELETE" });
+}
+
+/** Response shape from check_venue_payment_requirement */
+interface CheckVenuePaymentRequirementResponse {
+    success: boolean;
+    requiresPaymentMethod?: boolean | null;
+    source?: string;
+    slotsAnalyzed?: number;
+}
+
+/**
+ * Check if venue requires payment method.
+ * Returns true (required), false (not required), or null (unknown).
+ */
+export async function checkVenuePaymentRequirement(
+    venueId: string,
+    userId?: string,
+    date?: string,
+    partySize?: number
+): Promise<boolean | null> {
+    const params: Record<string, string> = { id: venueId };
+    if (userId) params.userId = userId;
+    if (date) params.date = date;
+    if (partySize !== undefined) params.partySize = String(partySize);
+
+    const data = await apiGet<CheckVenuePaymentRequirementResponse>(
+        API_ENDPOINTS.checkVenuePaymentRequirement,
+        params
+    );
+    return data.requiresPaymentMethod ?? null;
 }

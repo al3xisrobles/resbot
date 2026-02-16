@@ -3,16 +3,19 @@
 This project uses feature slicing with unidirectional data flow: `Common → Features → Pages → App`.
 
 **Directory Structure:**
+
 - `common/` - Shared utilities, components, hooks, atoms (no cross-layer imports)
 - `features/` - Isolated feature modules (can import from `common/`, not other features)
 - `pages/` - Page composition layer (composes features into pages)
 - `app/` - Application entry point
 
 **Key Rules:**
+
 - Features cannot import from other features (use relative imports within a feature)
 - Use `.private.ts/tsx` suffix for internal feature files
 - Pages compose features; features are self-contained units
 - Common layer contains truly shared code used by multiple features
+- Whenever interacting with the resy API, be sure to use the logic inside functions/api/resy_client
 
 ---
 
@@ -23,6 +26,7 @@ When working in the `functions/` directory, follow these pylint-compliant coding
 ## Logging Best Practices
 
 **Always use % formatting, NOT f-strings:**
+
 ```python
 # ✅ Good
 logger.error("Error fetching calendar: %s", e)
@@ -38,10 +42,12 @@ logger.info(f"User {user_id} authenticated successfully")
 ## Code Style
 
 **Line Length:**
+
 - Maximum 120 characters per line
 - Break long lines using parentheses for multi-line expressions
 
 **Import Order:**
+
 1. Standard library imports
 2. Third-party imports
 3. Local application imports
@@ -59,7 +65,9 @@ from .utils import load_credentials
 ```
 
 **Exception Handling:**
+
 - Always use `from e` when re-raising exceptions to preserve traceback:
+
 ```python
 # ✅ Good
 except requests.exceptions.RequestException as e:
@@ -73,7 +81,9 @@ except requests.exceptions.RequestException as e:
 ## Code Quality
 
 **Unused Variables/Arguments:**
+
 - Prefix unused variables/arguments with `_`:
+
 ```python
 def filter_side_effect(hits, _filters, seen_ids, **_kwargs):
     # _filters and _kwargs are intentionally unused
@@ -81,7 +91,9 @@ def filter_side_effect(hits, _filters, seen_ids, **_kwargs):
 ```
 
 **No-else-return:**
+
 - Don't use `elif` after a `return` statement:
+
 ```python
 # ✅ Good
 if condition:
@@ -97,7 +109,9 @@ elif other_condition:
 ```
 
 **F-strings:**
+
 - Don't use f-strings without interpolation:
+
 ```python
 # ✅ Good
 logger.info("Processing request")
@@ -107,7 +121,9 @@ logger.info(f"Processing request")
 ```
 
 **Requests Timeout:**
+
 - Always include `timeout` parameter in `requests` calls:
+
 ```python
 response = requests.get(url, headers=headers, timeout=30)
 ```
@@ -128,6 +144,7 @@ pylint api/tests/    # Check test files
 # Component Styling Consistency
 
 **Design Tokens:** Use CSS custom properties from `index.css` for consistent rounding and sizing:
+
 - `--radius-pill`: Fully rounded (hero controls, pills)
 - `--radius-control`: Form controls (default selects, inputs)
 - `--radius-surface`: Popovers, dropdowns, cards
@@ -135,12 +152,14 @@ pylint api/tests/    # Check test files
 - `--height-control-sm/default/lg/xl`: Consistent component heights
 
 **Component Variants:** Use variant props instead of custom classes:
+
 - `Select`: `variant="pill"` for hero/pill style, default for forms
 - `Input`: `variant="pill"` for search bars, default for forms
 - `DatePickerTrigger`: Unified date picker button (replaces custom buttons)
 - `Button`: Use size variants (`sm`, `default`, `lg`, `icon`, `icon-sm`, `icon-lg`)
 
 **Rules:**
+
 - Never use inline `rounded-full` or custom border-radius classes—use component variants
 - Hero/search controls use `variant="pill"`, form controls use default
 - All popovers/dropdowns use `--radius-surface` automatically
@@ -163,6 +182,7 @@ This project uses Sentry for error tracking, logging, and performance monitoring
 5. **React Router Integration**: Use Sentry's React Router integration for route change tracking
 
 **When adding new features or modifying existing code:**
+
 - All `try/catch` blocks must include `Sentry.captureException(error)`
 - All API functions must be wrapped with `Sentry.startSpan` with appropriate `op` and `name`
 - User actions (button clicks, form submissions) should use `Sentry.startSpan` for meaningful operations
@@ -200,7 +220,7 @@ function TestComponent() {
         span.setAttribute("metric", metric);
 
         doSomething();
-      },
+      }
     );
   };
 
@@ -225,7 +245,7 @@ async function fetchUserData(userId) {
       const response = await fetch(`/api/users/${userId}`);
       const data = await response.json();
       return data;
-    },
+    }
   );
 }
 ```
