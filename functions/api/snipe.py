@@ -269,7 +269,7 @@ def run_snipe(req: Request):
         cors_origins="*",
         cors_methods=["POST", "OPTIONS"],
     ),
-    timeout_sec=30,
+    timeout_sec=120,
     memory=MemoryOption.MB_512,
 )
 @with_sentry_trace
@@ -374,7 +374,7 @@ If the status is "done", simply state that the reservation was successful."""
 
         return {
             "success": True,
-            "summary": summary
+            "data": {"summary": summary},
         }
 
     except Exception as e:

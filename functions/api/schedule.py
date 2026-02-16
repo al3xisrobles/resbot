@@ -14,6 +14,13 @@ from firebase_functions.options import CorsOptions
 from firebase_admin import firestore
 
 from .sentry_utils import with_sentry_trace
+from .response_schemas import (
+    success_response,
+    error_response,
+    JobCreatedData,
+    JobUpdatedData,
+    JobCancelledData,
+)
 from google.cloud.scheduler_v1 import CloudSchedulerClient, HttpMethod
 
 logger = logging.getLogger(__name__)
@@ -276,17 +283,18 @@ def create_snipe(req: Request):
             # Scheduler validation failed (e.g., date mismatch) - delete the Firestore doc
             logger.error(f"[create_snipe] Scheduler validation failed: {e}")
             job_ref.delete()
-            return {"success": False, "error": str(e)}, 400
+            return error_response(str(e), 400)
 
-        return {
-            "success": True,
-            "jobId": job_id,
-            "targetTimeIso": job_data["targetTimeIso"],
-        }, 200
+        return success_response(
+            JobCreatedData(
+                jobId=job_id,
+                targetTimeIso=job_data["targetTimeIso"],
+            )
+        ), 200
 
     except Exception as e:
         logger.error(f"[create_snipe] Unexpected error: {e}")
-        return {"success": False, "error": str(e)}, 500
+        return error_response(str(e), 500)
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
@@ -323,7 +331,7 @@ def update_snipe(req: Request):
         
         # Only allow updates to pending jobs
         if existing_job.get("status") != "pending":
-            return {"success": False, "error": "Can only update pending jobs"}, 400
+            return error_response("Can only update pending jobs", 400)
         
         # Build update dict with only provided fields
         updates = {}
@@ -413,7 +421,7 @@ def update_snipe(req: Request):
             except ValueError as e:
                 # Scheduler validation failed - don't update Firestore
                 logger.error(f"[update_snipe] Scheduler validation failed: {e}")
-                return {"success": False, "error": str(e)}, 400
+                return error_response(str(e), 400)
         
         # Update Firestore document (only after scheduler job is successfully created)
         job_ref.update(updates)
@@ -422,15 +430,16 @@ def update_snipe(req: Request):
         updated_snap = job_ref.get()
         updated_job = updated_snap.to_dict()
         
-        return {
-            "success": True,
-            "jobId": job_id,
-            "targetTimeIso": updated_job.get("targetTimeIso"),
-        }, 200
+        return success_response(
+            JobUpdatedData(
+                jobId=job_id,
+                targetTimeIso=updated_job.get("targetTimeIso"),
+            )
+        ), 200
         
     except Exception as e:
         logger.error(f"[update_snipe] Error: {e}")
-        return {"success": False, "error": str(e)}, 500
+        return error_response(str(e), 500)
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
@@ -452,20 +461,20 @@ def cancel_snipe(req: Request):
         job_id = data.get("jobId")
         
         if not job_id:
-            return {"success": False, "error": "Missing jobId"}, 400
+            return error_response("Missing jobId", 400)
         
         # Load existing job
         job_ref = get_db().collection("reservationJobs").document(job_id)
         job_snap = job_ref.get()
         
         if not job_snap.exists:
-            return {"success": False, "error": "Job not found"}, 404
+            return error_response("Job not found", 404)
         
         existing_job = job_snap.to_dict()
         
         # Only allow cancellation of pending jobs
         if existing_job.get("status") != "pending":
-            return {"success": False, "error": "Can only cancel pending jobs"}, 400
+            return error_response("Can only cancel pending jobs", 400)
         
         # Delete Cloud Scheduler job
         _delete_scheduler_job(job_id)
@@ -476,11 +485,8 @@ def cancel_snipe(req: Request):
             "lastUpdate": firestore.SERVER_TIMESTAMP,
         })
         
-        return {
-            "success": True,
-            "jobId": job_id,
-        }, 200
+        return success_response(JobCancelledData(jobId=job_id)), 200
         
     except Exception as e:
         logger.error(f"[cancel_snipe] Error: {e}")
-        return {"success": False, "error": str(e)}, 500
+        return error_response(str(e), 500)

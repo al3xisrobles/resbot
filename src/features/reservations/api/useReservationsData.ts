@@ -189,7 +189,13 @@ export function useReservationsData() {
                         `[useReservationsData] Failed to fetch summary for ${reservation.id}:`,
                         error
                     );
-                    Sentry.captureException(error);
+                    Sentry.captureException(error, {
+                        extra: {
+                            jobId: reservation.id,
+                            venueName: reservation.venueName,
+                            venueId: reservation.venueId,
+                        },
+                    });
                     return null;
                 }
             });

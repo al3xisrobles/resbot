@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import { useAtomValue } from "jotai";
 import { useEffect } from "react";
 import {
   LogOut,
@@ -9,6 +10,7 @@ import {
   Menu,
 } from "lucide-react";
 import ResbotLogoWithText from "../assets/ResbotLogoRedWithText.svg";
+import { isAuthLoadingAtom } from "@/atoms/authAtoms";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "./ui/button";
 import {
@@ -31,6 +33,7 @@ import { SearchBar } from "@/components/SearchBar";
 import { CitySelector } from "@/common/components/CitySelector";
 
 export function Header() {
+  const isAuthLoading = useAtomValue(isAuthLoadingAtom);
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -58,8 +61,28 @@ export function Header() {
   // Whether we actually show a SearchBar in the header
   const showHeaderSearch = !isHomePage && isLoggedIn;
 
+  if (isAuthLoading) {
+    return (
+      <header className={`${!isHomePage && "border-b"} bg-card`} aria-hidden>
+        <div className="container mx-auto px-4 py-4">
+          <div className="hidden md:grid grid-cols-3 items-center gap-6">
+            <div className="h-10" />
+            <div />
+            <div className="h-10" />
+          </div>
+          <div className="flex md:hidden items-center justify-between gap-4">
+            <div className="h-8" />
+            <div className="h-8" />
+          </div>
+        </div>
+      </header>
+    );
+  }
+
   return (
-    <header className={`${!isHomePage && "border-b"} bg-card`}>
+    <header
+      className={`${!isHomePage && "border-b"} bg-card animate-in fade-in-0 duration-300`}
+    >
       <div className="container mx-auto px-4 py-4">
         {/* Desktop Layout */}
         {!showHeaderSearch ? (
