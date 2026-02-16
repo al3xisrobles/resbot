@@ -15,6 +15,7 @@ from .cities import get_city_config
 from .resy_client.api_access import build_resy_client
 from .resy_client.models import CalendarRequestParams
 from .sentry_utils import with_sentry_trace
+from .constants import GEMINI_MODEL
 from .utils import load_credentials, gemini_client
 
 logger = logging.getLogger(__name__)
@@ -190,6 +191,7 @@ Question: {search_query}{resy_findings}{resy_venue_info}
 Provide a concise summary (3-5 sentences, max 500 tokens) including:
 - What time reservations typically open (e.g., 9:00 AM, 10:00 AM, midnight)
 - How many days in advance reservations are released (e.g., 14 days, 30 days, 2 weeks). If, no matter what day today is, the entire next month is released (e.g., if it's Nov 20th but all of Dec 1 - 31st is released), specify that—i.e., specifically state if it's "30 days out" or "the entire next month".
+- If there is a deposit or cancellation fee, mention that a payment method must be added to your Resy account before booking.
 - Do NOT mention that you can book through Resy. You MAY say the word Resy, but no need to say "RESTAURANT reservations are released on Resy." specifically.
 - Do NOT give generic booking advice like "To secure a table, it is recommended to book precisely when the reservation window opens."
 - DO give restaurant-specific booking advice like "For those unable to secure a reservation, the bar at Torrisi accommodates walk-ins on a first-come, first-served basis, offering the full menu."
@@ -199,7 +201,7 @@ IMPORTANT: If "OFFICIAL RESY VENUE INFO" is provided above, prioritize that info
 
         # Call Gemini with Google Search grounding
         response = gemini_client.models.generate_content(
-            model="gemini-2.5-pro",
+            model=GEMINI_MODEL,
             contents=prompt,
             config=config,
         )

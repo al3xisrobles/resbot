@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 class ResyConfig(BaseModel):
     api_key: str
     token: str
-    payment_method_id: int
+    payment_method_id: Optional[int] = None
     email: Optional[str] = None
     password: Optional[str] = None
     retry_on_taken_slot: bool = True
@@ -107,15 +107,25 @@ class SlotDate(BaseModel):
     end: datetime
 
 
+class SlotPayment(BaseModel):
+    """Payment info from /find slot; used to detect if venue requires payment method."""
+    model_config = ConfigDict(extra='allow')
+    is_paid: bool = False
+    deposit_fee: Optional[Any] = None
+    cancellation_fee: Optional[Any] = None
+
+
 class Slot(BaseModel):
+    model_config = ConfigDict(extra='allow')
     config: SlotConfig
     date: SlotDate
+    payment: Optional[SlotPayment] = None
 
 
 class Venue(BaseModel):
     model_config = ConfigDict(extra='allow')  # Allow extra fields like 'venue' metadata
-
     slots: List[Slot] = []
+    templates: Optional[Dict[str, Any]] = None  # template_id -> {is_paid, deposit_fee, ...}
 
 
 class Results(BaseModel):

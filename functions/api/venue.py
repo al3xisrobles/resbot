@@ -4,15 +4,18 @@ Handles venue details and links
 """
 
 import logging
+from datetime import datetime, timedelta
 
 import requests
 from firebase_functions.https_fn import on_request, Request
 from firebase_functions.options import CorsOptions, MemoryOption
+from google.cloud import firestore as gc_firestore
 
 from .resy_client.api_access import build_resy_client
 from .resy_client.errors import ResyApiError
+from .resy_client.models import CalendarRequestParams, FindRequestBody
 from .sentry_utils import with_sentry_trace
-from .utils import load_credentials, GOOGLE_MAPS_API_KEY
+from .utils import GOOGLE_MAPS_API_KEY, _get_firestore_client, load_credentials
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -283,3 +286,175 @@ def venue_links(req: Request):
             'success': False,
             'error': str(e)
         }, 500
+
+
+@on_request(
+    cors=CorsOptions(cors_origins="*", cors_methods=["GET"]),
+    timeout_sec=60,
+    memory=MemoryOption.GB_1,
+)
+@with_sentry_trace
+def check_venue_payment_requirement(req: Request):
+    """
+    GET /check_venue_payment_requirement?id=<venue_id>&userId=<user_id>&date=<date>&partySize=<party_size>
+    Check if venue requires payment method by analyzing /find endpoint slot payment data.
+    Returns: {"success": true, "requiresPaymentMethod": true|false|null}
+    - true: payment method required (any slot has is_paid=true OR deposit_fee != null OR cancellation_fee != null)
+    - false: no payment method required (ALL slots have is_paid=false AND deposit_fee=null AND cancellation_fee=null)
+    - null: unknown (no slots available to analyze)
+    """
+    try:
+        venue_id = req.args.get('id')
+        user_id = req.args.get('userId')
+        date_str = req.args.get('date')
+        party_size = int(req.args.get('partySize', 2))
+
+        if not venue_id:
+            return {'success': False, 'error': 'Missing venue_id'}, 400
+
+        db = _get_firestore_client()
+        venue_doc = db.collection('venues').document(venue_id).get()
+
+        if venue_doc.exists:
+            venue_data = venue_doc.to_dict()
+            requires_payment = venue_data.get('requiresPaymentMethod')
+            if requires_payment is not None:
+                logger.info(
+                    "Using cached payment requirement for venue %s: %s",
+                    venue_id,
+                    requires_payment,
+                )
+                return {
+                    'success': True,
+                    'requiresPaymentMethod': requires_payment,
+                    'source': 'cache',
+                }
+
+        config = load_credentials(user_id)
+        client = build_resy_client(config)
+
+        # If no date provided, find the first available date from calendar
+        if not date_str:
+            today = datetime.now()
+            end_date = today + timedelta(days=90)
+            
+            calendar_params = CalendarRequestParams(
+                venue_id=venue_id,
+                num_seats=party_size,
+                start_date=today.strftime('%Y-%m-%d'),
+                end_date=end_date.strftime('%Y-%m-%d'),
+            )
+            
+            calendar_data = client.get_calendar(calendar_params)
+            
+            # Find dates that might have availability (not 'sold-out' or 'closed')
+            candidate_dates = []
+            if calendar_data.scheduled:
+                for entry in calendar_data.scheduled:
+                    if entry.inventory:
+                        status = entry.inventory.reservation
+                        # Try dates that are 'available' or any status that's not explicitly unavailable
+                        if status in ['available', None] or status not in ['sold-out', 'closed']:
+                            candidate_dates.append(entry.date)
+                        if len(candidate_dates) >= 5:  # Try up to 5 dates
+                            break
+            
+            # If no candidates from calendar, try next 5 days
+            if not candidate_dates:
+                for i in range(1, 6):
+                    candidate_dates.append((today + timedelta(days=i)).strftime('%Y-%m-%d'))
+
+            # Try each candidate date until we get a venue with slots or templates
+            venue_result = None
+            date_used = None
+            for candidate_date in candidate_dates:
+                find_request = FindRequestBody(
+                    venue_id=int(venue_id),
+                    day=candidate_date,
+                    party_size=party_size,
+                )
+                venue_result = client.find_venue_result(find_request)
+                if venue_result and (venue_result.slots or venue_result.templates):
+                    date_used = candidate_date
+                    break
+
+            if not venue_result or (not venue_result.slots and not venue_result.templates):
+                logger.info(
+                    "No slots or templates found on any candidate date for venue %s",
+                    venue_id,
+                )
+                return {
+                    'success': True,
+                    'requiresPaymentMethod': None,
+                    'source': 'no_slots_found',
+                }
+        else:
+            # Date was provided, use it directly
+            find_request = FindRequestBody(
+                venue_id=int(venue_id),
+                day=date_str,
+                party_size=party_size,
+            )
+            venue_result = client.find_venue_result(find_request)
+            date_used = date_str
+
+        if not venue_result:
+            logger.info("No venue result for venue %s on %s", venue_id, date_used)
+            return {
+                'success': True,
+                'requiresPaymentMethod': None,
+                'source': 'find_no_slots',
+            }
+
+        requires_payment = False
+        source = 'find_slots'
+        slots_analyzed = 0
+
+        if venue_result.slots:
+            for slot in venue_result.slots:
+                payment = getattr(slot, 'payment', None)
+                if payment:
+                    if (
+                        getattr(payment, 'is_paid', False)
+                        or getattr(payment, 'deposit_fee', None) is not None
+                        or getattr(payment, 'cancellation_fee', None) is not None
+                    ):
+                        requires_payment = True
+                        break
+            slots_analyzed = len(venue_result.slots)
+        elif venue_result.templates:
+            for _tid, t in venue_result.templates.items():
+                if not isinstance(t, dict):
+                    continue
+                if t.get('is_paid') or t.get('deposit_fee') is not None or t.get('cancellation_fee') is not None:
+                    requires_payment = True
+                    break
+            source = 'find_templates'
+
+        db.collection('venues').document(venue_id).set(
+            {
+                'requiresPaymentMethod': requires_payment,
+                'lastChecked': gc_firestore.SERVER_TIMESTAMP,
+                'venueId': venue_id,
+            },
+            merge=True,
+        )
+        logger.info(
+            "Cached payment requirement for venue %s: %s (source=%s)",
+            venue_id,
+            requires_payment,
+            source,
+        )
+
+        out = {
+            'success': True,
+            'requiresPaymentMethod': requires_payment,
+            'source': source,
+        }
+        if slots_analyzed:
+            out['slotsAnalyzed'] = slots_analyzed
+        return out
+
+    except Exception as e:
+        logger.error("Error checking venue payment requirement: %s", e)
+        return {'success': False, 'error': str(e)}, 500

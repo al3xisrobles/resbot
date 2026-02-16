@@ -22,6 +22,10 @@ class ResyAuthError(ResyApiError):
     """401/403 -- token expired or invalid."""
 
 
+class ResyInvalidCredentialsError(ResyAuthError):
+    """419 -- invalid username/password during login (user error, not a bug)."""
+
+
 class RateLimitError(ResyApiError):
     """429 -- rate limited, has retry_after."""
 

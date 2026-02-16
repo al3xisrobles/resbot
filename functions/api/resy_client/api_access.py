@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from pydantic import ValidationError
 
@@ -20,6 +20,7 @@ from .models import (
     FindResponseBody,
     ResyConfig,
     Slot,
+    Venue,
     VenueResponseBody,
     VenueSearchRequestBody,
     VenueSearchResponseBody,
@@ -121,6 +122,11 @@ class ResyApiAccess:
         return _parse_json_or_raise(resp, AuthResponseBody, endpoint)
 
     def find_booking_slots(self, params: FindRequestBody) -> List[Slot]:
+        venue = self.find_venue_result(params)
+        return venue.slots if venue else []
+
+    def find_venue_result(self, params: FindRequestBody) -> Optional[Venue]:
+        """POST /4/find; returns first venue (slots + templates) or None."""
         endpoint = ResyEndpoints.FIND.value
         logger.info("Sending request to find booking slots with params: %s", params.model_dump())
         resp = self.client.post_json(
@@ -130,10 +136,9 @@ class ResyApiAccess:
         )
         logger.info("Received response from find booking slots: %s", resp.text)
         parsed = _parse_json_or_raise(resp, FindResponseBody, endpoint)
-        slots = []
         if parsed.results and parsed.results.venues:
-            slots = parsed.results.venues[0].slots
-        return slots
+            return parsed.results.venues[0]
+        return None
 
     def get_booking_token(self, params: DetailsRequestBody) -> DetailsResponseBody:
         endpoint = ResyEndpoints.DETAILS.value

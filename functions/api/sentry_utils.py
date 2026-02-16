@@ -8,7 +8,6 @@ import logging
 from typing import Callable, Any
 
 import sentry_sdk
-from sentry_sdk.tracing import Transaction
 from firebase_functions.https_fn import Request
 
 logger = logging.getLogger(__name__)
@@ -63,7 +62,10 @@ def with_sentry_trace(func: Callable) -> Callable:
                 if len(parts) >= 3:
                     sampled = parts[2] == "1"
                 logger.debug(
-                    f"Continuing trace: trace_id={trace_id}, parent_span_id={parent_span_id}, sampled={sampled}"
+                    "Continuing trace: trace_id=%s, parent_span_id=%s, sampled=%s",
+                    trace_id,
+                    parent_span_id,
+                    sampled,
                 )
         
         # Start a transaction that continues the frontend trace
@@ -107,8 +109,12 @@ def with_sentry_trace(func: Callable) -> Callable:
                 
             except Exception as e:
                 # Capture exception and set transaction status
-                transaction.set_status("internal_error")
-                sentry_sdk.capture_exception(e)
+                # Skip capturing ValueError - these are user input errors, not bugs
+                if isinstance(e, ValueError):
+                    transaction.set_status("invalid_argument")
+                else:
+                    transaction.set_status("internal_error")
+                    sentry_sdk.capture_exception(e)
                 raise
     
     return wrapper

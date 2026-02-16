@@ -15,6 +15,7 @@ from .errors import (
     RateLimitError,
     ResyApiError,
     ResyAuthError,
+    ResyInvalidCredentialsError,
     ResyTransientError,
 )
 from .models import ResyConfig
@@ -296,6 +297,16 @@ class ResyHttpClient:
                 raise ResyAuthError(
                     f"Auth error {status}: {body_truncated}",
                     status_code=status,
+                    response_body=body,
+                    endpoint=endpoint,
+                )
+
+            if status == 419:
+                logger.info("Resy invalid credentials (419) %s: %s", endpoint, body_truncated)
+                span.set_status("unauthenticated")
+                raise ResyInvalidCredentialsError(
+                    f"Invalid username or password: {body_truncated}",
+                    status_code=419,
                     response_body=body,
                     endpoint=endpoint,
                 )

@@ -16,6 +16,7 @@ from .sentry_utils import with_sentry_trace
 from .resy_client.models import ResyConfig, ReservationRequest
 from .resy_client.manager import ResyManager
 from .resy_client.errors import RateLimitError
+from .constants import GEMINI_MODEL
 from .utils import load_credentials, gemini_client
 
 logger = logging.getLogger(__name__)
@@ -351,7 +352,7 @@ If the status is "done", simply state that the reservation was successful."""
 
         # Call Gemini
         response = gemini_client.models.generate_content(
-            model="gemini-2.0-flash-exp",
+            model=GEMINI_MODEL,
             contents=prompt,
             config={"temperature": 0.3},
         )

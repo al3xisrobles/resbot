@@ -13,7 +13,7 @@ from firebase_admin import firestore
 from google.cloud import firestore as gc_firestore
 
 from .resy_client.api_access import build_resy_client
-from .resy_client.errors import ResyApiError, ResyAuthError
+from .resy_client.errors import ResyApiError, ResyAuthError, ResyInvalidCredentialsError
 from .resy_client.models import AuthRequestBody, ResyConfig
 from .sentry_utils import with_sentry_trace
 
@@ -36,7 +36,8 @@ def authenticate_with_resy(email: str, password: str) -> dict:
         dict: Response data from Resy API (token, payment_methods)
 
     Raises:
-        Exception: If authentication fails
+        ValueError: If credentials are invalid (user error, not logged to Sentry)
+        Exception: If authentication fails due to other reasons (logged to Sentry)
     """
     logger.info("Authenticating with Resy for email: %s", email)
 
@@ -50,14 +51,22 @@ def authenticate_with_resy(email: str, password: str) -> dict:
     try:
         auth_response = client.auth(AuthRequestBody(email=email, password=password))
         return auth_response.model_dump()
+    except ResyInvalidCredentialsError as e:
+        # Status 419: Invalid username/password - this is a user error, not a bug
+        logger.info(
+            "Invalid Resy credentials for email %s (status %s)",
+            email,
+            e.status_code,
+        )
+        raise ValueError("Invalid Resy username or password") from e
     except (ResyAuthError, ResyApiError) as e:
+        # Other auth/API errors - these might be actual bugs or API issues
         logger.error(
             "Resy authentication failed: %s %s",
             getattr(e, "status_code", ""),
-            getattr(e, "response_body", "")[:200] or "",
+            (getattr(e, "response_body", "") or "")[:200],
         )
         raise Exception("Invalid Resy login") from e
-
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
 @with_sentry_trace
@@ -168,7 +177,16 @@ def start_resy_onboarding(req: Request):
             'paymentMethodId': payment_method_id
         }, 200
 
+    except ValueError as e:
+        # User input errors (e.g., invalid credentials) - don't log to Sentry as bugs
+        error_message = str(e)
+        logger.info("Resy onboarding failed due to user error: %s", error_message)
+        return {
+            'success': False,
+            'error': error_message
+        }, 400
     except Exception as e:
+        # Unexpected errors - these should be logged to Sentry
         error_message = str(e)
         logger.error("Error during Resy onboarding: %s", error_message)
 
