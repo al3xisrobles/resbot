@@ -3,12 +3,17 @@ Standardized response schemas for all API endpoints.
 Using Pydantic models ensures compile-time validation of response structures.
 """
 from typing import Any, Dict, Generic, Optional, TypeVar
+
 from pydantic import BaseModel, Field, model_validator
+
+from .resy_client.models import PaymentMethod
 
 
 # Generic type variable for data payload
 T = TypeVar('T')
 
+
+ResyPaymentMethod = PaymentMethod  # Alias for API response clarity
 
 class ApiResponse(BaseModel, Generic[T]):
     """
@@ -98,19 +103,6 @@ class OnboardingData(BaseModel):
     """Data model for onboarding POST endpoint."""
     hasPaymentMethod: bool
     paymentMethodId: Optional[int] = None
-
-
-class ResyPaymentMethod(BaseModel):
-    """Payment method details for API responses."""
-    id: int
-    type: Optional[str] = None
-    display: Optional[str] = None
-    exp_month: Optional[int] = None
-    exp_year: Optional[int] = None
-    is_default: Optional[bool] = None
-    provider_id: Optional[int] = None
-    provider_name: Optional[str] = None
-    issuing_bank: Optional[str] = None
 
 
 class AccountStatusData(BaseModel):

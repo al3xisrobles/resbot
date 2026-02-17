@@ -1372,7 +1372,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/ResyPaymentMethod"
+                  "$ref": "#/components/schemas/PaymentMethod"
                 },
                 "type": "array"
               },
@@ -1462,23 +1462,114 @@
         "title": "AccountStatusData",
         "type": "object"
       },
-      "ResyPaymentMethod": {
-        "description": "Payment method details.",
+      "PaymentMethod": {
+        "description": "Payment method from Resy /4/auth/password response.",
         "properties": {
           "id": {
             "title": "Id",
             "type": "integer"
           },
           "type": {
-            "title": "Type",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Type"
+          },
+          "display": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Display"
+          },
+          "exp_month": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exp Month"
+          },
+          "exp_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exp Year"
+          },
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Default"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider Id"
+          },
+          "provider_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider Name"
+          },
+          "issuing_bank": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Issuing Bank"
           }
         },
         "required": [
-          "id",
-          "type"
+          "id"
         ],
-        "title": "ResyPaymentMethod",
+        "title": "PaymentMethod",
         "type": "object"
       },
       "PaymentMethodUpdateData": {
