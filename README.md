@@ -1,4 +1,4 @@
-# Res Bot
+# Resbot
 
 A full-stack web application for automating Resy restaurant reservations with real-time availability tracking and intelligent sniping.
 
