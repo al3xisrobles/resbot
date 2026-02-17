@@ -29,8 +29,8 @@ todo.txt
 # Saved data directory
 saved_data/
 
-# Debug files (temporary)
-debug/
+# Debug files (temporary) - /debug/ = root only, not src/features/debug/
+/debug/
 functions/debug/
 functions/api/debug/
 
