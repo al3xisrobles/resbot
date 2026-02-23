@@ -27,6 +27,15 @@ import type {
   SearchPagination,
 } from "./interfaces";
 
+import type { components } from "./generated/api.types";
+
+type AccountStatusData = components["schemas"]["AccountStatusData"];
+type AccountStatusResponse = components["schemas"]["ApiResponse_AccountStatusData"];
+type DisconnectResponse = components["schemas"]["ApiResponse_DisconnectData"];
+type PaymentMethodUpdateResponse = components["schemas"]["ApiResponse_PaymentMethodUpdateData"];
+type JobUpdatedResponse = components["schemas"]["ApiResponse_JobUpdatedData"];
+type JobCancelledResponse = components["schemas"]["ApiResponse_JobCancelledData"];
+
 /**
  * Search for restaurants by name and/or filters
  */
@@ -541,22 +550,10 @@ export async function getMe(userId: string): Promise<{
 /**
  * Check if user has connected their Resy account
  */
-export async function checkResyAccountStatus(userId: string): Promise<{
-  success: boolean;
-  connected: boolean;
-  hasPaymentMethod?: boolean;
-  email?: string;
-  name?: string;
-}> {
+export async function checkResyAccountStatus(userId: string): Promise<AccountStatusData> {
   try {
-    const result = await apiGet<{
-      success: boolean;
-      connected: boolean;
-      hasPaymentMethod?: boolean;
-      email?: string;
-      name?: string;
-    }>(API_ENDPOINTS.resyAccount, { userId });
-    return result;
+    const result = await apiGet<AccountStatusResponse>(API_ENDPOINTS.resyAccount, { userId });
+    return result.data!;
   } catch (error) {
     console.error("[API] Error checking Resy account status:", error);
     throw error;
@@ -566,16 +563,9 @@ export async function checkResyAccountStatus(userId: string): Promise<{
 /**
  * Disconnect Resy account
  */
-export async function disconnectResyAccount(userId: string): Promise<{
-  success: boolean;
-  message?: string;
-}> {
+export async function disconnectResyAccount(userId: string): Promise<void> {
   try {
-    const result = await apiDelete<{
-      success: boolean;
-      message?: string;
-    }>(API_ENDPOINTS.resyAccount, { userId });
-    return result;
+    await apiDelete<DisconnectResponse>(API_ENDPOINTS.resyAccount, { userId });
   } catch (error) {
     console.error("[API] Error disconnecting Resy account:", error);
     throw error;
@@ -585,34 +575,10 @@ export async function disconnectResyAccount(userId: string): Promise<{
 /**
  * Get full Resy credentials including payment methods
  */
-export async function getResyCredentials(userId: string): Promise<{
-  success: boolean;
-  connected: boolean;
-  hasPaymentMethod?: boolean;
-  paymentMethodId?: number;
-  paymentMethods?: Array<{ id: number;[key: string]: unknown }>;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  name?: string;
-  mobileNumber?: string;
-  userId?: number;
-}> {
+export async function getResyCredentials(userId: string): Promise<AccountStatusData> {
   try {
-    const result = await apiGet<{
-      success: boolean;
-      connected: boolean;
-      hasPaymentMethod?: boolean;
-      paymentMethodId?: number;
-      paymentMethods?: Array<{ id: number;[key: string]: unknown }>;
-      email?: string;
-      firstName?: string;
-      lastName?: string;
-      name?: string;
-      mobileNumber?: string;
-      userId?: number;
-    }>(API_ENDPOINTS.resyAccount, { userId });
-    return result;
+    const result = await apiGet<AccountStatusResponse>(API_ENDPOINTS.resyAccount, { userId });
+    return result.data!;
   } catch (error) {
     console.error("[API] Error getting Resy credentials:", error);
     throw error;
@@ -625,22 +591,13 @@ export async function getResyCredentials(userId: string): Promise<{
 export async function updateResyPaymentMethod(
   userId: string,
   paymentMethodId: number
-): Promise<{
-  success: boolean;
-  message?: string;
-  paymentMethodId?: number;
-}> {
+): Promise<void> {
   try {
-    const result = await apiPost<{
-      success: boolean;
-      message?: string;
-      paymentMethodId?: number;
-    }>(
+    await apiPost<PaymentMethodUpdateResponse>(
       API_ENDPOINTS.resyAccount,
       { paymentMethodId },
       { userId }
     );
-    return result;
   } catch (error) {
     console.error("[API] Error updating payment method:", error);
     throw error;
@@ -664,23 +621,12 @@ export async function updateReservationJob(
     dropHour?: number;
     dropMinute?: number;
   }
-): Promise<{
-  success: boolean;
-  jobId?: string;
-  targetTimeIso?: string;
-  error?: string;
-}> {
+): Promise<void> {
   try {
-    const result = await apiPost<{
-      success: boolean;
-      jobId?: string;
-      targetTimeIso?: string;
-      error?: string;
-    }>(
+    await apiPost<JobUpdatedResponse>(
       API_ENDPOINTS.updateSnipe,
       { jobId, ...updates }
     );
-    return result;
   } catch (error) {
     console.error("[API] Error updating reservation job:", error);
     throw error;
@@ -693,21 +639,12 @@ export async function updateReservationJob(
 export async function cancelReservationJob(
   _userId: string,
   jobId: string
-): Promise<{
-  success: boolean;
-  jobId?: string;
-  error?: string;
-}> {
+): Promise<void> {
   try {
-    const result = await apiPost<{
-      success: boolean;
-      jobId?: string;
-      error?: string;
-    }>(
+    await apiPost<JobCancelledResponse>(
       API_ENDPOINTS.cancelSnipe,
       { jobId }
     );
-    return result;
   } catch (error) {
     console.error("[API] Error canceling reservation job:", error);
     throw error;

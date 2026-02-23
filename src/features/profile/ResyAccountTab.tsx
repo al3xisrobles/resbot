@@ -80,7 +80,7 @@ export function ResyAccountTab({ onLoadingChange }: ResyAccountTabProps = {}) {
             setConnected(result.connected);
             if (result.connected) {
                 setResyEmail(result.email || "");
-                setResyName(result.name || "");
+                setResyName([result.firstName, result.lastName].filter(Boolean).join(" "));
                 const methods = result.paymentMethods || [];
                 console.log("Loaded payment methods:", methods);
                 setPaymentMethods(methods);

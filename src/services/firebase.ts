@@ -26,6 +26,8 @@ import {
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
 import type { TrendingRestaurant } from "@/lib/interfaces";
+import { apiPost, API_ENDPOINTS } from "@/lib/apiClient";
+import type { components } from "@/lib/generated/api.types";
 
 // Firebase configuration
 const firebaseConfig = {
@@ -85,7 +87,6 @@ console.log("[Firebase] Initialized with config:", {
 });
 console.log("[Firebase] Firestore instance:", db);
 
-const CREATE_SNIPE_URL = "https://create-snipe-hypomglm7a-uc.a.run.app";
 
 export interface VenueCacheData {
   // Venue basic info
@@ -546,15 +547,6 @@ export async function scheduleReservationSnipe(
   request: ReservationSnipeRequest
 ): Promise<ReservationSnipeResponse> {
   try {
-    const fullRequest = {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
-    };
-
-    let response: Response;
     if (useEmulators) {
       console.log("[Firebase Emulator] Scheduling snipe directly in emulator");
       // In emulator mode, create the Firestore job document directly
@@ -632,11 +624,9 @@ export async function scheduleReservationSnipe(
         const snipeEndpoint = request.discoveryMode
           ? `${CLOUD_FUNCTIONS_BASE}/run_discovery_snipe`
           : `${CLOUD_FUNCTIONS_BASE}/run_snipe`;
-        response = await fetch(snipeEndpoint, {
+        await fetch(snipeEndpoint, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jobId }),
         });
         return {
@@ -645,47 +635,28 @@ export async function scheduleReservationSnipe(
         };
       }
 
-      console.log("Full request:", fullRequest);
-
       return {
         jobId: "EMULATOR: FALSE RUN",
         targetTimeIso: "Random time",
       };
     } else {
-      response = await fetch(CREATE_SNIPE_URL, fullRequest);
-    }
-
-    console.log(
-      "[Firebase] Requested scheduleReservationSnipe with request:",
-      fullRequest,
-      "at URL:",
-      CREATE_SNIPE_URL
-    );
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      console.error("[Firebase] scheduleReservationSnipe error:", errorBody);
-      throw new Error(
-        errorBody.error || "Failed to schedule reservation snipe"
+      type CreateSnipeResult = components["schemas"]["ApiResponse_JobCreatedData"];
+      const result = await apiPost<CreateSnipeResult>(
+        API_ENDPOINTS.createSnipe,
+        request
       );
+
+      console.log("[Firebase] Scheduled snipe:", result);
+
+      if (!result.success || !result.data?.jobId || !result.data?.targetTimeIso) {
+        throw new Error(result.error ?? "Failed to schedule reservation snipe");
+      }
+
+      return {
+        jobId: result.data.jobId,
+        targetTimeIso: result.data.targetTimeIso,
+      };
     }
-
-    const result = (await response.json()) as {
-      success: boolean;
-      data?: { jobId?: string; targetTimeIso?: string };
-      error?: string;
-    };
-
-    if (!result.success || !result.data?.jobId || !result.data?.targetTimeIso) {
-      throw new Error(result.error || "Failed to schedule reservation snipe");
-    }
-
-    console.log("[Firebase] Scheduled snipe:", result);
-
-    return {
-      jobId: result.data.jobId,
-      targetTimeIso: result.data.targetTimeIso,
-    };
   } catch (err) {
     console.error("[Firebase] scheduleReservationSnipe failed:", err);
     throw err;
