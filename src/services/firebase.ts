@@ -672,20 +672,19 @@ export async function scheduleReservationSnipe(
 
     const result = (await response.json()) as {
       success: boolean;
-      jobId?: string;
-      targetTimeIso?: string;
+      data?: { jobId?: string; targetTimeIso?: string };
       error?: string;
     };
 
-    if (!result.success || !result.jobId || !result.targetTimeIso) {
+    if (!result.success || !result.data?.jobId || !result.data?.targetTimeIso) {
       throw new Error(result.error || "Failed to schedule reservation snipe");
     }
 
     console.log("[Firebase] Scheduled snipe:", result);
 
     return {
-      jobId: result.jobId,
-      targetTimeIso: result.targetTimeIso,
+      jobId: result.data.jobId,
+      targetTimeIso: result.data.targetTimeIso,
     };
   } catch (err) {
     console.error("[Firebase] scheduleReservationSnipe failed:", err);

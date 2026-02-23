@@ -34,7 +34,7 @@ logger.setLevel(logging.INFO)
 PROJECT_ID = os.environ.get("GCP_PROJECT") or os.environ.get("GCLOUD_PROJECT")
 LOCATION_ID = os.environ.get("LOCATION_ID", "us-central1")
 SNIPER_URL = os.environ.get("SNIPER_URL", "https://run-snipe-hypomglm7a-uc.a.run.app")
-DISCOVERY_SNIPER_URL = os.environ.get("DISCOVERY_SNIPER_URL", "")
+DISCOVERY_SNIPER_URL = os.environ.get("DISCOVERY_SNIPER_URL", "https://us-central1-resybot-bd2db.cloudfunctions.net/run_discovery_snipe")
 
 _db = None
 _scheduler_client = None
