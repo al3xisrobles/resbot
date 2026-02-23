@@ -74,9 +74,7 @@ export function OnboardingPage() {
         await auth.refreshMe();
 
         // Redirect to home page after successful connection
-        setTimeout(() => {
-          navigate("/");
-        }, 1500);
+        navigate("/");
       } else {
         throw new Error(result.error || "Failed to connect Resy account");
       }
