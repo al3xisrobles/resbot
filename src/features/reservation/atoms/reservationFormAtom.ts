@@ -13,6 +13,12 @@ export interface ReservationFormState {
   windowHours: string;
   seatingType: string;
   dropSchedules: DropSchedule[];
+  /** When true, poll around drop time to discover when slots actually appear */
+  discoveryMode: boolean;
+  /** Minutes before expected drop to start polling (discovery mode) */
+  windowBeforeMinutes: string;
+  /** Minutes after expected drop to keep polling (discovery mode) */
+  windowAfterMinutes: string;
 }
 
 /**
@@ -32,4 +38,7 @@ export const reservationFormAtom = atom<ReservationFormState>({
       dropTimeSlot: "9:0", // Default to 9:00 AM
     },
   ],
+  discoveryMode: false,
+  windowBeforeMinutes: "30",
+  windowAfterMinutes: "30",
 });

@@ -112,7 +112,14 @@ export function useScheduleReservation(
             dropMinute,
             userId: user?.uid ?? null,
             actuallyReserve: reserveOnEmulation,
-            timezone: cityTimezone, // Pass the city's timezone to the backend
+            timezone: cityTimezone,
+            discoveryMode: reservationForm.discoveryMode,
+            windowBeforeMinutes: reservationForm.discoveryMode
+              ? Number(reservationForm.windowBeforeMinutes) || 30
+              : undefined,
+            windowAfterMinutes: reservationForm.discoveryMode
+              ? Number(reservationForm.windowAfterMinutes) || 30
+              : undefined,
           };
 
           // Log the request for debugging

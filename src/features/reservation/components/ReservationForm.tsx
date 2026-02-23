@@ -3,6 +3,8 @@ import { LoaderCircle, CircleCheck, AlertCircle, Plus, X } from "lucide-react";
 import { useAtom } from "jotai";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -167,6 +169,64 @@ export function ReservationForm({
             When do reservations open? The bot will wait until this time. You can schedule multiple snipes at different times.
           </p>
         </Stack>
+        <Group itemsSpacing={16} className="items-center">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="discovery-mode"
+              checked={reservationForm.discoveryMode}
+              onCheckedChange={(checked) =>
+                setReservationForm({
+                  ...reservationForm,
+                  discoveryMode: checked === true,
+                })
+              }
+              disabled={!auth.currentUser}
+            />
+            <Label
+              htmlFor="discovery-mode"
+              className="text-sm font-normal cursor-pointer"
+            >
+              Discovery mode: poll around drop time to catch randomized releases
+            </Label>
+          </div>
+          {reservationForm.discoveryMode && (
+            <Group itemsSpacing={8} noWrap className="items-center">
+              <Label className="text-sm text-muted-foreground shrink-0">
+                Window:
+              </Label>
+              <Input
+                type="number"
+                min={1}
+                max={60}
+                value={reservationForm.windowBeforeMinutes}
+                onChange={(e) =>
+                  setReservationForm({
+                    ...reservationForm,
+                    windowBeforeMinutes: e.target.value,
+                  })
+                }
+                className="w-16 h-8 text-sm"
+                disabled={!auth.currentUser}
+              />
+              <span className="text-sm text-muted-foreground">min before</span>
+              <Input
+                type="number"
+                min={1}
+                max={60}
+                value={reservationForm.windowAfterMinutes}
+                onChange={(e) =>
+                  setReservationForm({
+                    ...reservationForm,
+                    windowAfterMinutes: e.target.value,
+                  })
+                }
+                className="w-16 h-8 text-sm"
+                disabled={!auth.currentUser}
+              />
+              <span className="text-sm text-muted-foreground">min after</span>
+            </Group>
+          )}
+        </Group>
         <Stack itemsSpacing={12}>
           {reservationForm.dropSchedules.map((schedule) => (
             <Group

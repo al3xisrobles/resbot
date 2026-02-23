@@ -526,6 +526,9 @@ export interface ReservationSnipeRequest {
   userId?: string | null;
   actuallyReserve?: boolean;
   timezone?: string; // IANA timezone string (e.g., "America/New_York", "America/Los_Angeles")
+  discoveryMode?: boolean;
+  windowBeforeMinutes?: number;
+  windowAfterMinutes?: number;
 }
 
 export interface ReservationSnipeResponse {
@@ -599,23 +602,22 @@ export async function scheduleReservationSnipe(
         userId: request.userId || null,
         venueId: request.venueId,
         partySize: request.partySize,
-        // Reservation info
         date: request.date,
         hour: request.hour,
         minute: request.minute,
-        // Drop info
         dropDate: request.dropDate,
         dropHour: request.dropHour,
         dropMinute: request.dropMinute,
-        // Job/meta
         status: "pending",
         targetTimeIso,
-        timezone, // Store the timezone for reference
+        timezone,
         createdAt: Timestamp.now(),
         lastUpdate: Timestamp.now(),
-        // Extra options
         windowHours: request.windowHours || 1,
         seatingType: request.seatingType || null,
+        discoveryMode: request.discoveryMode ?? false,
+        windowBeforeMinutes: request.windowBeforeMinutes ?? 30,
+        windowAfterMinutes: request.windowAfterMinutes ?? 30,
       };
 
       // Write the job document to Firestore
@@ -625,9 +627,12 @@ export async function scheduleReservationSnipe(
         `[Firebase Emulator] Created job document ${jobId} in reservationJobs collection`
       );
 
-      // Now call run_snipe to actually run the snipe immediately
+      // Now call run_snipe or run_discovery_snipe to execute immediately
       if (request.actuallyReserve) {
-        response = await fetch(`${CLOUD_FUNCTIONS_BASE}/run_snipe`, {
+        const snipeEndpoint = request.discoveryMode
+          ? `${CLOUD_FUNCTIONS_BASE}/run_discovery_snipe`
+          : `${CLOUD_FUNCTIONS_BASE}/run_snipe`;
+        response = await fetch(snipeEndpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -707,6 +712,9 @@ export interface ReservationJob {
   lastUpdate: Timestamp;
   windowHours?: number;
   seatingType?: string;
+  discoveryMode?: boolean;
+  windowBeforeMinutes?: number;
+  windowAfterMinutes?: number;
   resyToken?: string;
   errorMessage?: string;
   executionLogs?: Array<{

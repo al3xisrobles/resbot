@@ -61,7 +61,7 @@ class SummaryData(BaseModel):
 
 
 class SnipeResultData(BaseModel):
-    """Data model for run_snipe endpoint."""
+    """Data model for run_snipe and run_discovery_snipe endpoints."""
     status: str = Field(..., description="Final status: 'done' or 'failed'")
     jobId: str = Field(..., description="Reservation job ID")
     resyToken: Optional[str] = Field(None, description="Resy confirmation token if successful")

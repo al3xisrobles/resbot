@@ -14,6 +14,10 @@ from firebase_functions.options import CorsOptions
 from firebase_admin import firestore
 
 from .sentry_utils import with_sentry_trace
+from .constants import (
+    DISCOVERY_WINDOW_BEFORE_MINUTES,
+    DISCOVERY_WINDOW_AFTER_MINUTES,
+)
 from .response_schemas import (
     success_response,
     error_response,
@@ -29,7 +33,8 @@ logger.setLevel(logging.INFO)
 # Environment variables
 PROJECT_ID = os.environ.get("GCP_PROJECT") or os.environ.get("GCLOUD_PROJECT")
 LOCATION_ID = os.environ.get("LOCATION_ID", "us-central1")
-SNIPER_URL = "https://run-snipe-hypomglm7a-uc.a.run.app"
+SNIPER_URL = os.environ.get("SNIPER_URL", "https://run-snipe-hypomglm7a-uc.a.run.app")
+DISCOVERY_SNIPER_URL = os.environ.get("DISCOVERY_SNIPER_URL", "")
 
 _db = None
 _scheduler_client = None
@@ -146,19 +151,88 @@ def _create_scheduler_job(job_id: str, target_dt: dt.datetime, timezone: str = "
     return schedule_dt
 
 
-def _delete_scheduler_job(job_id: str):
+def _delete_scheduler_job(job_id: str, is_discovery: bool = False):
     """
     Delete a Cloud Scheduler job by job ID.
+    Use is_discovery=True for discovery-mode jobs (resy-discovery-snipe-{id}).
     """
     parent = f"projects/{PROJECT_ID}/locations/{LOCATION_ID}"
-    job_name = f"{parent}/jobs/resy-snipe-{job_id}"
-    
+    suffix = "resy-discovery-snipe" if is_discovery else "resy-snipe"
+    job_name = f"{parent}/jobs/{suffix}-{job_id}"
+
     try:
         get_scheduler_client().delete_job(request={"name": job_name})
-        logger.info(f"[_delete_scheduler_job] Deleted scheduler job: {job_name}")
+        logger.info("[_delete_scheduler_job] Deleted scheduler job: %s", job_name)
     except Exception as e:
         # Job might not exist, log but don't fail
-        logger.warning(f"[_delete_scheduler_job] Failed to delete scheduler job {job_name}: {e}")
+        logger.warning("[_delete_scheduler_job] Failed to delete scheduler job %s: %s", job_name, e)
+
+
+def _create_discovery_scheduler_job(
+    job_id: str,
+    target_dt: dt.datetime,
+    timezone: str,
+    window_before_minutes: int,
+) -> dt.datetime:
+    """
+    Create a Cloud Scheduler job that POSTs {jobId} to run_discovery_snipe
+    at (target_dt - window_before_minutes) so the function starts at window start.
+    """
+    if not DISCOVERY_SNIPER_URL:
+        raise RuntimeError(
+            "DISCOVERY_SNIPER_URL env var must be set for discovery-mode snipes"
+        )
+
+    parent = f"projects/{PROJECT_ID}/locations/{LOCATION_ID}"
+    job_name = f"{parent}/jobs/resy-discovery-snipe-{job_id}"
+    schedule_dt = target_dt - dt.timedelta(minutes=window_before_minutes)
+    if schedule_dt.date() != target_dt.date():
+        schedule_dt = target_dt
+        logger.info(
+            "[_create_discovery_scheduler_job] Midnight edge case: using target_dt"
+        )
+
+    minute = schedule_dt.minute
+    hour = schedule_dt.hour
+    day = schedule_dt.day
+    month = schedule_dt.month
+    cron = f"{minute} {hour} {day} {month} *"
+    body = json.dumps({"jobId": job_id}).encode("utf-8")
+
+    job = {
+        "name": job_name,
+        "schedule": cron,
+        "time_zone": timezone,
+        "http_target": {
+            "uri": DISCOVERY_SNIPER_URL,
+            "http_method": HttpMethod.POST,
+            "headers": {"Content-Type": "application/json"},
+            "body": body,
+        },
+    }
+
+    logger.info(
+        "[_create_discovery_scheduler_job] Creating discovery job %s at %s",
+        job_id,
+        schedule_dt.isoformat(),
+    )
+    created_job = get_scheduler_client().create_job(
+        request={"parent": parent, "job": job}
+    )
+
+    if created_job.schedule_time:
+        tz_info = ZoneInfo(timezone)
+        scheduled_in_tz = created_job.schedule_time.astimezone(tz_info)
+        if scheduled_in_tz.date() != schedule_dt.date():
+            try:
+                get_scheduler_client().delete_job(request={"name": job_name})
+            except Exception:
+                pass
+            raise ValueError(
+                "Cloud Scheduler date mismatch for discovery job; date may have passed"
+            )
+        return scheduled_in_tz
+    return schedule_dt
 
 
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
@@ -249,6 +323,14 @@ def create_snipe(req: Request):
         job_ref = get_db().collection("reservationJobs").document()
         job_id = job_ref.id
 
+        discovery_mode = bool(data.get("discoveryMode", False))
+        window_before = int(
+            data.get("windowBeforeMinutes", DISCOVERY_WINDOW_BEFORE_MINUTES)
+        )
+        window_after = int(
+            data.get("windowAfterMinutes", DISCOVERY_WINDOW_AFTER_MINUTES)
+        )
+
         job_data = {
             "jobId": job_id,
             "userId": data.get("userId"),
@@ -264,21 +346,38 @@ def create_snipe(req: Request):
             "dropMinute": drop_minute,
             # Job/meta
             "status": "pending",
-            "targetTimeIso": target_dt.isoformat(),  # run_snipe uses this (includes timezone offset)
-            "timezone": timezone,  # Store timezone for reference and updates
+            "targetTimeIso": target_dt.isoformat(),
+            "timezone": timezone,
             "createdAt": firestore.SERVER_TIMESTAMP,
             "lastUpdate": firestore.SERVER_TIMESTAMP,
             # Extra options
             "windowHours": int(data.get("windowHours", 1)),
             "seatingType": data.get("seatingType"),
+            # Discovery mode
+            "discoveryMode": discovery_mode,
+            "windowBeforeMinutes": window_before,
+            "windowAfterMinutes": window_after,
         }
 
         job_ref.set(job_data)
 
-        # Create one Cloud Scheduler job that will call run_snipe
         try:
-            scheduled_time = _create_scheduler_job(job_id, target_dt, timezone)
-            logger.info(f"[create_snipe] Successfully scheduled job {job_id} for {scheduled_time.isoformat()}")
+            if discovery_mode:
+                scheduled_time = _create_discovery_scheduler_job(
+                    job_id, target_dt, timezone, window_before
+                )
+                logger.info(
+                    "[create_snipe] Successfully scheduled discovery job %s for %s",
+                    job_id,
+                    scheduled_time.isoformat(),
+                )
+            else:
+                scheduled_time = _create_scheduler_job(job_id, target_dt, timezone)
+                logger.info(
+                    "[create_snipe] Successfully scheduled job %s for %s",
+                    job_id,
+                    scheduled_time.isoformat(),
+                )
         except ValueError as e:
             # Scheduler validation failed (e.g., date mismatch) - delete the Firestore doc
             logger.error(f"[create_snipe] Scheduler validation failed: {e}")
@@ -357,7 +456,15 @@ def update_snipe(req: Request):
         # Seating type
         if "seatingType" in data:
             updates["seatingType"] = data["seatingType"] if data["seatingType"] not in (None, "", "any") else None
-        
+
+        # Discovery mode
+        if "discoveryMode" in data:
+            updates["discoveryMode"] = bool(data["discoveryMode"])
+        if "windowBeforeMinutes" in data:
+            updates["windowBeforeMinutes"] = int(data["windowBeforeMinutes"])
+        if "windowAfterMinutes" in data:
+            updates["windowAfterMinutes"] = int(data["windowAfterMinutes"])
+
         # Get timezone from request or existing job, default to America/New_York
         timezone = data.get("timezone", existing_job.get("timezone", "America/New_York"))
         if "timezone" in data:
@@ -403,24 +510,41 @@ def update_snipe(req: Request):
         
         # Update lastUpdate timestamp
         updates["lastUpdate"] = firestore.SERVER_TIMESTAMP
-        
-        # If drop date/time/timezone changed, update Cloud Scheduler job FIRST (before updating Firestore)
-        if "dropDate" in data or "dropHour" in data or "dropMinute" in data or "timezone" in data:
-            # Delete old scheduler job
-            _delete_scheduler_job(job_id)
-            
-            # Create new scheduler job with updated target time
+
+        # Reschedule if drop/time/window or discovery mode changed
+        schedule_changed = (
+            "dropDate" in data or "dropHour" in data or "dropMinute" in data
+            or "timezone" in data
+            or "discoveryMode" in data
+            or "windowBeforeMinutes" in data
+            or "windowAfterMinutes" in data
+        )
+        if schedule_changed:
+            is_discovery = data.get("discoveryMode", existing_job.get("discoveryMode", False))
+            _delete_scheduler_job(job_id, is_discovery=is_discovery)
+
             drop_year, drop_month, drop_day = map(int, drop_date_str.split("-"))
             target_dt = dt.datetime(
                 drop_year, drop_month, drop_day, drop_hour, drop_minute,
                 tzinfo=tz_info
             )
+            window_before = int(
+                data.get("windowBeforeMinutes", existing_job.get("windowBeforeMinutes", DISCOVERY_WINDOW_BEFORE_MINUTES))
+            )
             try:
-                scheduled_time = _create_scheduler_job(job_id, target_dt, timezone)
-                logger.info(f"[update_snipe] Successfully rescheduled job {job_id} for {scheduled_time.isoformat()}")
+                if is_discovery:
+                    scheduled_time = _create_discovery_scheduler_job(
+                        job_id, target_dt, timezone, window_before
+                    )
+                else:
+                    scheduled_time = _create_scheduler_job(job_id, target_dt, timezone)
+                logger.info(
+                    "[update_snipe] Successfully rescheduled job %s for %s",
+                    job_id,
+                    scheduled_time.isoformat(),
+                )
             except ValueError as e:
-                # Scheduler validation failed - don't update Firestore
-                logger.error(f"[update_snipe] Scheduler validation failed: {e}")
+                logger.error("[update_snipe] Scheduler validation failed: %s", e)
                 return error_response(str(e), 400)
         
         # Update Firestore document (only after scheduler job is successfully created)
@@ -475,9 +599,9 @@ def cancel_snipe(req: Request):
         # Only allow cancellation of pending jobs
         if existing_job.get("status") != "pending":
             return error_response("Can only cancel pending jobs", 400)
-        
-        # Delete Cloud Scheduler job
-        _delete_scheduler_job(job_id)
+
+        # Delete Cloud Scheduler job (discovery vs precise)
+        _delete_scheduler_job(job_id, is_discovery=existing_job.get("discoveryMode", False))
         
         # Update Firestore document status
         job_ref.update({
