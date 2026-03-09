@@ -29,6 +29,7 @@ from .constants import (
     DISCOVERY_RATE_LIMIT_BACKOFF_MULTIPLIER,
 )
 from .utils import load_credentials, gemini_client
+from .email import send_failed_reservation_email
 from .response_schemas import (
     success_response,
     error_response,
@@ -256,6 +257,58 @@ def _execute_booking_with_deadline(
     return success, resy_token, last_error, False
 
 
+def _generate_email_summary(execution_logs: list, error_message: Optional[str]) -> str:
+    """
+    Generate a concise 1-2 sentence email-friendly failure explanation using Gemini.
+    Distinct from the detailed dashboard summary — this is plain-language for end users.
+    Falls back to a generic message if Gemini is unavailable or fails.
+    """
+    if not gemini_client:
+        return "The reservation could not be completed at this time."
+
+    logs_text = ""
+    if execution_logs:
+        for log in execution_logs:
+            timestamp = log.get("timestamp", "unknown")
+            log_status = log.get("status", "unknown")
+            message = log.get("message", "")
+            logs_text += f"- [{timestamp}] {log_status}: {message}\n"
+
+    if error_message:
+        logs_text += f"\nFinal error: {error_message}\n"
+
+    if not logs_text.strip():
+        return "The reservation could not be completed at this time."
+
+    prompt = f"""You are writing a short failure notification for a user whose restaurant reservation bot attempt failed.
+
+Execution context:
+{logs_text}
+
+Write exactly 1-2 plain-language sentences that:
+- Explain what went wrong in terms a non-technical user understands
+- Do NOT mention API calls, tokens, retries, error codes, or technical jargon
+- Sound empathetic but factual — not overly apologetic, not robotic
+- Are suitable for a notification email (mobile-friendly, concise)
+- Have no markdown formatting, no bullet points, no headers
+- Do not start with "I" or "We"
+
+Good example: "The reservation slot filled up just before your booking could go through — competition for this time was very high."
+Bad example: "The system encountered a 429 rate limit error after 3 retry attempts failed within the 30-second deadline."""
+
+    try:
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={"temperature": 0.3},
+        )
+        summary = response.text.strip()
+        return summary if summary else "The reservation could not be completed at this time."
+    except Exception as e:
+        logger.error("[_generate_email_summary] Gemini call failed: %s", e)
+        return "The reservation could not be completed at this time."
+
+
 def _finalize_job(
     job_ref,
     job_id: str,
@@ -264,6 +317,7 @@ def _finalize_job(
     last_error: Optional[str],
     execution_logs: list,
     extra_fields: Optional[dict] = None,
+    job_data: Optional[dict] = None,
 ):
     """Persist final status to Firestore and return the HTTP response."""
     status = "done" if success else "failed"
@@ -278,10 +332,47 @@ def _finalize_job(
     if extra_fields:
         update.update(extra_fields)
     job_ref.update(update)
+    if not success:
+        try:
+            credentials = load_credentials(job_data.get("userId") if job_data else None)
+            user_email = credentials.get("email") if credentials else None
+            user_first_name = (credentials.get("firstName") or "there") if credentials else "there"
+
+            venue_id = str(job_data.get("venueId", "")) if job_data else ""
+            venue_name = venue_id
+            if venue_id:
+                try:
+                    venue_snap = get_db().collection("venues").document(venue_id).get()
+                    if venue_snap.exists:
+                        venue_name = venue_snap.to_dict().get("venueName") or venue_id
+                except Exception as venue_err:
+                    logger.warning("[_finalize_job] Could not fetch venue name: %s", venue_err)
+
+            if user_email:
+                email_summary = _generate_email_summary(execution_logs, last_error)
+                send_failed_reservation_email(
+                    user_email=user_email,
+                    user_first_name=user_first_name,
+                    venue_name=venue_name,
+                    reservation_date=job_data.get("date", "") if job_data else "",
+                    reservation_hour=int(job_data.get("hour", 0)) if job_data else 0,
+                    reservation_minute=int(job_data.get("minute", 0)) if job_data else 0,
+                    party_size=int(job_data.get("partySize", 2)) if job_data else 2,
+                    job_id=job_id,
+                    email_summary=email_summary,
+                )
+        except Exception as email_err:
+            logger.error("[_finalize_job] Email notification failed for job %s: %s", job_id, email_err)
     return success_response(SnipeResultData(status=status, jobId=job_id, resyToken=resy_token))
 
 
-def _handle_auth_expiry(job_ref, last_error: str, execution_logs: list):
+def _handle_auth_expiry(
+    job_ref,
+    last_error: str,
+    execution_logs: list,
+    job_id: str = "",
+    job_data: Optional[dict] = None,
+):
     """Mark job failed due to session expiry and return HTTP 401."""
     job_ref.update({
         "status": "failed",
@@ -289,6 +380,35 @@ def _handle_auth_expiry(job_ref, last_error: str, execution_logs: list):
         "errorMessage": last_error,
         "executionLogs": execution_logs,
     })
+    if job_data:
+        try:
+            credentials = load_credentials(job_data.get("userId"))
+            user_email = credentials.get("email") if credentials else None
+            user_first_name = (credentials.get("firstName") or "there") if credentials else "there"
+            venue_id = str(job_data.get("venueId", ""))
+            venue_name = venue_id
+            if venue_id:
+                try:
+                    venue_snap = get_db().collection("venues").document(venue_id).get()
+                    if venue_snap.exists:
+                        venue_name = venue_snap.to_dict().get("venueName") or venue_id
+                except Exception as venue_err:
+                    logger.warning("[_handle_auth_expiry] Could not fetch venue name: %s", venue_err)
+            if user_email:
+                send_failed_reservation_email(
+                    user_email=user_email,
+                    user_first_name=user_first_name,
+                    venue_name=venue_name,
+                    reservation_date=job_data.get("date", ""),
+                    reservation_hour=int(job_data.get("hour", 0)),
+                    reservation_minute=int(job_data.get("minute", 0)),
+                    party_size=int(job_data.get("partySize", 2)),
+                    job_id=job_id,
+                    email_summary="Your Resy session expired before the booking could go through. "
+                    "Please reconnect your Resy account and try again.",
+                )
+        except Exception as email_err:
+            logger.error("[_handle_auth_expiry] Email notification failed for job %s: %s", job_id, email_err)
     return error_response(last_error, 401)
 
 
@@ -350,8 +470,8 @@ def run_snipe(req: Request):
             job_data, user_id, execution_logs
         )
         if auth_expired:
-            return _handle_auth_expiry(job_ref, last_error, execution_logs)
-        return _finalize_job(job_ref, job_id, success, resy_token, last_error, execution_logs)
+            return _handle_auth_expiry(job_ref, last_error, execution_logs, job_id=job_id, job_data=job_data)
+        return _finalize_job(job_ref, job_id, success, resy_token, last_error, execution_logs, job_data=job_data)
 
     except Exception as e:
         return _handle_snipe_exception(req, e, "Exception during snipe execution")
@@ -421,6 +541,8 @@ def run_discovery_snipe(req: Request):
                         job_ref,
                         "Resy session expired during discovery. Please reconnect your Resy account and try again.",
                         execution_logs,
+                        job_id=job_id,
+                        job_data=job_data,
                     )
                 if isinstance(poll_err, RateLimitError):
                     current_interval = min(
@@ -444,10 +566,13 @@ def run_discovery_snipe(req: Request):
                     job_data, user_id, execution_logs
                 )
                 if auth_expired:
-                    return _handle_auth_expiry(job_ref, last_error, execution_logs)
+                    return _handle_auth_expiry(
+                        job_ref, last_error, execution_logs, job_id=job_id, job_data=job_data
+                    )
                 return _finalize_job(
                     job_ref, job_id, success, resy_token, last_error, execution_logs,
                     extra_fields={"pollLog": poll_log},
+                    job_data=job_data,
                 )
 
             current_interval = _get_adaptive_interval(now, target_dt)
@@ -462,6 +587,34 @@ def run_discovery_snipe(req: Request):
             "pollLog": poll_log,
             "executionLogs": execution_logs,
         })
+        try:
+            credentials = load_credentials(user_id)
+            user_email = credentials.get("email") if credentials else None
+            user_first_name = (credentials.get("firstName") or "there") if credentials else "there"
+            venue_id = str(job_data.get("venueId", ""))
+            venue_name = venue_id
+            if venue_id:
+                try:
+                    venue_snap = get_db().collection("venues").document(venue_id).get()
+                    if venue_snap.exists:
+                        venue_name = venue_snap.to_dict().get("venueName") or venue_id
+                except Exception as venue_err:
+                    logger.warning("[run_discovery_snipe] Could not fetch venue name: %s", venue_err)
+            if user_email:
+                email_summary = _generate_email_summary(execution_logs, "Discovery window expired; no slots appeared")
+                send_failed_reservation_email(
+                    user_email=user_email,
+                    user_first_name=user_first_name,
+                    venue_name=venue_name,
+                    reservation_date=job_data.get("date", ""),
+                    reservation_hour=int(job_data.get("hour", 0)),
+                    reservation_minute=int(job_data.get("minute", 0)),
+                    party_size=int(job_data.get("partySize", 2)),
+                    job_id=job_id,
+                    email_summary=email_summary,
+                )
+        except Exception as email_err:
+            logger.error("[run_discovery_snipe] Email notification failed for job %s: %s", job_id, email_err)
         return success_response(SnipeResultData(status="failed", jobId=job_id, resyToken=None))
 
     except Exception as e:
@@ -542,24 +695,22 @@ def summarize_snipe_logs(req: Request):
         if error_message:
             logs_text += f"\nFinal error message: {error_message}\n"
 
-        prompt = f"""You are analyzing logs from an automated restaurant reservation attempt.
+        prompt = f"""You are analyzing logs from an automated restaurant reservation bot attempt for a developer dashboard.
 
 The reservation attempt had a final status of: {status}
 
 {logs_text}
 
-Provide a concise 1-2 sentence summary explaining what happened during this reservation attempt. Focus on why it might have failed. Be clear and user-friendly. Do not mention technical details like "execution logs" or "retry attempts" - just explain what happened in plain language.
+Write a detailed 3-5 sentence analysis for a developer/operator dashboard. Include ALL of the following that are relevant:
+- What specific action(s) failed and at what stage of the process
+- What error responses or codes were received (if any appear in the logs)
+- Whether reservation slots were actually found before the failure (and if so, what went wrong during the booking step)
+- Whether the failure appears to be due to high competition (slots found but taken), session/auth issues, rate limiting, network errors, or an unexpected system error
+- Any notable patterns in the logs (e.g., how many attempts were made, whether all failed the same way, timing observations)
 
-GOOD EXAMPLES:
-"The booking was unsuccessful due to rate limiting causing delays."
-"No slots were available for the requested time."
-"BUG: The /find endpoint returned a 500 server error. Maybe the request was malformed?"
+Use clear, direct language. Include relevant technical details (error messages, status codes) since this is for a dashboard, not an end-user email. Format as flowing prose — no bullet points or headers. Do not start with "The logs show" or "Based on the logs".
 
-BAD EXAMPLES:
-"Retried 30 times with parallel booking, without securing a slot"
-"The booking was unsuccessful"
-
-If the status is "done", simply state that the reservation was successful."""
+If the status is "done", write one sentence confirming the reservation was successful."""
 
         # Call Gemini
         response = gemini_client.models.generate_content(
