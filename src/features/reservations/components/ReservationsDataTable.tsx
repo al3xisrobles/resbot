@@ -398,7 +398,7 @@ export function ReservationsDataTable({
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             ) : hasNotes ? (
-                                                <span className="text-muted-foreground text-sm truncate block max-w-[200px]">
+                                                <span className="text-muted-foreground text-sm line-clamp-2 block max-w-[220px] leading-snug">
                                                     {notes}
                                                 </span>
                                             ) : (
@@ -599,9 +599,12 @@ export function ReservationsDataTable({
                                     )}
                                     {isExpanded && hasNotes && !isScheduled && !isEditing && (
                                         <TableRow key={`${reservation.id}-expanded`}>
-                                            <TableCell colSpan={8} className="bg-muted/50">
-                                                <div className="py-2 px-4">
-                                                    <p className="text-sm text-muted-foreground whitespace-pre-wrap wrap-break-word">
+                                            <TableCell colSpan={8} className="bg-muted/50 border-t-0">
+                                                <div className="py-3 px-4 space-y-1">
+                                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                                        AI Analysis
+                                                    </p>
+                                                    <p className="text-sm text-foreground/80 whitespace-pre-wrap break-words leading-relaxed max-w-4xl">
                                                         {notes}
                                                     </p>
                                                 </div>
