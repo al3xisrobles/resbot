@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 APP_URL = os.getenv("APP_URL", "https://resbot.app")
 FROM_ADDRESS = os.getenv("RESEND_FROM_ADDRESS", "Resbot <notifications@resbot.app>")
 
+_LOGO_URL = "https://resbot.org/assets/ResbotLogoRedWithText-BztMXUo0.svg"
+_LOGO_IMG = (
+    '<img src="%s" width="180" height="40" alt="Resbot"'
+    ' style="display:block;border:0;" />' % _LOGO_URL
+)
+
 
 def send_failed_reservation_email(
     user_email,
@@ -42,6 +48,9 @@ def send_failed_reservation_email(
     """
     try:
         resend.api_key = os.getenv("RESEND_API_KEY")
+
+        if isinstance(reservation_date, str):
+            reservation_date = datetime.strptime(reservation_date, "%Y-%m-%d").date()
 
         dt = datetime.combine(reservation_date, datetime.min.time()).replace(
             hour=reservation_hour, minute=reservation_minute
@@ -118,12 +127,10 @@ def _render_html(first_name, venue_name, display_date, display_time, party_size,
 
   <!-- Header -->
   <table width="100%%" cellpadding="0" cellspacing="0" border="0"
-         style="background-color:#0f0f0f;">
+         style="background-color:#f9f9f9;">
     <tr>
-      <td align="center" style="padding:24px 0;">
-        <span style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:-0.5px;">
-          Resbot
-        </span>
+      <td align="center" style="padding:32px 16px 8px 16px;">
+        %(logo_img)s
       </td>
     </tr>
   </table>
@@ -139,19 +146,33 @@ def _render_html(first_name, venue_name, display_date, display_time, party_size,
           <tr>
             <td style="padding:32px 32px 24px 32px;">
 
-              <!-- Greeting -->
-              <p style="margin:0 0 20px 0;font-size:16px;color:#111111;">
-                Hi %(first_name)s,
-              </p>
-
               <!-- Badge -->
-              <div style="margin-bottom:24px;">
+              <div style="margin-bottom:20px;">
                 <span style="display:inline-block;background-color:#e63946;color:#ffffff;
                              font-size:13px;font-weight:600;padding:6px 14px;
                              border-radius:999px;letter-spacing:0.3px;">
                   Reservation Unsuccessful
                 </span>
               </div>
+
+              <!-- Greeting -->
+              <p style="margin:0 0 12px 0;font-size:14px;color:#444444;">
+                Hi %(first_name)s,
+              </p>
+              <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;color:#444444;">
+                Unfortunately, we weren't able to secure your reservation this time.
+              </p>
+              <p style="margin:0 0 12px 0;font-size:14px;line-height:1.7;color:#444444;">
+                Reservation bots are inherently competitive—slots for popular venues 
+                are often contested by multiple bots simultaneously, and release times 
+                don't always match expectations. Failures can also be on our end, and
+                we own that (this is a new product).
+              </p>
+              <p style="margin:0 0 24px 0;font-size:14px;line-height:1.7;color:#444444;">
+                You have unlimited attempts, so feel free to try again. You can also use
+                the discovery feature to find the exact times slots drop
+                at your venue before trying again.
+              </p>
 
               <!-- Details box -->
               <table width="100%%" cellpadding="0" cellspacing="0" border="0"
@@ -178,6 +199,10 @@ def _render_html(first_name, venue_name, display_date, display_time, party_size,
               <hr style="border:none;border-top:1px solid #ebebeb;margin:0 0 20px 0;" />
 
               <!-- Summary -->
+              <p style="margin:0 0 8px 0;font-size:11px;font-weight:600;letter-spacing:0.6px;
+                        text-transform:uppercase;color:#aaaaaa;">
+                What happened this time
+              </p>
               <p style="margin:0 0 20px 0;font-size:14px;line-height:1.6;color:#444444;">
                 %(email_summary)s
               </p>
@@ -186,16 +211,15 @@ def _render_html(first_name, venue_name, display_date, display_time, party_size,
               <hr style="border:none;border-top:1px solid #ebebeb;margin:0 0 20px 0;" />
 
               <!-- Improvement note -->
-              <p style="margin:0 0 28px 0;font-size:13px;font-style:italic;
-                        line-height:1.6;color:#888888;">
-                We're actively working to improve our bot's success rate. For a detailed
-                breakdown of what happened, check the Notes section in your dashboard.
+              <p style="margin:0 0 28px 0;font-size:13px;line-height:1.7;color:#888888;">
+                We're actively working to improve our booking success rate. For a full
+                breakdown of this attempt, check the Notes section in your dashboard.
               </p>
 
               <!-- CTA button -->
-              <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+              <table cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td align="center"
+                  <td align="left"
                       style="background-color:#0f0f0f;border-radius:8px;">
                     <a href="%(details_url)s"
                        style="display:inline-block;padding:12px 28px;color:#ffffff;
@@ -219,7 +243,7 @@ def _render_html(first_name, venue_name, display_date, display_time, party_size,
     <tr>
       <td align="center" style="padding:16px;">
         <p style="margin:0;font-size:12px;color:#aaaaaa;">
-          &copy; 2026 Resbot. You're receiving this because you have an active Resbot account.
+          &copy; 2026 Resbot
         </p>
       </td>
     </tr>
@@ -235,6 +259,7 @@ def _render_html(first_name, venue_name, display_date, display_time, party_size,
         "party_label": party_label,
         "email_summary": email_summary,
         "details_url": details_url,
+        "logo_img": _LOGO_IMG,
     }
 
 
@@ -269,7 +294,7 @@ def _render_plain_text(first_name, venue_name, display_date, display_time, party
         "breakdown of what happened, check the Notes section in your dashboard.\n\n"
         "View in Dashboard: %s\n\n"
         "---\n"
-        "© 2026 Resbot. You're receiving this because you have an active Resbot account."
+        "© 2026 Resbot"
     ) % (
         first_name,
         venue_name,
