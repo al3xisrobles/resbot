@@ -481,7 +481,7 @@ def get_venue_availability(venue_id, day, party_size, config):
         Example: {'times': [], 'status': 'Sold out'}
         Example: {'times': [], 'status': 'Not released yet'}
     """
-    from .resy_client.errors import ResyApiError, ResyTransientError
+    from .resy_client.errors import ResyApiError, ResyAuthError, ResyTransientError
 
     try:
         if isinstance(config, dict):
@@ -509,6 +509,9 @@ def get_venue_availability(venue_id, day, party_size, config):
                 venue_id,
                 calendar_error,
             )
+        except ResyAuthError:
+            # Session token expired/rejected: never swallow, let the caller prompt reconnect.
+            raise
         except ResyApiError as calendar_error:
             print("[AVAILABILITY] Calendar error for venue %s: %s", venue_id, calendar_error)
 
@@ -555,6 +558,9 @@ def get_venue_availability(venue_id, day, party_size, config):
                 slot_error,
             )
             return {'times': [], 'status': 'Resy temporarily unavailable'}
+        except ResyAuthError:
+            # Session token expired/rejected: never swallow, let the caller prompt reconnect.
+            raise
         except ResyApiError as slot_error:
             error_details = {
                 'error_type': type(slot_error).__name__,
@@ -580,6 +586,9 @@ def get_venue_availability(venue_id, day, party_size, config):
         ]
         return {'times': available_times, 'status': None}
 
+    except ResyAuthError:
+        # Session token expired/rejected: never swallow, let the caller prompt reconnect.
+        raise
     except Exception as e:
         error_details = {
             'error_type': type(e).__name__,

@@ -30,10 +30,16 @@ import "@/services/firebase";
 // Note: React Router v7 integration may require different setup
 // For now, using BrowserRouter directly with ErrorBoundary for error tracking
 
-// Wrapper component for onboarding page that redirects if already onboarded
+// Wrapper component for onboarding page that redirects if already onboarded.
+// Exception: an explicit reconnect (?reconnect=1) must reach the form even when a
+// credential doc still exists, because an expired token leaves the user "onboarded"
+// yet unable to make Resy calls. Without this, the "Reconnect Resy" prompt bounces
+// straight back home and the user can never refresh their session.
 function OnboardingPageWrapper() {
   const isOnboarded = useAtomValue(isOnboardedAtom);
-  if (isOnboarded) {
+  const location = useLocation();
+  const isReconnect = new URLSearchParams(location.search).get("reconnect") === "1";
+  if (isOnboarded && !isReconnect) {
     return <Navigate to="/" replace />;
   }
   return <OnboardingPage />;

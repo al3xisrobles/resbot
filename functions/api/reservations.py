@@ -16,10 +16,11 @@ from .response_schemas import (
     ReservationCreatedData,
     SlotsData,
     error_response,
+    session_expired_response,
     success_response,
 )
 from .resy_client.api_access import build_resy_client
-from .resy_client.errors import ResyApiError
+from .resy_client.errors import ResyApiError, ResyAuthError
 from .resy_client.manager import ResyManager
 from .resy_client.models import CalendarRequestParams, ResyConfig, TimedReservationRequest
 from .sentry_utils import with_sentry_trace
@@ -91,6 +92,9 @@ def calendar(req: Request):
         )
         return success_response(calendar_data)
 
+    except ResyAuthError:
+        logger.info("Resy session expired fetching calendar for user %s", user_id)
+        return session_expired_response()
     except ResyApiError as e:
         logger.error(
             "Resy API error fetching calendar: %s %s %s",
@@ -172,6 +176,9 @@ def reservation(req: Request):
         )
         return success_response(reservation_data)
 
+    except ResyAuthError:
+        logger.info("Resy session expired making reservation for user %s", user_id)
+        return session_expired_response()
     except Exception as e:
         logger.error("Error making reservation: %s", e)
         resp, code = error_response(str(e), 500)
@@ -228,6 +235,9 @@ def slots(req: Request):
         )
         return success_response(slots_data)
 
+    except ResyAuthError:
+        logger.info("Resy session expired fetching slots for user %s", user_id)
+        return session_expired_response()
     except Exception as e:
         error_details = {
             'error_type': type(e).__name__,

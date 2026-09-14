@@ -292,7 +292,14 @@ export function RestaurantSearchContainer() {
             console.log("[SearchPage] API call parameters:", apiParams);
 
             const user = auth.currentUser;
-            const userId = user!.uid;
+            if (!user) {
+                // Auth can still be rehydrating when the debounced auto-search fires.
+                // Bail gracefully instead of dereferencing a null user (the `finally`
+                // block resets the loading state).
+                console.warn("[SearchPage] Skipping map search: no authenticated user yet");
+                return;
+            }
+            const userId = user.uid;
 
             const response = await searchRestaurantsByMap(userId, apiParams, controller.signal);
             const results = response.results;

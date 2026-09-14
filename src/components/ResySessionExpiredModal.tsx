@@ -25,7 +25,9 @@ export function ResySessionExpiredModal() {
 
   const handleReconnect = () => {
     hideSessionExpiredModal();
-    navigate("/connect-resy");
+    // reconnect=1 lets an already-onboarded user (whose token has expired) reach the
+    // Resy connect form instead of being redirected home as "already connected".
+    navigate("/connect-resy?reconnect=1");
   };
 
   const handleDismiss = () => {

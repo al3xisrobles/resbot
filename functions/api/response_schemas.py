@@ -33,7 +33,10 @@ class ApiResponse(BaseModel, Generic[T]):
     success: bool
     data: Optional[T] = None
     error: Optional[str] = None
-    
+    # Machine-readable error code for the frontend to branch on (e.g. RESY_SESSION_EXPIRED).
+    # Optional and only set on error responses that need typed handling.
+    code: Optional[str] = None
+
     @model_validator(mode='after')
     def validate_response(self):
         """Ensure success responses have data and error responses have error message."""
@@ -43,6 +46,8 @@ class ApiResponse(BaseModel, Generic[T]):
             raise ValueError("Error response must include 'error' field")
         if self.success and self.error is not None:
             raise ValueError("Success response should not include 'error' field")
+        if self.success and self.code is not None:
+            raise ValueError("Success response should not include 'code' field")
         if not self.success and self.data is not None:
             raise ValueError("Error response should not include 'data' field")
         return self
@@ -366,19 +371,42 @@ def success_response(data: Any) -> Dict[str, Any]:
     return response.model_dump(exclude_none=True)
 
 
-def error_response(error: str, status_code: int = 500) -> tuple[Dict[str, Any], int]:
+def error_response(
+    error: str, status_code: int = 500, code: Optional[str] = None
+) -> tuple[Dict[str, Any], int]:
     """
     Helper to create a validated error response with status code.
-    
+
     Args:
         error: Error message
         status_code: HTTP status code (default 500)
-        
+        code: Optional machine-readable error code for typed frontend handling
+
     Returns:
         Tuple of (response_dict, status_code)
-        
+
     Raises:
         ValidationError if response structure is invalid
     """
-    response = ApiResponse(success=False, error=error)
+    response = ApiResponse(success=False, error=error, code=code)
     return response.model_dump(exclude_none=True), status_code
+
+
+# Machine-readable code returned whenever the user's stored Resy session token is
+# expired or rejected. The frontend keys off this (and the HTTP 419 status) to prompt
+# the user to reconnect their Resy account, rather than string-matching error text.
+RESY_SESSION_EXPIRED_CODE = "RESY_SESSION_EXPIRED"
+
+
+def session_expired_response() -> tuple[Dict[str, Any], int]:
+    """
+    Standard response for an expired/invalid Resy session token.
+
+    Returns HTTP 419 (the status Resy itself uses) with a typed code so the frontend
+    can reliably show the "reconnect Resy" prompt without parsing error strings.
+    """
+    return error_response(
+        "Your Resy session has expired. Please reconnect your Resy account.",
+        419,
+        code=RESY_SESSION_EXPIRED_CODE,
+    )
