@@ -6,7 +6,6 @@ Includes credential loading, search caching, and Resy API helpers
 import json
 import logging
 import os
-import time as time_module
 import traceback
 from datetime import datetime
 from hashlib import md5
@@ -168,27 +167,6 @@ def load_credentials(userId=None):
 
     logger.info("✓ Loaded Resy credentials from environment variables (default API key)")
     return credentials
-
-
-def _retry_resy(func, max_attempts=3, base_delay=0.3):
-    """
-    Retry a callable on ResyTransientError or RateLimitError with backoff.
-    RateLimitError uses retry_after when present; otherwise exponential backoff.
-    """
-    last_error = None
-    for attempt in range(max_attempts):
-        try:
-            return func()
-        except (ResyTransientError, RateLimitError) as exc:
-            last_error = exc
-            if attempt == max_attempts - 1:
-                raise
-            delay = base_delay * (2 ** attempt)
-            if isinstance(exc, RateLimitError) and exc.retry_after is not None:
-                delay = max(delay, exc.retry_after)
-            time_module.sleep(delay)
-    if last_error:
-        raise last_error
 
 
 def get_search_cache_key(query, filters, geo_config, include_availability=False):
@@ -498,11 +476,9 @@ def get_venue_availability(venue_id, day, party_size, config):
 
         calendar_data = None
         try:
-            calendar_data = _retry_resy(
-                lambda: client.get_calendar(calendar_params),
-                max_attempts=3,
-                base_delay=0.3,
-            )
+            # Transient failures are retried in the HTTP transport; this handles the
+            # case where retries are exhausted.
+            calendar_data = client.get_calendar(calendar_params)
         except (ResyTransientError, RateLimitError) as calendar_error:
             print(
                 "[AVAILABILITY] Transient/rate-limit calendar error for venue %s: %s",
@@ -546,11 +522,7 @@ def get_venue_availability(venue_id, day, party_size, config):
             venue_id=str(venue_id),
         )
         try:
-            slots = _retry_resy(
-                lambda: client.find_booking_slots(find_request),
-                max_attempts=3,
-                base_delay=0.3,
-            )
+            slots = client.find_booking_slots(find_request)
         except (ResyTransientError, RateLimitError) as slot_error:
             print(
                 "[AVAILABILITY] Transient/rate-limit slot error for venue %s: %s",
@@ -768,11 +740,7 @@ def get_venue_availability_fast(venue_id, day, party_size, config):
             end_date=target_date.strftime('%Y-%m-%d'),
         )
         try:
-            calendar_data = _retry_resy(
-                lambda: client.get_calendar(calendar_params),
-                max_attempts=2,
-                base_delay=0.2,
-            )
+            calendar_data = client.get_calendar(calendar_params)
         except (ResyTransientError, RateLimitError):
             return {'times': [], 'status': 'Resy temporarily unavailable'}
         except ResyApiError:

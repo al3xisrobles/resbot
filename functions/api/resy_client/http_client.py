@@ -4,6 +4,7 @@ Single point for request execution, error normalization, and logging.
 """
 
 import logging
+import time
 from typing import Any
 
 import sentry_sdk
@@ -31,6 +32,16 @@ REDACT_KEYS = frozenset({"password", "email", "token", "book_token", "struct_pay
 
 # Max chars of response body to log on error
 ERROR_BODY_TRUNCATE = 500
+
+# HTTP statuses from Resy that are transient and safe to retry.
+TRANSIENT_STATUS = frozenset({500, 502, 503, 504})
+
+# Retry policy for transient upstream failures (transient statuses, rate limits, and
+# connection errors). Reads are idempotent, so retrying is safe; the only mutating
+# endpoint -- booking -- is excluded so a retry can never create a duplicate reservation.
+MAX_RETRY_ATTEMPTS = 3
+RETRY_BASE_DELAY = 0.3  # seconds; exponential backoff: 0.3, 0.6, ...
+NON_RETRYABLE_ENDPOINTS = frozenset({ResyEndpoints.BOOK.value})
 
 
 def _build_session(config: ResyConfig) -> Session:
@@ -210,6 +221,55 @@ class ResyHttpClient:
         extra_headers: dict[str, str] | None = None,
         timeout: tuple[int, int] = REQUEST_TIMEOUT,
     ) -> requests.Response:
+        """Execute a request, retrying transient upstream failures with backoff.
+
+        Retries on transient Resy statuses (500/502/503/504), rate limits (429, honoring
+        Retry-After), and connection errors -- the failures that make Resy flaky. Auth
+        errors, schema mismatches, and read timeouts are not retried, and booking is never
+        retried so we never risk a duplicate reservation.
+        """
+        retryable = endpoint not in NON_RETRYABLE_ENDPOINTS
+        attempt = 0
+        while True:
+            try:
+                return self._send_once(
+                    method,
+                    endpoint,
+                    params=params,
+                    json=json,
+                    data=data,
+                    extra_headers=extra_headers,
+                    timeout=timeout,
+                )
+            except (ResyTransientError, RateLimitError, requests.exceptions.ConnectionError) as exc:
+                attempt += 1
+                if not retryable or attempt >= MAX_RETRY_ATTEMPTS:
+                    raise
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                if isinstance(exc, RateLimitError) and exc.retry_after is not None:
+                    delay = max(delay, exc.retry_after)
+                logger.warning(
+                    "Retrying Resy %s %s after transient failure (attempt %s/%s, waiting %.2fs): %s",
+                    method,
+                    endpoint,
+                    attempt,
+                    MAX_RETRY_ATTEMPTS,
+                    delay,
+                    exc,
+                )
+                time.sleep(delay)
+
+    def _send_once(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
+        timeout: tuple[int, int] = REQUEST_TIMEOUT,
+    ) -> requests.Response:
         url = RESY_BASE_URL + endpoint
         log_params = _redact_for_log(params)
         log_body = _redact_for_log(json if json is not None else data)
@@ -325,7 +385,7 @@ class ResyHttpClient:
                     endpoint=endpoint,
                 )
 
-            if status in (500, 502):
+            if status in TRANSIENT_STATUS:
                 logger.warning(
                     "Resy transient error %s %s: %s",
                     status,

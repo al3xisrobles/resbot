@@ -177,3 +177,74 @@ def test_get_404_raises_resy_api_error(resy_config):
 def test_request_timeout_constant():
     """REQUEST_TIMEOUT is (5, 10)."""
     assert REQUEST_TIMEOUT == (5, 10)
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_sleep(monkeypatch):
+    """Make retry backoff instant so retry tests don't actually wait."""
+    monkeypatch.setattr("resy_client.http_client.time.sleep", lambda _s: None)
+
+
+@responses.activate
+def test_transient_500_then_success_is_retried(resy_config):
+    """A transient Resy 500 is retried and the eventual 200 is returned.
+
+    This is the core fix: a single flaky /4/venue/calendar 500 (which used to surface
+    to the user as a bare 500) must be transparently retried, not propagated.
+    """
+    url = "https://api.resy.com/4/venue/calendar"
+    responses.add(responses.GET, url, body="Internal Server Error", status=500)
+    responses.add(responses.GET, url, json={"scheduled": []}, status=200)
+
+    client = ResyHttpClient.build(resy_config)
+    resp = client.get("/4/venue/calendar", params={"venue_id": "1"})
+
+    assert resp.status_code == 200
+    assert len(responses.calls) == 2  # one failure, one retry that succeeded
+
+
+@responses.activate
+def test_transient_500_exhausts_retries_then_raises(resy_config):
+    """When every attempt returns 500, the transport gives up after MAX_RETRY_ATTEMPTS."""
+    from resy_client.http_client import MAX_RETRY_ATTEMPTS
+
+    responses.add(
+        responses.GET,
+        "https://api.resy.com/4/venue/calendar",
+        body="Internal Server Error",
+        status=500,
+    )
+    client = ResyHttpClient.build(resy_config)
+    with pytest.raises(ResyTransientError):
+        client.get("/4/venue/calendar", params={"venue_id": "1"})
+    assert len(responses.calls) == MAX_RETRY_ATTEMPTS
+
+
+@responses.activate
+def test_rate_limit_then_success_is_retried(resy_config):
+    """A 429 is retried (honoring the transport backoff) and then succeeds."""
+    url = "https://api.resy.com/3/venuesearch/search"
+    responses.add(responses.POST, url, body="Too Many Requests", status=429)
+    responses.add(responses.POST, url, json={"search": {"hits": []}}, status=200)
+
+    client = ResyHttpClient.build(resy_config)
+    resp = client.post_json("/3/venuesearch/search", body={"query": "x"})
+
+    assert resp.status_code == 200
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_book_endpoint_is_never_retried(resy_config):
+    """Booking is a mutation, so a 500 must NOT be retried -- a retry could create a
+    duplicate reservation. It fails fast after a single attempt."""
+    responses.add(
+        responses.POST,
+        "https://api.resy.com" + ResyEndpoints.BOOK.value,
+        body="Internal Server Error",
+        status=500,
+    )
+    client = ResyHttpClient.build(resy_config)
+    with pytest.raises(ResyTransientError):
+        client.post_form(ResyEndpoints.BOOK.value, data={"book_token": "t"})
+    assert len(responses.calls) == 1  # no retry for the booking endpoint
