@@ -15,7 +15,7 @@ class ResyApiError(Exception):
 
 
 class ResyTransientError(ResyApiError):
-    """500/502 -- safe to retry."""
+    """500/502/503/504 -- transient upstream failure, safe to retry."""
 
 
 class ResyAuthError(ResyApiError):
