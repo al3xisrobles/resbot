@@ -20,20 +20,35 @@ from dotenv import load_dotenv
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 from firebase_functions.https_fn import on_request, Request
-from firebase_functions.options import CorsOptions
+from firebase_functions.options import CorsOptions, set_global_options
 from firebase_admin import initialize_app
 
+# Bind Secret Manager secrets to every function so they are injected as environment
+# variables at runtime (read below and in the api modules via os.getenv). Values live
+# in GCP Secret Manager, set once with `firebase functions:secrets:set <NAME>`, never
+# in source or CI. This must run before importing the function modules below, whose
+# decorators read the global options at import time.
+set_global_options(secrets=[
+    "GEMINI_API_KEY",
+    "GOOGLE_MAPS_API_KEY",
+    "SENTRY_DSN",
+    "RESY_DEBUG_EMAIL",
+    "RESY_DEBUG_PASSWORD",
+    "RESEND_API_KEY",
+    "RESEND_FROM_ADDRESS",
+])
+
 # Import all Cloud Functions from other modules so Firebase can discover them
-from api.search import search, search_map  # noqa: F401
-from api.venue import check_venue_payment_requirement, venue, venue_links  # noqa: F401
-from api.reservations import calendar, reservation, slots  # noqa: F401
-from api.featured import climbing, top_rated  # noqa: F401
-from api.gemini_search import gemini_search  # noqa: F401
-from api.snipe import run_snipe, run_discovery_snipe, summarize_snipe_logs  # noqa: F401
-from api.schedule import create_snipe, update_snipe, cancel_snipe  # noqa: F401
-from api.onboarding import start_resy_onboarding, resy_account  # noqa: F401
-from api.me import me  # noqa: F401
-from api.debug import resy_debug  # noqa: F401
+from api.search import search, search_map  # noqa: F401, E402
+from api.venue import check_venue_payment_requirement, venue, venue_links  # noqa: F401, E402
+from api.reservations import calendar, reservation, slots  # noqa: F401, E402
+from api.featured import climbing, top_rated  # noqa: F401, E402
+from api.gemini_search import gemini_search  # noqa: F401, E402
+from api.snipe import run_snipe, run_discovery_snipe, summarize_snipe_logs  # noqa: F401, E402
+from api.schedule import create_snipe, update_snipe, cancel_snipe  # noqa: F401, E402
+from api.onboarding import start_resy_onboarding, resy_account  # noqa: F401, E402
+from api.me import me  # noqa: F401, E402
+from api.debug import resy_debug  # noqa: F401, E402
 
 # Initialize Firebase Admin (Firestore, etc.)
 initialize_app()

@@ -30,28 +30,9 @@ jobs:
           projectId: resybot-bd2db
 
       # --- Functions ---
-      # The functions read runtime config from functions/.env, which is gitignored.
-      # Rebuild it from GitHub secrets so the deploy does not clear production config.
-      - name: Create functions/.env from secrets
-        env:
-          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          RESY_DEBUG_EMAIL: ${{ secrets.RESY_DEBUG_EMAIL }}
-          RESY_DEBUG_PASSWORD: ${{ secrets.RESY_DEBUG_PASSWORD }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          RESEND_FROM_ADDRESS: ${{ secrets.RESEND_FROM_ADDRESS }}
-        run: |
-          {
-            echo "GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
-            echo "GEMINI_API_KEY=$GEMINI_API_KEY"
-            echo "SENTRY_DSN=$SENTRY_DSN"
-            echo "RESY_DEBUG_EMAIL=$RESY_DEBUG_EMAIL"
-            echo "RESY_DEBUG_PASSWORD=$RESY_DEBUG_PASSWORD"
-            echo "RESEND_API_KEY=$RESEND_API_KEY"
-            echo "RESEND_FROM_ADDRESS=$RESEND_FROM_ADDRESS"
-          } > functions/.env
-
+      # Runtime config (API keys, etc.) comes from GCP Secret Manager, bound to the
+      # functions in main.py via set_global_options(secrets=[...]). CI does not handle
+      # any of those values; it only needs deploy access.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
