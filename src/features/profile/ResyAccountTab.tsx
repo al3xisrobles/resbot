@@ -43,7 +43,7 @@ interface ResyAccountTabProps {
 }
 
 export function ResyAccountTab({ onLoadingChange }: ResyAccountTabProps = {}) {
-    const { currentUser } = useAuth();
+    const { currentUser, refreshMe } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -130,6 +130,10 @@ export function ResyAccountTab({ onLoadingChange }: ResyAccountTabProps = {}) {
             setPaymentMethods([]);
             setSelectedPaymentMethodId(null);
             setCurrentPaymentMethodId(null);
+            // Refresh /me so the rest of the app (route guards, onboarding state) knows
+            // the account is gone. Without this, meAtom stays "completed" and the user
+            // is still treated as onboarded until a full reload.
+            await refreshMe();
             toast.success("Resy account disconnected");
         } catch (error) {
             console.error("Error disconnecting Resy account:", error);
