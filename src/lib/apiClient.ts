@@ -59,36 +59,37 @@ function buildUrl(endpoint: string): string {
     return `${CLOUD_FUNCTIONS_BASE}${endpoint}`;
 }
 
+/** Typed error code the backend sends when the user's Resy session token is expired. */
+const RESY_SESSION_EXPIRED_CODE = "RESY_SESSION_EXPIRED";
+
 /**
- * Check if an API error response indicates a Resy session expiration (419)
- * and trigger the modal if so
+ * Detect an expired/invalid Resy session and trigger the reconnect modal.
+ *
+ * The backend returns HTTP 419 (the same status Resy itself uses) with a typed
+ * `code: "RESY_SESSION_EXPIRED"` body. We branch on those structured signals rather
+ * than matching error text, so a wording change on either side can't break detection.
  */
 async function handleApiResponse(response: Response): Promise<Response> {
     if (!response.ok) {
-        // Check for 419 or 500 with "Unauthorized" message (backend wraps 419 as 500)
+        // Primary signal: the backend's dedicated 419 status for an expired session.
         if (response.status === 419) {
             triggerSessionExpiredModal();
             throw new ResySessionExpiredError();
         }
 
-        // Try to parse the error response to check for 419-related errors
+        // Secondary signal: the typed code in the body, in case the 419 status is not
+        // preserved by some intermediary.
         try {
             const errorData = await response.clone().json();
-            // Backend returns 500 but the error message contains "419" or "Unauthorized"
-            if (
-                errorData.error?.includes("419") ||
-                errorData.error?.includes("Unauthorized") ||
-                (response.status === 500 && errorData.error?.includes("API returned status 419"))
-            ) {
+            if (errorData?.code === RESY_SESSION_EXPIRED_CODE) {
                 triggerSessionExpiredModal();
                 throw new ResySessionExpiredError();
             }
         } catch (e) {
-            // If it's already a ResySessionExpiredError, re-throw it
+            // Re-throw our own signal; ignore JSON parse failures on other errors.
             if (e instanceof ResySessionExpiredError) {
                 throw e;
             }
-            // Otherwise, continue with normal error handling
         }
     }
     return response;

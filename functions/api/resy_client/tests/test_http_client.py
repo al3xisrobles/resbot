@@ -11,9 +11,12 @@ from resy_client.http_client import ResyHttpClient, REQUEST_TIMEOUT
 from resy_client.errors import (
     RateLimitError,
     ResyAuthError,
+    ResyInvalidCredentialsError,
+    ResySessionExpiredError,
     ResyTransientError,
     ResyApiError,
 )
+from resy_client.constants import ResyEndpoints
 from resy_client.models import ResyConfig
 
 
@@ -75,6 +78,52 @@ def test_get_401_raises_auth_error(resy_config):
         client.get("/3/venue", params={"id": "123"})
     assert exc_info.value.status_code == 401
     assert exc_info.value.endpoint == "/3/venue"
+
+
+@responses.activate
+def test_419_on_login_raises_invalid_credentials(resy_config):
+    """419 on /4/auth/password means the password is wrong -> ResyInvalidCredentialsError.
+
+    Resy returns an identical 419 "Unauthorized" body for both a wrong login and an
+    expired token; only the endpoint tells them apart. This is the login case.
+    """
+    responses.add(
+        responses.POST,
+        "https://api.resy.com" + ResyEndpoints.PASSWORD_AUTH.value,
+        json={"status": 419, "message": "Unauthorized"},
+        status=419,
+    )
+    client = ResyHttpClient.build(resy_config)
+    with pytest.raises(ResyInvalidCredentialsError) as exc_info:
+        client.post_form(ResyEndpoints.PASSWORD_AUTH.value, data={"email": "a", "password": "b"})
+    assert exc_info.value.status_code == 419
+    # It must NOT be misclassified as an expired session.
+    assert not isinstance(exc_info.value, ResySessionExpiredError)
+
+
+@responses.activate
+def test_419_on_data_endpoint_raises_session_expired(resy_config):
+    """419 on a non-login endpoint means the stored token is expired/rejected.
+
+    This is the bug that surfaced as "invalid username or password" on search: the
+    same 419 must be read as an expired session (recover by reconnecting), never as
+    wrong credentials.
+    """
+    responses.add(
+        responses.POST,
+        "https://api.resy.com" + ResyEndpoints.VENUE_SEARCH.value,
+        json={"status": 419, "message": "Unauthorized"},
+        status=419,
+    )
+    client = ResyHttpClient.build(resy_config)
+    with pytest.raises(ResySessionExpiredError) as exc_info:
+        client.post_json(ResyEndpoints.VENUE_SEARCH.value, body={"query": "x"})
+    assert exc_info.value.status_code == 419
+    assert exc_info.value.endpoint == ResyEndpoints.VENUE_SEARCH.value
+    # ResySessionExpiredError is a ResyAuthError so endpoint handlers catch it,
+    # but it must not be the login-only invalid-credentials type.
+    assert isinstance(exc_info.value, ResyAuthError)
+    assert not isinstance(exc_info.value, ResyInvalidCredentialsError)
 
 
 @responses.activate

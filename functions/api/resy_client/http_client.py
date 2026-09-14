@@ -10,12 +10,13 @@ import sentry_sdk
 import requests
 from requests import Session
 
-from .constants import RESY_BASE_URL
+from .constants import RESY_BASE_URL, ResyEndpoints
 from .errors import (
     RateLimitError,
     ResyApiError,
     ResyAuthError,
     ResyInvalidCredentialsError,
+    ResySessionExpiredError,
     ResyTransientError,
 )
 from .models import ResyConfig
@@ -302,10 +303,23 @@ class ResyHttpClient:
                 )
 
             if status == 419:
-                logger.info("Resy invalid credentials (419) %s: %s", endpoint, body_truncated)
+                # Resy returns the same 419 "Unauthorized" body for two different
+                # situations, distinguishable only by endpoint:
+                #   - on /4/auth/password it means the login credentials are wrong
+                #   - on every other (authenticated) endpoint it means the session
+                #     token is expired or rejected
                 span.set_status("unauthenticated")
-                raise ResyInvalidCredentialsError(
-                    f"Invalid username or password: {body_truncated}",
+                if endpoint == ResyEndpoints.PASSWORD_AUTH.value:
+                    logger.info("Resy invalid credentials (419) %s: %s", endpoint, body_truncated)
+                    raise ResyInvalidCredentialsError(
+                        f"Invalid username or password: {body_truncated}",
+                        status_code=419,
+                        response_body=body,
+                        endpoint=endpoint,
+                    )
+                logger.info("Resy session expired (419) %s: %s", endpoint, body_truncated)
+                raise ResySessionExpiredError(
+                    f"Resy session expired: {body_truncated}",
                     status_code=419,
                     response_body=body,
                     endpoint=endpoint,

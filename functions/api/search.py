@@ -12,8 +12,16 @@ from firebase_functions.options import CorsOptions, MemoryOption
 from google.cloud import firestore as gc_firestore
 
 from .cities import get_city_config
-from .response_schemas import SearchData, SearchPagination, SearchResultItem, error_response, success_response
+from .response_schemas import (
+    SearchData,
+    SearchPagination,
+    SearchResultItem,
+    error_response,
+    session_expired_response,
+    success_response,
+)
 from .resy_client.api_access import build_resy_client
+from .resy_client.errors import ResyAuthError
 from .resy_client.models import VenueSearchRequestBody
 from .sentry_utils import with_sentry_trace
 from .utils import (
@@ -146,6 +154,9 @@ def search(req: Request):
         )
         return success_response(search_data)
 
+    except ResyAuthError:
+        logger.info("Resy session expired during search for user %s", user_id)
+        return session_expired_response()
     except Exception as e:
         logger.exception("Error searching venues")
         resp, code = error_response(str(e), 500)
@@ -442,6 +453,16 @@ def search_map(req: Request):
         )
         return success_response(search_data)
 
+    except ResyAuthError:
+        logger.info("Resy session expired during map search for user %s", user_id)
+        if job_id:
+            duration_ms = int((time.time() - start_time) * 1000)
+            update_search_progress(job_id, {
+                "status": "error",
+                "error": "Resy session expired",
+                "durationMs": duration_ms,
+            })
+        return session_expired_response()
     except Exception as e:
         logger.error("Error searching venues by map: %s", e)
         # Mark job as error

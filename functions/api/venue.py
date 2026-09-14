@@ -18,10 +18,11 @@ from .response_schemas import (
     VenueLinksModel,
     VenuePaymentRequirementData,
     error_response,
+    session_expired_response,
     success_response,
 )
 from .resy_client.api_access import build_resy_client
-from .resy_client.errors import ResyApiError
+from .resy_client.errors import ResyApiError, ResyAuthError
 from .resy_client.models import CalendarRequestParams, FindRequestBody
 from .sentry_utils import with_sentry_trace
 from .utils import GOOGLE_MAPS_API_KEY, _get_firestore_client, load_credentials
@@ -84,6 +85,9 @@ def venue(req: Request):
         )
         return success_response(venue_detail)
 
+    except ResyAuthError:
+        logger.info("Resy session expired fetching venue for user %s", user_id)
+        return session_expired_response()
     except ResyApiError as e:
         logger.error(
             "Resy API error fetching venue: %s %s",
@@ -130,6 +134,9 @@ def venue_links(req: Request):
         client = build_resy_client(credentials)
         try:
             venue_data = client.get_venue(venue_id)
+        except ResyAuthError:
+            logger.info("[VENUE-LINKS] Resy session expired for user %s", user_id)
+            return session_expired_response()
         except ResyApiError as e:
             logger.error(
                 "[VENUE-LINKS] Failed to fetch venue details. Status: %s %s",
@@ -462,6 +469,9 @@ def check_venue_payment_requirement(req: Request):
         )
         return success_response(data)
 
+    except ResyAuthError:
+        logger.info("Resy session expired checking payment requirement for user %s", user_id)
+        return session_expired_response()
     except Exception as e:
         logger.error("Error checking venue payment requirement: %s", e)
         resp, code = error_response(str(e), 500)

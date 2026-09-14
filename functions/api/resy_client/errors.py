@@ -23,7 +23,17 @@ class ResyAuthError(ResyApiError):
 
 
 class ResyInvalidCredentialsError(ResyAuthError):
-    """419 -- invalid username/password during login (user error, not a bug)."""
+    """419 on /4/auth/password -- wrong username/password at login (user error, not a bug)."""
+
+
+class ResySessionExpiredError(ResyAuthError):
+    """419/401 on a data endpoint -- the stored session token is expired or rejected.
+
+    Distinct from ResyInvalidCredentialsError: the user's password is fine, but the
+    long-lived Resy token has aged out (tokens last ~45 days and are not auto-refreshed,
+    since we never store the password) or was otherwise rejected. Resy returns the exact
+    same 419 "Unauthorized" body for both cases, so they can only be told apart by which
+    endpoint produced them. Recovery is to re-authenticate (reconnect the Resy account)."""
 
 
 class RateLimitError(ResyApiError):
