@@ -7,9 +7,6 @@ import {
   AuthenticatedRoute,
   OnboardedRoute,
 } from "@/components/ProtectedRoute";
-import { useAtomValue } from "jotai";
-import { isOnboardedAtom } from "@/atoms/authAtoms";
-import { Navigate } from "react-router-dom";
 import { HomePage } from "@/pages/HomePage";
 import { VenueDetailPage } from "@/pages/routes/venue/VenueDetailPage";
 import { SearchPage } from "@/pages/SearchPage";
@@ -30,20 +27,14 @@ import "@/services/firebase";
 // Note: React Router v7 integration may require different setup
 // For now, using BrowserRouter directly with ErrorBoundary for error tracking
 
-// Wrapper component for onboarding page that redirects if already onboarded.
-// Exception: an explicit reconnect (?reconnect=1) must reach the form even when a
-// credential doc still exists, because an expired token leaves the user "onboarded"
-// yet unable to make Resy calls. Without this, the "Reconnect Resy" prompt bounces
-// straight back home and the user can never refresh their session.
-function OnboardingPageWrapper() {
-  const isOnboarded = useAtomValue(isOnboardedAtom);
-  const location = useLocation();
-  const isReconnect = new URLSearchParams(location.search).get("reconnect") === "1";
-  if (isOnboarded && !isReconnect) {
-    return <Navigate to="/" replace />;
-  }
-  return <OnboardingPage />;
-}
+// The Resy connect page must always be reachable for a logged-in user, because every
+// navigation to it is a deliberate connect / reconnect / switch-account action:
+//   - a not-yet-onboarded user connecting for the first time,
+//   - an onboarded user whose token expired reconnecting from the session-expired modal,
+//   - a connected user switching accounts, or reconnecting after disconnecting.
+// A previous redirect ("go home if already onboarded") broke all but the first case,
+// because an expired or stale credential still reads as "onboarded". OnboardedRoute is
+// what keeps un-onboarded users out of the app; this page does not need its own guard.
 
 function AppContent() {
   const location = useLocation();
@@ -77,7 +68,7 @@ function AppContent() {
           path="/connect-resy"
           element={
             <AuthenticatedRoute>
-              <OnboardingPageWrapper />
+              <OnboardingPage />
             </AuthenticatedRoute>
           }
         />
