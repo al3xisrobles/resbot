@@ -57,7 +57,28 @@ interface EditFormData {
     dropDate: Date | undefined;
     dropHour: number;
     dropMinute: number;
+    watchMode: boolean;
+    rangeStart: string; // time option value, e.g. "17:00"
+    rangeEnd: string;
 }
+
+// "HH:MM" or "H:MM" to minutes since midnight
+const toMinutes = (time: string) => {
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours * 60 + minutes;
+};
+
+// "09:00" (backend) to "9:00" (time option value)
+const toTimeOptionValue = (time: string) => {
+    const [hours, minutes] = time.split(":").map(Number);
+    return `${hours}:${String(minutes).padStart(2, "0")}`;
+};
+
+// "9:00" (time option value) to "09:00" (backend)
+const toHHMM = (time: string) => {
+    const [hours, minutes] = time.split(":").map(Number);
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+};
 
 export function ReservationsDataTable({
     reservations,
@@ -123,6 +144,9 @@ export function ReservationsDataTable({
             dropDate,
             dropHour,
             dropMinute,
+            watchMode: reservation.watchMode ?? false,
+            rangeStart: toTimeOptionValue(reservation.rangeStart ?? reservation.time),
+            rangeEnd: toTimeOptionValue(reservation.rangeEnd ?? reservation.time),
         });
         setEditingJobId(reservation.id);
         setExpandedRows((prev) => new Set(prev).add(reservation.id));
@@ -138,7 +162,16 @@ export function ReservationsDataTable({
     const handleSaveEdit = async () => {
         if (!editingJobId || !editFormData || !auth.currentUser) return;
 
-        if (!editFormData.date || !editFormData.dropDate) {
+        if (editFormData.watchMode) {
+            if (!editFormData.date) {
+                setEditError("Please select a reservation date");
+                return;
+            }
+            if (toMinutes(editFormData.rangeEnd) < toMinutes(editFormData.rangeStart)) {
+                setEditError("The latest time must not be before the earliest time.");
+                return;
+            }
+        } else if (!editFormData.date || !editFormData.dropDate) {
             setEditError("Please select both reservation date and drop date");
             return;
         }
@@ -147,17 +180,28 @@ export function ReservationsDataTable({
         setEditError(null);
 
         try {
-            await updateReservationJob(auth.currentUser.uid, editingJobId, {
-                date: format(editFormData.date, "yyyy-MM-dd"),
-                hour: editFormData.hour,
-                minute: editFormData.minute,
-                partySize: editFormData.partySize,
-                windowHours: editFormData.windowHours,
-                seatingType: editFormData.seatingType === "any" ? undefined : editFormData.seatingType,
-                dropDate: format(editFormData.dropDate, "yyyy-MM-dd"),
-                dropHour: editFormData.dropHour,
-                dropMinute: editFormData.dropMinute,
-            });
+            if (editFormData.watchMode && editFormData.date) {
+                // Watches have no drop fields; the backend accepts "any" to clear the seating type.
+                await updateReservationJob(auth.currentUser.uid, editingJobId, {
+                    date: format(editFormData.date, "yyyy-MM-dd"),
+                    partySize: editFormData.partySize,
+                    seatingType: editFormData.seatingType,
+                    rangeStart: toHHMM(editFormData.rangeStart),
+                    rangeEnd: toHHMM(editFormData.rangeEnd),
+                });
+            } else if (editFormData.date && editFormData.dropDate) {
+                await updateReservationJob(auth.currentUser.uid, editingJobId, {
+                    date: format(editFormData.date, "yyyy-MM-dd"),
+                    hour: editFormData.hour,
+                    minute: editFormData.minute,
+                    partySize: editFormData.partySize,
+                    windowHours: editFormData.windowHours,
+                    seatingType: editFormData.seatingType === "any" ? undefined : editFormData.seatingType,
+                    dropDate: format(editFormData.dropDate, "yyyy-MM-dd"),
+                    dropHour: editFormData.dropHour,
+                    dropMinute: editFormData.dropMinute,
+                });
+            }
 
             // Refresh data
             if (onRefetch) {
@@ -241,6 +285,26 @@ export function ReservationsDataTable({
         const ampm = hour >= 12 ? "PM" : "AM";
         const displayHour = hour % 12 || 12;
         return `${displayHour}:${minutes} ${ampm}`;
+    };
+
+    const formatTimeCell = (reservation: Reservation) => {
+        if (reservation.watchMode && reservation.rangeStart && reservation.rangeEnd) {
+            return `${formatTime(reservation.rangeStart)} - ${formatTime(reservation.rangeEnd)}`;
+        }
+        return formatTime(reservation.time);
+    };
+
+    const formatWatchTime = (reservation: Reservation) => {
+        if (reservation.status === "Scheduled") return "Watching for cancellations";
+        if (!reservation.attemptedAt) return "-";
+        const endedAt = new Date(reservation.attemptedAt).toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        });
+        return reservation.status === "Succeeded" ? `Booked at ${endedAt}` : `Ended at ${endedAt}`;
     };
 
     const formatSnipeTime = (snipeTimeIso: string | undefined, status: Reservation["status"]) => {
@@ -346,7 +410,7 @@ export function ReservationsDataTable({
                                             </p>
                                         </TableCell>
                                         <TableCell>{formatDate(reservation.date)}</TableCell>
-                                        <TableCell>{formatTime(reservation.time)}</TableCell>
+                                        <TableCell>{formatTimeCell(reservation)}</TableCell>
                                         <TableCell className="text-center">
                                             {reservation.partySize}
                                         </TableCell>
@@ -356,11 +420,13 @@ export function ReservationsDataTable({
                                                     reservation.status
                                                 )}`}
                                             >
-                                                {reservation.status}
+                                                {reservation.watchMode && isScheduled ? "Watching" : reservation.status}
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">
-                                            {formatSnipeTime(reservation.snipeTime, reservation.status)}
+                                            {reservation.watchMode
+                                                ? formatWatchTime(reservation)
+                                                : formatSnipeTime(reservation.snipeTime, reservation.status)}
                                         </TableCell>
                                         <TableCell>
                                             {isScheduled ? (
@@ -445,28 +511,32 @@ export function ReservationsDataTable({
                                                             </Popover>
                                                         </div>
 
-                                                        {/* Reservation Time */}
-                                                        <div className="space-y-2">
-                                                            <Label>Reservation Time</Label>
-                                                            <Select
-                                                                value={`${editFormData.hour}:${editFormData.minute.toString().padStart(2, "0")}`}
-                                                                onValueChange={(value) => {
-                                                                    const [h, m] = value.split(":").map(Number);
-                                                                    setEditFormData({ ...editFormData, hour: h, minute: m });
-                                                                }}
-                                                            >
-                                                                <SelectTrigger>
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    {timeOptions.map((option) => (
-                                                                        <SelectItem key={option.value} value={option.value}>
-                                                                            {option.label}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
+                                                        {!editFormData.watchMode && (
+                                                            <>
+                                                                {/* Reservation Time */}
+                                                                <div className="space-y-2">
+                                                                    <Label>Reservation Time</Label>
+                                                                    <Select
+                                                                        value={`${editFormData.hour}:${editFormData.minute.toString().padStart(2, "0")}`}
+                                                                        onValueChange={(value) => {
+                                                                            const [h, m] = value.split(":").map(Number);
+                                                                            setEditFormData({ ...editFormData, hour: h, minute: m });
+                                                                        }}
+                                                                    >
+                                                                        <SelectTrigger>
+                                                                            <SelectValue />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            {timeOptions.map((option) => (
+                                                                                <SelectItem key={option.value} value={option.value}>
+                                                                                    {option.label}
+                                                                                </SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+                                                            </>
+                                                        )}
 
                                                         {/* Party Size */}
                                                         <div className="space-y-2">
@@ -481,74 +551,124 @@ export function ReservationsDataTable({
                                                             />
                                                         </div>
 
-                                                        {/* Window Hours */}
-                                                        <div className="space-y-2">
-                                                            <Label>Window Hours</Label>
-                                                            <Input
-                                                                type="number"
-                                                                min="1"
-                                                                value={editFormData.windowHours}
-                                                                onChange={(e) =>
-                                                                    setEditFormData({ ...editFormData, windowHours: parseInt(e.target.value) || 1 })
-                                                                }
-                                                            />
-                                                        </div>
-
-                                                        {/* Drop Date */}
-                                                        <div className="space-y-2">
-                                                            <Label>Drop Date</Label>
-                                                            <Popover>
-                                                                <PopoverTrigger asChild>
-                                                                    <Button
-                                                                        variant="outline"
-                                                                        className={cn(
-                                                                            "w-full justify-start text-left font-normal",
-                                                                            !editFormData.dropDate && "text-muted-foreground"
-                                                                        )}
-                                                                    >
-                                                                        <CalendarIcon className="mr-2 h-4 w-4" />
-                                                                        {editFormData.dropDate ? (
-                                                                            format(editFormData.dropDate, "PPP")
-                                                                        ) : (
-                                                                            <span>Pick a date</span>
-                                                                        )}
-                                                                    </Button>
-                                                                </PopoverTrigger>
-                                                                <PopoverContent className="w-auto p-0">
-                                                                    <Calendar
-                                                                        mode="single"
-                                                                        selected={editFormData.dropDate}
-                                                                        onSelect={(date) =>
-                                                                            setEditFormData({ ...editFormData, dropDate: date })
+                                                        {!editFormData.watchMode && (
+                                                            <>
+                                                                {/* Window Hours */}
+                                                                <div className="space-y-2">
+                                                                    <Label>Window Hours</Label>
+                                                                    <Input
+                                                                        type="number"
+                                                                        min="1"
+                                                                        value={editFormData.windowHours}
+                                                                        onChange={(e) =>
+                                                                            setEditFormData({ ...editFormData, windowHours: parseInt(e.target.value) || 1 })
                                                                         }
-                                                                        initialFocus
                                                                     />
-                                                                </PopoverContent>
-                                                            </Popover>
-                                                        </div>
+                                                                </div>
 
-                                                        {/* Drop Time */}
-                                                        <div className="space-y-2">
-                                                            <Label>Drop Time</Label>
-                                                            <Select
-                                                                value={`${editFormData.dropHour}:${editFormData.dropMinute.toString().padStart(2, "0")}`}
-                                                                onValueChange={(value) => {
-                                                                    const [h, m] = value.split(":").map(Number);
-                                                                    setEditFormData({ ...editFormData, dropHour: h, dropMinute: m });
-                                                                }}
-                                                            >
-                                                                <SelectTrigger>
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    {timeOptions.map((option) => (
-                                                                        <SelectItem key={option.value} value={option.value}>
-                                                                            {option.label}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
+                                                                {/* Drop Date */}
+                                                                <div className="space-y-2">
+                                                                    <Label>Drop Date</Label>
+                                                                    <Popover>
+                                                                        <PopoverTrigger asChild>
+                                                                            <Button
+                                                                                variant="outline"
+                                                                                className={cn(
+                                                                                    "w-full justify-start text-left font-normal",
+                                                                                    !editFormData.dropDate && "text-muted-foreground"
+                                                                                )}
+                                                                            >
+                                                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                                                {editFormData.dropDate ? (
+                                                                                    format(editFormData.dropDate, "PPP")
+                                                                                ) : (
+                                                                                    <span>Pick a date</span>
+                                                                                )}
+                                                                            </Button>
+                                                                        </PopoverTrigger>
+                                                                        <PopoverContent className="w-auto p-0">
+                                                                            <Calendar
+                                                                                mode="single"
+                                                                                selected={editFormData.dropDate}
+                                                                                onSelect={(date) =>
+                                                                                    setEditFormData({ ...editFormData, dropDate: date })
+                                                                                }
+                                                                                initialFocus
+                                                                            />
+                                                                        </PopoverContent>
+                                                                    </Popover>
+                                                                </div>
+
+                                                                {/* Drop Time */}
+                                                                <div className="space-y-2">
+                                                                    <Label>Drop Time</Label>
+                                                                    <Select
+                                                                        value={`${editFormData.dropHour}:${editFormData.dropMinute.toString().padStart(2, "0")}`}
+                                                                        onValueChange={(value) => {
+                                                                            const [h, m] = value.split(":").map(Number);
+                                                                            setEditFormData({ ...editFormData, dropHour: h, dropMinute: m });
+                                                                        }}
+                                                                    >
+                                                                        <SelectTrigger>
+                                                                            <SelectValue />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            {timeOptions.map((option) => (
+                                                                                <SelectItem key={option.value} value={option.value}>
+                                                                                    {option.label}
+                                                                                </SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+                                                            </>
+                                                        )}
+
+                                                        {/* Watch Range */}
+                                                        {editFormData.watchMode && (
+                                                            <>
+                                                            <div className="space-y-2">
+                                                                <Label>Earliest Time</Label>
+                                                                <Select
+                                                                    value={editFormData.rangeStart}
+                                                                    onValueChange={(value) =>
+                                                                        setEditFormData({ ...editFormData, rangeStart: value })
+                                                                    }
+                                                                >
+                                                                    <SelectTrigger>
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {timeOptions.map((option) => (
+                                                                            <SelectItem key={option.value} value={option.value}>
+                                                                                {option.label}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <Label>Latest Time</Label>
+                                                                <Select
+                                                                    value={editFormData.rangeEnd}
+                                                                    onValueChange={(value) =>
+                                                                        setEditFormData({ ...editFormData, rangeEnd: value })
+                                                                    }
+                                                                >
+                                                                    <SelectTrigger>
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {timeOptions.map((option) => (
+                                                                            <SelectItem key={option.value} value={option.value}>
+                                                                                {option.label}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                            </>
+                                                        )}
 
                                                         {/* Seating Type */}
                                                         <div className="space-y-2">

@@ -48,6 +48,16 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
 
+    // Cancellation watch poll state and opening log - written only by the watch tick
+    // (Admin SDK bypasses rules), never readable or writable by clients
+    match /watchTargets/{targetId} {
+      allow read, write: if false;
+    }
+
+    match /watchEvents/{eventId} {
+      allow read, write: if false;
+    }
+
     match /searchJobs/{jobId} {
       // allow any signed-in user to read job progress
       allow read: if isSignedIn();

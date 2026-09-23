@@ -1,0 +1,975 @@
+{
+  "bookmark": null,
+  "platinum_night": null,
+  "query": {
+    "day": "2026-09-23",
+    "party_size": 2,
+    "time_filter": null
+  },
+  "results": {
+    "meta": {
+      "limit": null,
+      "offset": 1
+    },
+    "venues": [
+      {
+        "gating_errors": {},
+        "notifies": [],
+        "pickups": {
+          "service_types": {},
+          "slots": []
+        },
+        "slots": [
+          {
+            "availability": {
+              "id": 3
+            },
+            "config": {
+              "custom_config_name": null,
+              "id": 919113,
+              "is_visible": false,
+              "token": "rgs://resy/53342/4235009/2/2026-09-23/2026-09-23/21:15:00/2/Dining Room",
+              "type": "Dining Room"
+            },
+            "custom_config": {
+              "name": null,
+              "object_id": null
+            },
+            "date": {
+              "end": "2026-09-23 23:15:00",
+              "start": "2026-09-23 21:15:00"
+            },
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "exclusive": {
+              "id": 0,
+              "is_eligible": true
+            },
+            "floorplan": {
+              "id": 41606
+            },
+            "gdc_perk": null,
+            "has_add_ons": false,
+            "id": null,
+            "is_global_dining_access": false,
+            "lock": null,
+            "market": {
+              "date": {
+                "off": 1790208900,
+                "on": 1789048800
+              }
+            },
+            "meta": {
+              "size": {
+                "assumed": 2
+              },
+              "type": {
+                "id": 1
+              }
+            },
+            "pacing": {
+              "beyond": false
+            },
+            "payment": {
+              "cancellation_fee": 60.0,
+              "deposit_fee": null,
+              "is_add_on_required": false,
+              "is_paid": true,
+              "payment_structure": null,
+              "secs_cancel_cut_off": 7200,
+              "secs_change_cut_off": 7200,
+              "service_charge": null,
+              "service_charge_options": [],
+              "time_cancel_cut_off": null,
+              "time_change_cut_off": null,
+              "venue_share": null
+            },
+            "quantity": 1,
+            "reservation_config": {
+              "badge": null
+            },
+            "score": {
+              "total": 100.0
+            },
+            "shift": {
+              "day": "2026-09-23",
+              "id": 3383754,
+              "service": {
+                "type": {
+                  "id": 2
+                }
+              }
+            },
+            "size": {
+              "max": 2,
+              "min": 2
+            },
+            "status": {
+              "id": 1
+            },
+            "table": {
+              "id": [
+                725709
+              ]
+            },
+            "template": {
+              "id": 4235009
+            },
+            "time": {
+              "turn": {
+                "actual": 7200,
+                "estimated": 7200
+              }
+            }
+          },
+          {
+            "availability": {
+              "id": 3
+            },
+            "config": {
+              "custom_config_name": null,
+              "id": 919123,
+              "is_visible": false,
+              "token": "rgs://resy/53342/4235009/2/2026-09-23/2026-09-23/21:30:00/2/Dining Room",
+              "type": "Dining Room"
+            },
+            "custom_config": {
+              "name": null,
+              "object_id": null
+            },
+            "date": {
+              "end": "2026-09-23 23:30:00",
+              "start": "2026-09-23 21:30:00"
+            },
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "exclusive": {
+              "id": 0,
+              "is_eligible": true
+            },
+            "floorplan": {
+              "id": 41606
+            },
+            "gdc_perk": null,
+            "has_add_ons": false,
+            "id": null,
+            "is_global_dining_access": false,
+            "lock": null,
+            "market": {
+              "date": {
+                "off": 1790209800,
+                "on": 1789048800
+              }
+            },
+            "meta": {
+              "size": {
+                "assumed": 2
+              },
+              "type": {
+                "id": 1
+              }
+            },
+            "pacing": {
+              "beyond": false
+            },
+            "payment": {
+              "cancellation_fee": 60.0,
+              "deposit_fee": null,
+              "is_add_on_required": false,
+              "is_paid": true,
+              "payment_structure": null,
+              "secs_cancel_cut_off": 7200,
+              "secs_change_cut_off": 7200,
+              "service_charge": null,
+              "service_charge_options": [],
+              "time_cancel_cut_off": null,
+              "time_change_cut_off": null,
+              "venue_share": null
+            },
+            "quantity": 2,
+            "reservation_config": {
+              "badge": null
+            },
+            "score": {
+              "total": 100.0
+            },
+            "shift": {
+              "day": "2026-09-23",
+              "id": 3383754,
+              "service": {
+                "type": {
+                  "id": 2
+                }
+              }
+            },
+            "size": {
+              "max": 2,
+              "min": 2
+            },
+            "status": {
+              "id": 1
+            },
+            "table": {
+              "id": [
+                725719
+              ]
+            },
+            "template": {
+              "id": 4235009
+            },
+            "time": {
+              "turn": {
+                "actual": 7200,
+                "estimated": 7200
+              }
+            }
+          }
+        ],
+        "templates": {
+          "1269891": {
+            "cancellation_fee": null,
+            "content": {
+              "en-us": {
+                "about": {
+                  "attribution": null,
+                  "body": "The Commerce Inn is an Early American West Village tavern and cookery from esteemed West Village chefs Jody Williams and Rita Sodi. The Commerce Inn celebrates Shaker sensibilities of utility, craftsmanship, community and material honesty. Our kitchen focuses on fresh and straight-forward fare inspired by heirloom recipes and local traditions, always prepared simply and served casually with a spirit of care and warmth.",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "need_to_know": {
+                  "attribution": null,
+                  "body": "Walk-ins welcome.  Reservations for Brunch and Dinner are offered online 14 days in advance.\n\nMonday-Sunday\nBrunch: 9am-3pm\nDinner: 4pm-10pm\n\n\n",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "why_we_like_it": {
+                  "attribution": null,
+                  "body": "The dream team behind West Village favorites Via Carota, Buvette, and I Sodi \u2014 Jody Williams and Rita Sodi \u2014 are behind this new all-American tavern. The decor is Shaker-inspired, with austere but meticulously crafted furnishings, and the cuisine draws on 19th-century Yankee cookbooks.",
+                  "enhanced_body": null,
+                  "title": null
+                }
+              }
+            },
+            "deposit_fee": null,
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "id": 1269891,
+            "image_dimensions": [
+              [
+                360,
+                360
+              ],
+              [
+                360,
+                360
+              ]
+            ],
+            "images": [
+              "https://image.resy.com/3/003/2/53342/0894c776c795fe5a2d92b7e1ac6705b87b021568/jpg/640x360",
+              "https://image.resy.com/3/003/2/53342/5c06b486a020ef01aa69b6d30c0039cb30d4a58b/jpg/640x360"
+            ],
+            "is_default": 1,
+            "is_event": 0,
+            "is_paid": false,
+            "is_pickup": 0,
+            "item_ids": [],
+            "large_party_cancellation_fee": null,
+            "large_party_secs_cancel_cut_off": null,
+            "large_party_secs_change_cut_off": null,
+            "large_party_size_cancel": null,
+            "large_party_time_cancel_cut_off": null,
+            "large_party_time_change_cut_off": null,
+            "menu": {},
+            "menu_ids": [],
+            "name": "UPDATED_DEFAULT_TEMPLATE",
+            "payment_structure": null,
+            "pickup_highlight": 0,
+            "raw_image_names": [
+              "0894c776c795fe5a2d92b7e1ac6705b87b021568",
+              "5c06b486a020ef01aa69b6d30c0039cb30d4a58b"
+            ],
+            "reservation_config": {
+              "badge": null,
+              "secs_off_market": null,
+              "time_off_market": null,
+              "type": ""
+            },
+            "restriction_id": null,
+            "secs_cancel_cut_off": null,
+            "secs_change_cut_off": null,
+            "service_charge": null,
+            "service_charge_options": [],
+            "time_cancel_cut_off": null,
+            "time_change_cut_off": null,
+            "turn_times": [
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 1,
+                  "min": 1
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 2,
+                  "min": 2
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 3,
+                  "min": 3
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 4,
+                  "min": 4
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": null,
+                  "min": 5
+                }
+              }
+            ],
+            "venue_id": 53342,
+            "venue_share": null
+          },
+          "4207377": {
+            "cancellation_fee": 60.0,
+            "content": {
+              "en-us": {
+                "about": {
+                  "attribution": null,
+                  "body": "The Commerce Inn is an Early American West Village tavern and cookery from esteemed West Village chefs Jody Williams and Rita Sodi. The Commerce Inn celebrates Shaker sensibilities of utility, craftsmanship, community and material honesty. Our kitchen focuses on fresh and straight-forward fare inspired by heirloom recipes and local traditions, always prepared simply and served casually with a spirit of care and warmth.",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "need_to_know": {
+                  "attribution": null,
+                  "body": "Walk-ins welcome.  Reservations for Brunch and Dinner are offered online 14 days in advance.\n\nMonday-Sunday\nBrunch: 9am-3pm\nDinner: 4pm-10pm\n\n\n",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "why_we_like_it": {
+                  "attribution": null,
+                  "body": "The dream team behind West Village favorites Via Carota, Buvette, and I Sodi \u2014 Jody Williams and Rita Sodi \u2014 are behind this new all-American tavern. The decor is Shaker-inspired, with austere but meticulously crafted furnishings, and the cuisine draws on 19th-century Yankee cookbooks.",
+                  "enhanced_body": null,
+                  "title": null
+                }
+              }
+            },
+            "deposit_fee": null,
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "id": 4207377,
+            "image_dimensions": null,
+            "images": null,
+            "is_default": 0,
+            "is_event": 0,
+            "is_paid": true,
+            "is_pickup": 0,
+            "item_ids": [],
+            "large_party_cancellation_fee": null,
+            "large_party_secs_cancel_cut_off": null,
+            "large_party_secs_change_cut_off": null,
+            "large_party_size_cancel": null,
+            "large_party_time_cancel_cut_off": null,
+            "large_party_time_change_cut_off": null,
+            "menu": {},
+            "menu_ids": [],
+            "name": "4207377",
+            "payment_structure": null,
+            "pickup_highlight": 0,
+            "raw_image_names": null,
+            "reservation_config": {
+              "badge": null,
+              "secs_off_market": 1800,
+              "time_off_market": null,
+              "type": ""
+            },
+            "restriction_id": null,
+            "secs_cancel_cut_off": 21600,
+            "secs_change_cut_off": 21600,
+            "service_charge": null,
+            "service_charge_options": [],
+            "time_cancel_cut_off": null,
+            "time_change_cut_off": null,
+            "turn_times": [
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": null,
+                  "min": 1
+                }
+              }
+            ],
+            "venue_id": 53342,
+            "venue_share": null
+          },
+          "4235007": {
+            "cancellation_fee": 60.0,
+            "content": {
+              "en-us": {
+                "about": {
+                  "attribution": null,
+                  "body": "The Commerce Inn is an Early American West Village tavern and cookery from esteemed West Village chefs Jody Williams and Rita Sodi. The Commerce Inn celebrates Shaker sensibilities of utility, craftsmanship, community and material honesty. Our kitchen focuses on fresh and straight-forward fare inspired by heirloom recipes and local traditions, always prepared simply and served casually with a spirit of care and warmth.",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "need_to_know": {
+                  "attribution": null,
+                  "body": "Walk-ins welcome.  Reservations for Brunch and Dinner are offered online 14 days in advance.\n\nMonday-Sunday\nBrunch: 9am-3pm\nDinner: 4pm-10pm\n\n\n",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "why_we_like_it": {
+                  "attribution": null,
+                  "body": "The dream team behind West Village favorites Via Carota, Buvette, and I Sodi \u2014 Jody Williams and Rita Sodi \u2014 are behind this new all-American tavern. The decor is Shaker-inspired, with austere but meticulously crafted furnishings, and the cuisine draws on 19th-century Yankee cookbooks.",
+                  "enhanced_body": null,
+                  "title": null
+                }
+              }
+            },
+            "deposit_fee": null,
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "id": 4235007,
+            "image_dimensions": null,
+            "images": null,
+            "is_default": 0,
+            "is_event": 0,
+            "is_paid": true,
+            "is_pickup": 0,
+            "item_ids": [],
+            "large_party_cancellation_fee": null,
+            "large_party_secs_cancel_cut_off": null,
+            "large_party_secs_change_cut_off": null,
+            "large_party_size_cancel": null,
+            "large_party_time_cancel_cut_off": null,
+            "large_party_time_change_cut_off": null,
+            "menu": {},
+            "menu_ids": [],
+            "name": "4235007",
+            "payment_structure": null,
+            "pickup_highlight": 0,
+            "raw_image_names": null,
+            "reservation_config": {
+              "badge": null,
+              "secs_off_market": 1800,
+              "time_off_market": null,
+              "type": ""
+            },
+            "restriction_id": null,
+            "secs_cancel_cut_off": 7200,
+            "secs_change_cut_off": 7200,
+            "service_charge": null,
+            "service_charge_options": [],
+            "time_cancel_cut_off": null,
+            "time_change_cut_off": null,
+            "turn_times": [
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 1,
+                  "min": 1
+                }
+              },
+              {
+                "secs_amount": 7200,
+                "size": {
+                  "max": 4,
+                  "min": 2
+                }
+              },
+              {
+                "secs_amount": 9000,
+                "size": {
+                  "max": 6,
+                  "min": 5
+                }
+              },
+              {
+                "secs_amount": 10800,
+                "size": {
+                  "max": null,
+                  "min": 7
+                }
+              }
+            ],
+            "venue_id": 53342,
+            "venue_share": null
+          },
+          "4235008": {
+            "cancellation_fee": 60.0,
+            "content": {
+              "en-us": {
+                "about": {
+                  "attribution": null,
+                  "body": "The Commerce Inn is an Early American West Village tavern and cookery from esteemed West Village chefs Jody Williams and Rita Sodi. The Commerce Inn celebrates Shaker sensibilities of utility, craftsmanship, community and material honesty. Our kitchen focuses on fresh and straight-forward fare inspired by heirloom recipes and local traditions, always prepared simply and served casually with a spirit of care and warmth.",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "need_to_know": {
+                  "attribution": null,
+                  "body": "Walk-ins welcome.  Reservations for Brunch and Dinner are offered online 14 days in advance.\n\nMonday-Sunday\nBrunch: 9am-3pm\nDinner: 4pm-10pm\n\n\n",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "why_we_like_it": {
+                  "attribution": null,
+                  "body": "The dream team behind West Village favorites Via Carota, Buvette, and I Sodi \u2014 Jody Williams and Rita Sodi \u2014 are behind this new all-American tavern. The decor is Shaker-inspired, with austere but meticulously crafted furnishings, and the cuisine draws on 19th-century Yankee cookbooks.",
+                  "enhanced_body": null,
+                  "title": null
+                }
+              }
+            },
+            "deposit_fee": null,
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "id": 4235008,
+            "image_dimensions": null,
+            "images": null,
+            "is_default": 0,
+            "is_event": 0,
+            "is_paid": true,
+            "is_pickup": 0,
+            "item_ids": [],
+            "large_party_cancellation_fee": null,
+            "large_party_secs_cancel_cut_off": null,
+            "large_party_secs_change_cut_off": null,
+            "large_party_size_cancel": null,
+            "large_party_time_cancel_cut_off": null,
+            "large_party_time_change_cut_off": null,
+            "menu": {},
+            "menu_ids": [],
+            "name": "4235008",
+            "payment_structure": null,
+            "pickup_highlight": 0,
+            "raw_image_names": null,
+            "reservation_config": {
+              "badge": null,
+              "secs_off_market": 3600,
+              "time_off_market": null,
+              "type": "Dining Room"
+            },
+            "restriction_id": null,
+            "secs_cancel_cut_off": 7200,
+            "secs_change_cut_off": 7200,
+            "service_charge": null,
+            "service_charge_options": [],
+            "time_cancel_cut_off": null,
+            "time_change_cut_off": null,
+            "turn_times": [
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 1,
+                  "min": 1
+                }
+              },
+              {
+                "secs_amount": 7200,
+                "size": {
+                  "max": 4,
+                  "min": 2
+                }
+              },
+              {
+                "secs_amount": 9000,
+                "size": {
+                  "max": 6,
+                  "min": 5
+                }
+              },
+              {
+                "secs_amount": 10800,
+                "size": {
+                  "max": null,
+                  "min": 7
+                }
+              }
+            ],
+            "venue_id": 53342,
+            "venue_share": null
+          },
+          "4235009": {
+            "cancellation_fee": 60.0,
+            "content": {
+              "en-us": {
+                "about": {
+                  "attribution": null,
+                  "body": "The Commerce Inn is an Early American West Village tavern and cookery from esteemed West Village chefs Jody Williams and Rita Sodi. The Commerce Inn celebrates Shaker sensibilities of utility, craftsmanship, community and material honesty. Our kitchen focuses on fresh and straight-forward fare inspired by heirloom recipes and local traditions, always prepared simply and served casually with a spirit of care and warmth.",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "need_to_know": {
+                  "attribution": null,
+                  "body": "Walk-ins welcome.  Reservations for Brunch and Dinner are offered online 14 days in advance.\n\nMonday-Sunday\nBrunch: 9am-3pm\nDinner: 4pm-10pm\n\n\n",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "why_we_like_it": {
+                  "attribution": null,
+                  "body": "The dream team behind West Village favorites Via Carota, Buvette, and I Sodi \u2014 Jody Williams and Rita Sodi \u2014 are behind this new all-American tavern. The decor is Shaker-inspired, with austere but meticulously crafted furnishings, and the cuisine draws on 19th-century Yankee cookbooks.",
+                  "enhanced_body": null,
+                  "title": null
+                }
+              }
+            },
+            "deposit_fee": null,
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "id": 4235009,
+            "image_dimensions": null,
+            "images": null,
+            "is_default": 0,
+            "is_event": 0,
+            "is_paid": true,
+            "is_pickup": 0,
+            "item_ids": [],
+            "large_party_cancellation_fee": null,
+            "large_party_secs_cancel_cut_off": null,
+            "large_party_secs_change_cut_off": null,
+            "large_party_size_cancel": null,
+            "large_party_time_cancel_cut_off": null,
+            "large_party_time_change_cut_off": null,
+            "menu": {},
+            "menu_ids": [],
+            "name": "4235009",
+            "payment_structure": null,
+            "pickup_highlight": 0,
+            "raw_image_names": null,
+            "reservation_config": {
+              "badge": null,
+              "secs_off_market": 3600,
+              "time_off_market": null,
+              "type": "Dining Room"
+            },
+            "restriction_id": null,
+            "secs_cancel_cut_off": 7200,
+            "secs_change_cut_off": 7200,
+            "service_charge": null,
+            "service_charge_options": [],
+            "time_cancel_cut_off": null,
+            "time_change_cut_off": null,
+            "turn_times": [
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 1,
+                  "min": 1
+                }
+              },
+              {
+                "secs_amount": 7200,
+                "size": {
+                  "max": 4,
+                  "min": 2
+                }
+              },
+              {
+                "secs_amount": 9000,
+                "size": {
+                  "max": 6,
+                  "min": 5
+                }
+              },
+              {
+                "secs_amount": 10800,
+                "size": {
+                  "max": null,
+                  "min": 7
+                }
+              }
+            ],
+            "venue_id": 53342,
+            "venue_share": null
+          }
+        },
+        "venue": {
+          "allow_bypass_payment_method": 1,
+          "average_bill_size": 65.0,
+          "collections": [
+            {
+              "collection_slug": "resy-staff-picks-in-new-york",
+              "description": "If there\u2019s one thing you must know about the people who work at Resy, it\u2019s that we genuinely love restaurants. Here are our New York picks.",
+              "file_name": "staff-picks",
+              "id": 4,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/staff-picks.svg",
+              "name": "Resy Staff Picks in New York",
+              "short_name": "Staff Picks",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "the-women-of-food-new-york",
+              "description": "The acclaimed, women-owned and operated restaurants that shape New York\u2019s food scene.",
+              "file_name": "women",
+              "id": 880,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/women.svg",
+              "name": "The Women of Food: New York",
+              "short_name": "Women-Operated",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "new-yorks-essential-cozy-locales",
+              "description": "Your new favorite apr\u00e8s-ski (sans the ski) locales \u2014 fireplace, snug corners, and heart-warming fare included.",
+              "file_name": "winter",
+              "id": 883,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/winter.svg",
+              "name": "New York\u2019s Essential Cozy Locales",
+              "short_name": "Cozy Locales",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "new-yorks-essential-brunch-spots",
+              "description": "So that when it comes time for weekend brunch, you\u2019re in good hands.",
+              "file_name": "eggs",
+              "id": 1056,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/eggs.svg",
+              "name": "New York\u2019s Essential Brunch Spots",
+              "short_name": "Best of Brunch",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "book-tonight",
+              "description": "Book these venues tonight.",
+              "file_name": "book-tonight",
+              "id": 888,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/book-tonight.svg",
+              "name": "Book Tonight",
+              "short_name": "Book Tonight",
+              "type_id": 2
+            },
+            {
+              "collection_slug": "climbing",
+              "description": "You dine, the restaurant climbs. Climbing on Resy is the only data-driven list powered by your reservations. Consider it a curated guide by locals, for locals.",
+              "file_name": "climbing",
+              "id": 889,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/climbing.svg",
+              "name": "Climbing",
+              "short_name": "Climbing",
+              "type_id": 3
+            },
+            {
+              "collection_slug": "global-dining-access",
+              "description": "Global Dining Access by Resy gives eligible American Express\u00ae Card Members access to sought-after chefs and restaurants across the globe. To learn more, visit resy.com/globaldiningaccess.",
+              "file_name": "rga",
+              "id": 14,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/rga.svg",
+              "name": "Global Dining Access",
+              "short_name": "Global Dining Access",
+              "type_id": 10
+            }
+          ],
+          "content": [
+            {
+              "attribution": null,
+              "body": "The dream team behind West Village favorites Via Carota, Buvette, and I Sodi \u2014 Jody Williams and Rita Sodi \u2014 are behind this new all-American tavern. The decor is Shaker-inspired, with austere but meticulously crafted furnishings, and the cuisine draws on 19th-century Yankee cookbooks.",
+              "display": {
+                "type": "text"
+              },
+              "icon": {
+                "url": "https://s3.amazonaws.com/resy.com/images/icons/heart.svg"
+              },
+              "locale": {
+                "language": "en-us"
+              },
+              "name": "why_we_like_it",
+              "title": null
+            }
+          ],
+          "currency": {
+            "code": "USD",
+            "symbol": "$"
+          },
+          "currency_symbol": "$",
+          "default_template": "1269891",
+          "events": [],
+          "favorite": null,
+          "feature_recaptcha": true,
+          "gda_concierge_booking": false,
+          "hide_allergy_question": false,
+          "hide_occasion_question": false,
+          "hide_special_request_question": false,
+          "hospitality_included": 0,
+          "id": {
+            "resy": 53342
+          },
+          "inventory": {
+            "type": {
+              "id": 2
+            }
+          },
+          "is_gdc": 1,
+          "is_global_dining_access": true,
+          "is_global_dining_access_only": false,
+          "is_gns": 0,
+          "is_rga": true,
+          "is_rga_only": false,
+          "location": {
+            "code": "ny",
+            "geo": {
+              "lat": 40.7321993218129,
+              "lon": -74.00583444603
+            },
+            "name": "New York",
+            "neighborhood": "West Village",
+            "time_zone": "EST5EDT",
+            "url_slug": "new-york-ny"
+          },
+          "name": "The Commerce Inn",
+          "notify_options": [
+            {
+              "max_request_datetime": "2026-09-23 22:00:00",
+              "min_request_datetime": "2026-09-23 16:00:00",
+              "service_type_id": 2,
+              "step_minutes": 30
+            }
+          ],
+          "price_range": 2,
+          "rating": 4.73409,
+          "reopen": {
+            "date": null
+          },
+          "requires_reservation_transfers": 0,
+          "responsive_images": {
+            "aspect_ratios": {
+              "16:9": {
+                "1600": "1600x900",
+                "400": "400x225",
+                "800": "800x450"
+              },
+              "1:1": {
+                "1600": "1600x1600",
+                "200": "200x200",
+                "400": "400x400",
+                "800": "800x800"
+              },
+              "4:3": {
+                "1600": "1600x1200",
+                "400": "400x300",
+                "800": "800x600"
+              }
+            },
+            "file_names": [
+              "0894c776c795fe5a2d92b7e1ac6705b87b021568",
+              "5c06b486a020ef01aa69b6d30c0039cb30d4a58b"
+            ],
+            "originals": {
+              "0894c776c795fe5a2d92b7e1ac6705b87b021568": {
+                "url": "https://image.resy.com/3/003/2/53342/0894c776c795fe5a2d92b7e1ac6705b87b021568/jpg"
+              },
+              "5c06b486a020ef01aa69b6d30c0039cb30d4a58b": {
+                "url": "https://image.resy.com/3/003/2/53342/5c06b486a020ef01aa69b6d30c0039cb30d4a58b/jpg"
+              }
+            },
+            "urls": {
+              "0894c776c795fe5a2d92b7e1ac6705b87b021568": {
+                "16:9": {},
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/53342/0894c776c795fe5a2d92b7e1ac6705b87b021568/jpg/1:1/200"
+                },
+                "4:3": {}
+              },
+              "5c06b486a020ef01aa69b6d30c0039cb30d4a58b": {
+                "16:9": {},
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/53342/5c06b486a020ef01aa69b6d30c0039cb30d4a58b/jpg/1:1/200"
+                },
+                "4:3": {}
+              }
+            },
+            "urls_by_resolution": {
+              "0894c776c795fe5a2d92b7e1ac6705b87b021568": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/53342/0894c776c795fe5a2d92b7e1ac6705b87b021568/jpg/1:1/200"
+                }
+              },
+              "5c06b486a020ef01aa69b6d30c0039cb30d4a58b": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/53342/5c06b486a020ef01aa69b6d30c0039cb30d4a58b/jpg/1:1/200"
+                }
+              }
+            }
+          },
+          "resy_select": 0,
+          "service_types": {
+            "2": {}
+          },
+          "source": {
+            "logo": null,
+            "name": null,
+            "privacy_policy": null,
+            "terms_of_service": null
+          },
+          "supports_pickups": 0,
+          "tax_included": false,
+          "ticket": {
+            "average": 65.0,
+            "average_str": "$65"
+          },
+          "top": true,
+          "total_ratings": 6803,
+          "transaction_processor": "stripe",
+          "travel_time": {
+            "distance": 5391.478274941778
+          },
+          "type": "American",
+          "url_slug": "the-commerce-inn",
+          "venue_group": {
+            "id": 304,
+            "name": "I Sodi",
+            "venues": [
+              443,
+              2567,
+              4241,
+              65661,
+              93530,
+              93531
+            ]
+          },
+          "waitlist": {
+            "available": 0,
+            "current": null,
+            "label": "Join Wait List"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -620,6 +620,8 @@ export async function updateReservationJob(
     dropDate?: string;
     dropHour?: number;
     dropMinute?: number;
+    rangeStart?: string; // "HH:MM" (watch only)
+    rangeEnd?: string; // "HH:MM" (watch only)
   }
 ): Promise<void> {
   try {

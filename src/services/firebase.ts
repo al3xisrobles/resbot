@@ -513,28 +513,64 @@ export async function isVenueBookmarked(
   }
 }
 
-export interface ReservationSnipeRequest {
+interface ReservationRequestBase {
   venueId: string;
   partySize: number;
   date: string; // "yyyy-MM-dd"
+  seatingType?: string;
+  userId?: string | null;
+  actuallyReserve?: boolean;
+  timezone?: string; // IANA timezone string (e.g., "America/New_York", "America/Los_Angeles")
+}
+
+/** A snipe fires at a known drop time (or polls around it in discovery mode). */
+export interface SnipeReservationRequest extends ReservationRequestBase {
+  watchMode?: false;
   dropDate: string; // "yyyy-MM-dd"
   hour: number; // reservation time hour (for TimedReservationRequest)
   minute: number; // reservation time minute
   dropHour: number; // expected drop hour (when Resy releases)
   dropMinute: number; // expected drop minute
   windowHours?: number;
-  seatingType?: string;
-  userId?: string | null;
-  actuallyReserve?: boolean;
-  timezone?: string; // IANA timezone string (e.g., "America/New_York", "America/Los_Angeles")
   discoveryMode?: boolean;
   windowBeforeMinutes?: number;
   windowAfterMinutes?: number;
 }
 
+/** A cancellation watch polls for openings inside [rangeStart, rangeEnd] on one date. */
+export interface WatchReservationRequest extends ReservationRequestBase {
+  watchMode: true;
+  rangeStart: string; // "HH:MM", 24h
+  rangeEnd: string; // "HH:MM", 24h
+}
+
+export type ReservationSnipeRequest = SnipeReservationRequest | WatchReservationRequest;
+
 export interface ReservationSnipeResponse {
   jobId: string;
   targetTimeIso: string;
+}
+
+/**
+ * Emulator-only stand-in for the backend's ZoneInfo handling: builds an ISO 8601 string
+ * for a wall-clock time with a fixed (non-DST-aware) offset for the given timezone.
+ */
+function emulatorTargetTimeIso(
+  dateStr: string,
+  hour: number,
+  minute: number,
+  timezone: string
+): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const targetDate = new Date(year, month - 1, day, hour, minute);
+  const offsets: Record<string, string> = {
+    "America/New_York": "-05:00",
+    "America/Chicago": "-06:00",
+    "America/Los_Angeles": "-08:00",
+  };
+  return new Date(targetDate.getTime() - targetDate.getTimezoneOffset() * 60000)
+    .toISOString()
+    .replace("Z", offsets[timezone] || "-05:00");
 }
 
 /**
@@ -555,39 +591,47 @@ export async function scheduleReservationSnipe(
       // Use provided timezone or default to America/New_York
       const timezone = request.timezone || "America/New_York";
 
-      // Create target datetime in the specified timezone
-      const [dropYear, dropMonth, dropDay] = request.dropDate
-        .split("-")
-        .map(Number);
-      const targetDate = new Date(
-        dropYear,
-        dropMonth - 1,
-        dropDay,
-        request.dropHour,
-        request.dropMinute
-      );
-
-      // Get timezone offset for the target date in the specified timezone
-      // This is a simplified version - production backend handles this properly with ZoneInfo
-      const getTimezoneOffset = (tz: string): string => {
-        const offsets: Record<string, string> = {
-          "America/New_York": "-05:00",
-          "America/Chicago": "-06:00",
-          "America/Los_Angeles": "-08:00",
-        };
-        return offsets[tz] || "-05:00";
-      };
-
-      // Format as ISO 8601 with timezone offset
-      const targetTimeIso = new Date(
-        targetDate.getTime() - targetDate.getTimezoneOffset() * 60000
-      )
-        .toISOString()
-        .replace("Z", getTimezoneOffset(timezone));
-
       // Create a new job document reference
       const jobRef = doc(collection(db, "reservationJobs"));
       const jobId = jobRef.id;
+
+      if (request.watchMode) {
+        // Mirrors _create_watch in schedule.py: no drop fields, no scheduler job.
+        const [startHour, startMinute] = request.rangeStart.split(":").map(Number);
+        const targetTimeIso = emulatorTargetTimeIso(request.date, startHour, startMinute, timezone);
+        await setDoc(jobRef, {
+          jobId,
+          userId: request.userId || null,
+          venueId: String(request.venueId),
+          partySize: request.partySize,
+          date: request.date,
+          // hour/minute mirror the range start so existing list code has a time to show
+          hour: startHour,
+          minute: startMinute,
+          rangeStart: request.rangeStart,
+          rangeEnd: request.rangeEnd,
+          seatingType:
+            request.seatingType && request.seatingType !== "any" ? request.seatingType : null,
+          watchMode: true,
+          discoveryMode: false,
+          status: "pending",
+          targetTimeIso,
+          timezone,
+          bookingFailures: 0,
+          createdAt: Timestamp.now(),
+          lastUpdate: Timestamp.now(),
+        });
+        console.log(`[Firebase Emulator] Created watch document ${jobId} in reservationJobs collection`);
+        // The watch tick is a Cloud Tasks function, so there is nothing to run immediately.
+        return { jobId, targetTimeIso };
+      }
+
+      const targetTimeIso = emulatorTargetTimeIso(
+        request.dropDate,
+        request.dropHour,
+        request.dropMinute,
+        timezone
+      );
 
       const jobData = {
         jobId,
@@ -673,10 +717,10 @@ export interface ReservationJob {
   date: string; // "YYYY-MM-DD" - reservation date
   hour: number;
   minute: number;
-  dropDate: string; // "YYYY-MM-DD" - drop date
-  dropHour: number;
-  dropMinute: number;
-  status: "pending" | "done" | "failed" | "error";
+  dropDate?: string; // "YYYY-MM-DD" - drop date (absent on watches)
+  dropHour?: number;
+  dropMinute?: number;
+  status: "pending" | "done" | "failed" | "error" | "cancelled";
   targetTimeIso: string;
   createdAt: Timestamp;
   lastUpdate: Timestamp;
@@ -685,6 +729,10 @@ export interface ReservationJob {
   discoveryMode?: boolean;
   windowBeforeMinutes?: number;
   windowAfterMinutes?: number;
+  /** True for a cancellation watch (polled by the watch tick, no drop time) */
+  watchMode?: boolean;
+  rangeStart?: string; // "HH:MM" - earliest acceptable time (watch only)
+  rangeEnd?: string; // "HH:MM" - latest acceptable time (watch only)
   resyToken?: string;
   errorMessage?: string;
   executionLogs?: Array<{

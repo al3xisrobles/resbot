@@ -1,10 +1,20 @@
+import * as Sentry from "@sentry/react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useAtom } from "jotai";
 import { scheduleReservationSnipe } from "@/services/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { cityTimezoneAtom } from "@/atoms/cityAtom";
-import type { ReservationFormState } from "../atoms/reservationFormAtom";
+import {
+  isWatchRangeValid,
+  slotToHHMM,
+  type ReservationFormState,
+} from "../atoms/reservationFormAtom";
+
+// Format a date as YYYY-MM-DD using local components (not UTC) to avoid timezone shifts
+function formatLocalDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 export function useScheduleReservation(
   venueId: string | null,
@@ -24,6 +34,60 @@ export function useScheduleReservation(
     setReservationScheduled(false);
   }, [venueId]);
 
+  // A watch is one request with a time range; it has no drop schedules.
+  const scheduleWatch = async (venueIdValue: string, date: Date) => {
+    if (!isWatchRangeValid(reservationForm.rangeStart, reservationForm.rangeEnd)) {
+      setError("The latest time must not be before the earliest time.");
+      return;
+    }
+
+    setLoadingSubmit(true);
+    setError(null);
+
+    try {
+      const rangeStart = slotToHHMM(reservationForm.rangeStart);
+      const rangeEnd = slotToHHMM(reservationForm.rangeEnd);
+      const { jobId } = await Sentry.startSpan(
+        { op: "ui.action", name: "Schedule Cancellation Watch" },
+        async (span) => {
+          span.setAttribute("venueId", venueIdValue);
+          span.setAttribute("partySize", reservationForm.partySize);
+          span.setAttribute("rangeStart", rangeStart);
+          span.setAttribute("rangeEnd", rangeEnd);
+          return scheduleReservationSnipe({
+            watchMode: true,
+            venueId: venueIdValue,
+            partySize: Number(reservationForm.partySize),
+            date: formatLocalDate(date),
+            rangeStart,
+            rangeEnd,
+            seatingType:
+              reservationForm.seatingType === "any"
+                ? undefined
+                : reservationForm.seatingType,
+            userId: auth.currentUser?.uid ?? null,
+            timezone: cityTimezone,
+          });
+        }
+      );
+
+      toast.success("Watching for cancellations!", {
+        description: `Job ID: ${jobId}`,
+        className: "bg-green-600 text-white border-green-600",
+        position: "bottom-right",
+      });
+      setReservationScheduled(true);
+    } catch (err) {
+      Sentry.captureException(err);
+      console.error("[useScheduleReservation] Error scheduling watch:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to start watch";
+      setError(errorMessage);
+      toast.error("Failed to start watch", { description: errorMessage });
+    } finally {
+      setLoadingSubmit(false);
+    }
+  };
+
   const scheduleReservation = async () => {
     if (!venueId) {
       setError("No venue ID available");
@@ -32,6 +96,11 @@ export function useScheduleReservation(
 
     if (!reservationForm.date) {
       setError("Please select a reservation date");
+      return;
+    }
+
+    if (reservationForm.watchMode) {
+      await scheduleWatch(venueId, reservationForm.date);
       return;
     }
 

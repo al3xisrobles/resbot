@@ -26,6 +26,8 @@ interface UnifiedSearchControlsProps {
     onSearch?: () => void;
     /** Show search button */
     showSearchButton?: boolean;
+    /** Show the time section (hidden when the caller collects times some other way) */
+    showTime?: boolean;
     /** Disabled state */
     disabled?: boolean;
     /** Custom class name */
@@ -42,6 +44,7 @@ function UnifiedSearchControls({
     timeSlots,
     onSearch,
     showSearchButton = true,
+    showTime = true,
     disabled = false,
     className,
 }: UnifiedSearchControlsProps) {
@@ -118,7 +121,15 @@ function UnifiedSearchControls({
             {/* Date Section */}
             <Popover open={dateOpen && !disabled} onOpenChange={(open) => !disabled && setDateOpen(open)}>
                 <PopoverTrigger asChild>
-                    <button type="button" disabled={disabled} className={cn(triggerButtonStyles, disabled && "cursor-not-allowed")}>
+                    <button
+                        type="button"
+                        disabled={disabled}
+                        className={cn(
+                            triggerButtonStyles,
+                            !showTime && !showSearchButton && "rounded-r-full",
+                            disabled && "cursor-not-allowed"
+                        )}
+                    >
                         <span className={cn(!date && "text-muted-foreground")}>
                             {dateDisplay}
                         </span>
@@ -138,56 +149,60 @@ function UnifiedSearchControls({
                 </PopoverContent>
             </Popover>
 
-            {/* Divider */}
-            <div className="w-px h-6 bg-border" />
+            {showTime && (
+                <>
+                    {/* Divider */}
+                    <div className="w-px h-6 bg-border" />
 
-            {/* Time Section */}
-            <Popover open={timeOpen && !disabled} onOpenChange={(open) => !disabled && setTimeOpen(open)}>
-                <PopoverTrigger asChild>
-                    <button
-                        type="button"
-                        disabled={disabled}
-                        className={cn(
-                            triggerButtonStyles,
-                            !showSearchButton && "rounded-r-full",
-                            disabled && "cursor-not-allowed"
-                        )}
-                    >
-                        <span className={cn(!timeSlot && "text-muted-foreground")}>
-                            {timeDisplay}
-                        </span>
-                        <ChevronDown className="size-3.5 text-muted-foreground" />
-                    </button>
-                </PopoverTrigger>
-                <PopoverContent
-                    className="w-44 p-1 max-h-64 overflow-y-auto"
-                    align="end"
-                >
-                    {/* Only render time slot buttons when popover is open to avoid creating 96+ elements on every render */}
-                    {timeOpen && (
-                        <div className="flex flex-col">
-                            {timeSlots.map((slot) => (
-                                <button
-                                    key={slot.value}
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        onTimeSlotChange(slot.value);
-                                        setTimeOpen(false);
-                                    }}
-                                    className={cn(
-                                        optionButtonStyles,
-                                        timeSlot === slot.value && "bg-accent"
-                                    )}
-                                >
-                                    {slot.display}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </PopoverContent>
-            </Popover>
+                    {/* Time Section */}
+                    <Popover open={timeOpen && !disabled} onOpenChange={(open) => !disabled && setTimeOpen(open)}>
+                        <PopoverTrigger asChild>
+                            <button
+                                type="button"
+                                disabled={disabled}
+                                className={cn(
+                                    triggerButtonStyles,
+                                    !showSearchButton && "rounded-r-full",
+                                    disabled && "cursor-not-allowed"
+                                )}
+                            >
+                                <span className={cn(!timeSlot && "text-muted-foreground")}>
+                                    {timeDisplay}
+                                </span>
+                                <ChevronDown className="size-3.5 text-muted-foreground" />
+                            </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                            className="w-44 p-1 max-h-64 overflow-y-auto"
+                            align="end"
+                        >
+                            {/* Only render time slot buttons when popover is open to avoid creating 96+ elements on every render */}
+                            {timeOpen && (
+                                <div className="flex flex-col">
+                                    {timeSlots.map((slot) => (
+                                        <button
+                                            key={slot.value}
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                onTimeSlotChange(slot.value);
+                                                setTimeOpen(false);
+                                            }}
+                                            className={cn(
+                                                optionButtonStyles,
+                                                timeSlot === slot.value && "bg-accent"
+                                            )}
+                                        >
+                                            {slot.display}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </PopoverContent>
+                    </Popover>
+                </>
+            )}
 
             {/* Search Button */}
             {showSearchButton && (

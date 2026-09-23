@@ -27,7 +27,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cityTimezoneAbbrAtom } from "@/atoms/cityAtom";
 import { meAtom } from "@/atoms/authAtoms";
 import type { VenueData } from "@/lib/interfaces/app-types";
-import type { ReservationFormState, DropSchedule } from "../atoms/reservationFormAtom";
+import {
+  isWatchRangeValid,
+  type ReservationFormState,
+  type DropSchedule,
+} from "../atoms/reservationFormAtom";
 import { Stack, Group } from "@/components/ui/layout";
 
 const useEmulators =
@@ -64,6 +68,26 @@ export function ReservationForm({
   const requiresPaymentButUserHasNone =
     venueData?.requiresPaymentMethod === true && !hasPaymentMethod;
   const paymentRequirementUnknown = venueData?.requiresPaymentMethod === null;
+  const watchMode = reservationForm.watchMode;
+  const watchRangeValid = isWatchRangeValid(
+    reservationForm.rangeStart,
+    reservationForm.rangeEnd
+  );
+  const submitLabel = watchMode
+    ? reservationScheduled
+      ? "Watch Started"
+      : loadingSubmit
+        ? "Starting Watch..."
+        : "Start Watching"
+    : reservationScheduled
+      ? "Reservation Scheduled"
+      : loadingSubmit
+        ? "Scheduling..."
+        : "Schedule Reservation";
+  const submitBlockedByMode = watchMode
+    ? !watchRangeValid
+    : reservationForm.dropSchedules.length === 0 ||
+      reservationForm.dropSchedules.some((schedule) => !schedule.dropDate);
 
   return (
     <Stack itemsSpacing={24}>
@@ -99,38 +123,111 @@ export function ReservationForm({
           }
           timeSlots={TIME_SLOTS}
           showSearchButton={false}
+          showTime={!watchMode}
           disabled={!auth.currentUser}
         />
       </Stack>
+
+      {/* Cancellation Watch Toggle */}
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="watch-mode"
+          checked={watchMode}
+          onCheckedChange={(checked) =>
+            setReservationForm({
+              ...reservationForm,
+              watchMode: checked === true,
+            })
+          }
+          disabled={!auth.currentUser}
+        />
+        <Label
+          htmlFor="watch-mode"
+          className="text-sm font-normal cursor-pointer"
+        >
+          Watch for cancellations: book the first table that opens in a time range
+        </Label>
+      </div>
 
       {/* Preferences */}
       <Stack itemsSpacing={16}>
         <h3 className="text-lg flex items-center gap-2">Preferences</h3>
         <Group itemsSpacing={16} noWrap className="flex-col md:flex-row">
-          <Stack itemsSpacing={8} className="flex-1">
-            <Label>Time Window (±hours)</Label>
-            <Select
-              value={reservationForm.windowHours}
-              onValueChange={(value) =>
-                setReservationForm({
-                  ...reservationForm,
-                  windowHours: value,
-                })
-              }
-              disabled={!auth.currentUser}
-            >
-              <SelectTrigger variant="pill" id="window">
-                <SelectValue placeholder="Select window" />
-              </SelectTrigger>
-              <SelectContent>
-                {[0, 1, 2, 3, 4, 5, 6].map((hours) => (
-                  <SelectItem key={hours} value={hours.toString()}>
-                    ±{hours} {hours === 1 ? "hour" : "hours"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Stack>
+          {watchMode ? (
+            <>
+              <Stack itemsSpacing={8} className="flex-1">
+                <Label>Earliest time ({timezoneAbbr})</Label>
+                <Select
+                  value={reservationForm.rangeStart}
+                  onValueChange={(value) =>
+                    setReservationForm({ ...reservationForm, rangeStart: value })
+                  }
+                  disabled={!auth.currentUser}
+                >
+                  <SelectTrigger variant="pill" id="range-start">
+                    <SelectValue placeholder="Earliest time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_SLOTS.map((slot) => (
+                      <SelectItem key={slot.value} value={slot.value}>
+                        {slot.display}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Stack>
+              <Stack itemsSpacing={8} className="flex-1">
+                <Label>Latest time ({timezoneAbbr})</Label>
+                <Select
+                  value={reservationForm.rangeEnd}
+                  onValueChange={(value) =>
+                    setReservationForm({ ...reservationForm, rangeEnd: value })
+                  }
+                  disabled={!auth.currentUser}
+                >
+                  <SelectTrigger
+                    variant="pill"
+                    id="range-end"
+                    aria-invalid={!watchRangeValid}
+                  >
+                    <SelectValue placeholder="Latest time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIME_SLOTS.map((slot) => (
+                      <SelectItem key={slot.value} value={slot.value}>
+                        {slot.display}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Stack>
+            </>
+          ) : (
+            <Stack itemsSpacing={8} className="flex-1">
+              <Label>Time Window (±hours)</Label>
+              <Select
+                value={reservationForm.windowHours}
+                onValueChange={(value) =>
+                  setReservationForm({
+                    ...reservationForm,
+                    windowHours: value,
+                  })
+                }
+                disabled={!auth.currentUser}
+              >
+                <SelectTrigger variant="pill" id="window">
+                  <SelectValue placeholder="Select window" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[0, 1, 2, 3, 4, 5, 6].map((hours) => (
+                    <SelectItem key={hours} value={hours.toString()}>
+                      ±{hours} {hours === 1 ? "hour" : "hours"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Stack>
+          )}
           <Stack itemsSpacing={8} className="flex-1">
             <Label>Seating Type Preference (optional)</Label>
             <Select
@@ -157,183 +254,190 @@ export function ReservationForm({
             </Select>
           </Stack>
         </Group>
+        {watchMode && !watchRangeValid && (
+          <p className="text-sm text-destructive">
+            The latest time must not be before the earliest time.
+          </p>
+        )}
       </Stack>
 
-      <Separator />
+      {!watchMode && <Separator />}
 
       {/* Drop Time */}
-      <Stack itemsSpacing={16}>
-        <Stack itemsSpacing={4}>
-          <h3 className="text-lg">Reservation Drop Time</h3>
-          <p className="text-sm text-muted-foreground">
-            When do reservations open? The bot will wait until this time. You can schedule multiple snipes at different times.
-          </p>
-        </Stack>
-        <Group itemsSpacing={16} className="items-center">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="discovery-mode"
-              checked={reservationForm.discoveryMode}
-              onCheckedChange={(checked) =>
-                setReservationForm({
-                  ...reservationForm,
-                  discoveryMode: checked === true,
-                })
-              }
-              disabled={!auth.currentUser}
-            />
-            <Label
-              htmlFor="discovery-mode"
-              className="text-sm font-normal cursor-pointer"
-            >
-              Discovery mode: poll around drop time to catch randomized releases
-            </Label>
-          </div>
-          {reservationForm.discoveryMode && (
-            <Group itemsSpacing={8} noWrap className="items-center">
-              <Label className="text-sm text-muted-foreground shrink-0">
-                Window:
+      {!watchMode && (
+        <Stack itemsSpacing={16}>
+          <Stack itemsSpacing={4}>
+            <h3 className="text-lg">Reservation Drop Time</h3>
+            <p className="text-sm text-muted-foreground">
+              When do reservations open? The bot will wait until this time. You can schedule multiple snipes at different times.
+            </p>
+          </Stack>
+          <Group itemsSpacing={16} className="items-center">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="discovery-mode"
+                checked={reservationForm.discoveryMode}
+                onCheckedChange={(checked) =>
+                  setReservationForm({
+                    ...reservationForm,
+                    discoveryMode: checked === true,
+                  })
+                }
+                disabled={!auth.currentUser}
+              />
+              <Label
+                htmlFor="discovery-mode"
+                className="text-sm font-normal cursor-pointer"
+              >
+                Discovery mode: poll around drop time to catch randomized releases
               </Label>
-              <Input
-                type="number"
-                min={1}
-                max={60}
-                value={reservationForm.windowBeforeMinutes}
-                onChange={(e) =>
-                  setReservationForm({
-                    ...reservationForm,
-                    windowBeforeMinutes: e.target.value,
-                  })
-                }
-                className="w-16 h-8 text-sm"
-                disabled={!auth.currentUser}
-              />
-              <span className="text-sm text-muted-foreground">min before</span>
-              <Input
-                type="number"
-                min={1}
-                max={60}
-                value={reservationForm.windowAfterMinutes}
-                onChange={(e) =>
-                  setReservationForm({
-                    ...reservationForm,
-                    windowAfterMinutes: e.target.value,
-                  })
-                }
-                className="w-16 h-8 text-sm"
-                disabled={!auth.currentUser}
-              />
-              <span className="text-sm text-muted-foreground">min after</span>
-            </Group>
-          )}
-        </Group>
-        <Stack itemsSpacing={12}>
-          {reservationForm.dropSchedules.map((schedule) => (
-            <Group
-              key={schedule.id}
-              itemsSpacing={16}
-              noWrap
-              className="flex-col md:flex-row items-end"
-            >
-              <Stack itemsSpacing={8} className="flex-1">
-                <Label>Drop Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <DatePickerTrigger
-                      disabled={!auth.currentUser}
-                      displayText={
-                        schedule.dropDate
-                          ? format(schedule.dropDate, "EEE, MMM d")
-                          : undefined
-                      }
-                      placeholder="Pick drop date"
-                    />
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={schedule.dropDate}
-                      onSelect={(date) => {
-                        setReservationForm((prev: ReservationFormState) => ({
-                          ...prev,
-                          dropSchedules: prev.dropSchedules.map((s: DropSchedule) =>
-                            s.id === schedule.id ? { ...s, dropDate: date } : s
-                          ),
-                        }));
-                      }}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </Stack>
-              <Stack itemsSpacing={8} className="flex-1">
-                <Label className="flex flex-row gap-2 items-center">
-                  <p>Drop Time ({timezoneAbbr})</p>
+            </div>
+            {reservationForm.discoveryMode && (
+              <Group itemsSpacing={8} noWrap className="items-center">
+                <Label className="text-sm text-muted-foreground shrink-0">
+                  Window:
                 </Label>
-                <Select
-                  value={schedule.dropTimeSlot}
-                  onValueChange={(value) => {
-                    setReservationForm((prev: ReservationFormState) => ({
-                      ...prev,
-                      dropSchedules: prev.dropSchedules.map((s: DropSchedule) =>
-                        s.id === schedule.id ? { ...s, dropTimeSlot: value } : s
-                      ),
-                    }));
-                  }}
+                <Input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={reservationForm.windowBeforeMinutes}
+                  onChange={(e) =>
+                    setReservationForm({
+                      ...reservationForm,
+                      windowBeforeMinutes: e.target.value,
+                    })
+                  }
+                  className="w-16 h-8 text-sm"
                   disabled={!auth.currentUser}
-                >
-                  <SelectTrigger variant="pill" id={`drop-time-slot-${schedule.id}`}>
-                    <SelectValue placeholder="Select drop time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIME_SLOTS.map((slot) => (
-                      <SelectItem key={slot.value} value={slot.value}>
-                        {slot.display}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Stack>
-              {reservationForm.dropSchedules.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setReservationForm((prev: ReservationFormState) => ({
-                      ...prev,
-                      dropSchedules: prev.dropSchedules.filter((s: DropSchedule) => s.id !== schedule.id),
-                    }));
-                  }}
+                />
+                <span className="text-sm text-muted-foreground">min before</span>
+                <Input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={reservationForm.windowAfterMinutes}
+                  onChange={(e) =>
+                    setReservationForm({
+                      ...reservationForm,
+                      windowAfterMinutes: e.target.value,
+                    })
+                  }
+                  className="w-16 h-8 text-sm"
                   disabled={!auth.currentUser}
-                  className="shrink-0 translate-y-[10px]"
-                >
-                  <X className="size-4" />
-                </Button>
-              )}
-            </Group>
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setReservationForm((prev: ReservationFormState) => ({
-                ...prev,
-                dropSchedules: [
-                  ...prev.dropSchedules,
-                  {
-                    id: crypto.randomUUID(),
-                    dropDate: undefined,
-                    dropTimeSlot: "9:0",
-                  },
-                ],
-              }));
-            }}
-            disabled={!auth.currentUser}
-            className="w-full gap-2"
-          >
-            <Plus className="size-4" />
-          </Button>
+                />
+                <span className="text-sm text-muted-foreground">min after</span>
+              </Group>
+            )}
+          </Group>
+          <Stack itemsSpacing={12}>
+            {reservationForm.dropSchedules.map((schedule) => (
+              <Group
+                key={schedule.id}
+                itemsSpacing={16}
+                noWrap
+                className="flex-col md:flex-row items-end"
+              >
+                <Stack itemsSpacing={8} className="flex-1">
+                  <Label>Drop Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <DatePickerTrigger
+                        disabled={!auth.currentUser}
+                        displayText={
+                          schedule.dropDate
+                            ? format(schedule.dropDate, "EEE, MMM d")
+                            : undefined
+                        }
+                        placeholder="Pick drop date"
+                      />
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={schedule.dropDate}
+                        onSelect={(date) => {
+                          setReservationForm((prev: ReservationFormState) => ({
+                            ...prev,
+                            dropSchedules: prev.dropSchedules.map((s: DropSchedule) =>
+                              s.id === schedule.id ? { ...s, dropDate: date } : s
+                            ),
+                          }));
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </Stack>
+                <Stack itemsSpacing={8} className="flex-1">
+                  <Label className="flex flex-row gap-2 items-center">
+                    <p>Drop Time ({timezoneAbbr})</p>
+                  </Label>
+                  <Select
+                    value={schedule.dropTimeSlot}
+                    onValueChange={(value) => {
+                      setReservationForm((prev: ReservationFormState) => ({
+                        ...prev,
+                        dropSchedules: prev.dropSchedules.map((s: DropSchedule) =>
+                          s.id === schedule.id ? { ...s, dropTimeSlot: value } : s
+                        ),
+                      }));
+                    }}
+                    disabled={!auth.currentUser}
+                  >
+                    <SelectTrigger variant="pill" id={`drop-time-slot-${schedule.id}`}>
+                      <SelectValue placeholder="Select drop time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIME_SLOTS.map((slot) => (
+                        <SelectItem key={slot.value} value={slot.value}>
+                          {slot.display}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Stack>
+                {reservationForm.dropSchedules.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setReservationForm((prev: ReservationFormState) => ({
+                        ...prev,
+                        dropSchedules: prev.dropSchedules.filter((s: DropSchedule) => s.id !== schedule.id),
+                      }));
+                    }}
+                    disabled={!auth.currentUser}
+                    className="shrink-0 translate-y-[10px]"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                )}
+              </Group>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setReservationForm((prev: ReservationFormState) => ({
+                  ...prev,
+                  dropSchedules: [
+                    ...prev.dropSchedules,
+                    {
+                      id: crypto.randomUUID(),
+                      dropDate: undefined,
+                      dropTimeSlot: "9:0",
+                    },
+                  ],
+                }));
+              }}
+              disabled={!auth.currentUser}
+              className="w-full gap-2"
+            >
+              <Plus className="size-4" />
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
+      )}
 
       {paymentRequirementUnknown && (
         <Alert
@@ -372,7 +476,7 @@ export function ReservationForm({
         </Alert>
       )}
 
-      {useEmulators && (
+      {useEmulators && !watchMode && (
         <Group itemsSpacing={8}>
           <Button
             size="sm"
@@ -411,10 +515,7 @@ export function ReservationForm({
           loadingSubmit ||
           reservationScheduled ||
           !reservationForm.date ||
-          reservationForm.dropSchedules.length === 0 ||
-          reservationForm.dropSchedules.some(
-            (schedule) => !schedule.dropDate
-          ) ||
+          submitBlockedByMode ||
           requiresPaymentButUserHasNone
         }
         className="w-full"
@@ -423,11 +524,7 @@ export function ReservationForm({
           <LoaderCircle className="mr-2 size-4 animate-spin" />
         )}
         {reservationScheduled && <CircleCheck className="mr-2 size-4" />}
-        {reservationScheduled
-          ? "Reservation Scheduled"
-          : loadingSubmit
-            ? "Scheduling..."
-            : "Schedule Reservation"}
+        {submitLabel}
       </Button>
     </Stack>
   );

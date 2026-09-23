@@ -97,8 +97,12 @@ class ResyHttpClient:
     Does not perform retries or Pydantic parsing; callers do that.
     """
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, max_retry_delay: float | None = None):
         self.session = session
+        # Longest wait a retry may take. None means no cap (snipes wait out Retry-After);
+        # the watch poller sets one so a long Retry-After fails fast and backs the target off
+        # instead of sleeping past the tick's timeout.
+        self.max_retry_delay = max_retry_delay
 
     @classmethod
     def build(cls, config: ResyConfig) -> "ResyHttpClient":
@@ -248,6 +252,8 @@ class ResyHttpClient:
                 delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
                 if isinstance(exc, RateLimitError) and exc.retry_after is not None:
                     delay = max(delay, exc.retry_after)
+                if self.max_retry_delay is not None and delay > self.max_retry_delay:
+                    raise
                 logger.warning(
                     "Retrying Resy %s %s after transient failure (attempt %s/%s, waiting %.2fs): %s",
                     method,
