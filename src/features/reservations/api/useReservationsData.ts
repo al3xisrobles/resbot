@@ -60,6 +60,9 @@ function transformJobToReservation(
         seatingType: job.seatingType,
         dropHour: job.dropHour,
         dropMinute: job.dropMinute,
+        watchMode: job.watchMode ?? false,
+        rangeStart: job.rangeStart,
+        rangeEnd: job.rangeEnd,
     };
 }
 
