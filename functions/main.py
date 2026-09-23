@@ -46,6 +46,7 @@ from api.featured import climbing, top_rated  # noqa: F401, E402
 from api.gemini_search import gemini_search  # noqa: F401, E402
 from api.snipe import run_snipe, run_discovery_snipe, summarize_snipe_logs  # noqa: F401, E402
 from api.schedule import create_snipe, update_snipe, cancel_snipe  # noqa: F401, E402
+from api.watch import run_watch_tick, seed_watch_tick  # noqa: F401, E402
 from api.onboarding import start_resy_onboarding, resy_account  # noqa: F401, E402
 from api.me import me  # noqa: F401, E402
 from api.debug import resy_debug  # noqa: F401, E402

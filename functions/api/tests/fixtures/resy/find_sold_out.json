@@ -1,0 +1,591 @@
+{
+  "bookmark": null,
+  "platinum_night": null,
+  "query": {
+    "day": "2026-09-23",
+    "party_size": 2,
+    "time_filter": null
+  },
+  "results": {
+    "meta": {
+      "limit": null,
+      "offset": 1
+    },
+    "venues": [
+      {
+        "gating_errors": {},
+        "notifies": [],
+        "pickups": {
+          "service_types": {},
+          "slots": []
+        },
+        "slots": [],
+        "templates": {
+          "396410": {
+            "cancellation_fee": null,
+            "content": {
+              "en-us": {
+                "about": {
+                  "attribution": null,
+                  "body": "This oasis of a restaurant is chef Rita Sodi's ode to her native Tuscany. The menu of antipasti, masterful house-made pastas, and secondi does not stray from traditional cuisine. The tiny, Bleecker street locale is transportive \u2014 between the food, the white tablecloths, the close-knit energy, and the bar's many variations on the classic Negroni, you could just as easily be in Italy. As Pete Wells put it: \"I Sodi seems not to have fully assimilated into the United States. It exists in its own extraterritorial jurisdiction, like the headquarters of the United Nations.\" ",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "need_to_know": {
+                  "attribution": null,
+                  "body": "Confirmations will be honored only for the number of guests in the original reservation.  ",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "tagline": {
+                  "attribution": null,
+                  "body": "To eat there is to abide by the laws of eating that Rita Sodi, the chef and owner, brought with her from the farm north of Florence where she was raised. \u2014The New York Times",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "why_we_like_it": {
+                  "attribution": null,
+                  "body": "I Sodi is a gleaming example of a perfect neighborhood restaurant and the Tuscan fare, from acclaimed chef Rita Sodi (Via Carota, Commerce Inn) is no joke. ",
+                  "enhanced_body": null,
+                  "title": null
+                }
+              }
+            },
+            "deposit_fee": null,
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "id": 396410,
+            "image_dimensions": [
+              [
+                2127,
+                1537
+              ],
+              [
+                640,
+                360
+              ],
+              [
+                320,
+                232
+              ]
+            ],
+            "images": [
+              "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/640x360",
+              "https://image.resy.com/3/003/2/443/9a604ca1c2e091764c3cc745da0f2ffbd45e8590/jpg/640x360",
+              "https://image.resy.com/3/003/2/443/69496bc71f26ba5608c1324308b0c6155e0b03ca/jpg/640x360"
+            ],
+            "is_default": 1,
+            "is_event": 0,
+            "is_paid": false,
+            "is_pickup": 0,
+            "item_ids": [],
+            "large_party_cancellation_fee": null,
+            "large_party_secs_cancel_cut_off": null,
+            "large_party_secs_change_cut_off": null,
+            "large_party_size_cancel": null,
+            "large_party_time_cancel_cut_off": null,
+            "large_party_time_change_cut_off": null,
+            "menu": {
+              "en-us": [
+                "Tartara (steak tartar, hand chopped filet mignon with grilled bread and arugula)",
+                "Cacio E Pepe (spaghetti with black pepper and pecorino)",
+                "Branzino Al Cartoccio per due (Whole baked branzino for 2)",
+                "Galletto Schiacciato (cornish hen grilled under a brick)"
+              ]
+            },
+            "menu_ids": [],
+            "name": "UPDATED_DEFAULT_TEMPLATE",
+            "payment_structure": null,
+            "pickup_highlight": 0,
+            "raw_image_names": [
+              "d8f94410675af066465184d8d9efcb9237e2f32a",
+              "9a604ca1c2e091764c3cc745da0f2ffbd45e8590",
+              "69496bc71f26ba5608c1324308b0c6155e0b03ca"
+            ],
+            "reservation_config": {
+              "badge": null,
+              "secs_off_market": null,
+              "time_off_market": null,
+              "type": ""
+            },
+            "restriction_id": null,
+            "secs_cancel_cut_off": null,
+            "secs_change_cut_off": null,
+            "service_charge": null,
+            "service_charge_options": [],
+            "time_cancel_cut_off": null,
+            "time_change_cut_off": null,
+            "turn_times": [
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 1,
+                  "min": 1
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 2,
+                  "min": 2
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 3,
+                  "min": 3
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": 4,
+                  "min": 4
+                }
+              },
+              {
+                "secs_amount": 5400,
+                "size": {
+                  "max": null,
+                  "min": 5
+                }
+              }
+            ],
+            "venue_id": 443,
+            "venue_share": null
+          },
+          "4226992": {
+            "cancellation_fee": 60.0,
+            "content": {
+              "en-us": {
+                "about": {
+                  "attribution": null,
+                  "body": "This oasis of a restaurant is chef Rita Sodi's ode to her native Tuscany. The menu of antipasti, masterful house-made pastas, and secondi does not stray from traditional cuisine. The tiny, Bleecker street locale is transportive \u2014 between the food, the white tablecloths, the close-knit energy, and the bar's many variations on the classic Negroni, you could just as easily be in Italy. As Pete Wells put it: \"I Sodi seems not to have fully assimilated into the United States. It exists in its own extraterritorial jurisdiction, like the headquarters of the United Nations.\" ",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "need_to_know": {
+                  "attribution": null,
+                  "body": "Confirmations will be honored only for the number of guests in the original reservation.  ",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "tagline": {
+                  "attribution": null,
+                  "body": "To eat there is to abide by the laws of eating that Rita Sodi, the chef and owner, brought with her from the farm north of Florence where she was raised. \u2014The New York Times",
+                  "enhanced_body": null,
+                  "title": null
+                },
+                "why_we_like_it": {
+                  "attribution": null,
+                  "body": "I Sodi is a gleaming example of a perfect neighborhood restaurant and the Tuscan fare, from acclaimed chef Rita Sodi (Via Carota, Commerce Inn) is no joke. ",
+                  "enhanced_body": null,
+                  "title": null
+                }
+              }
+            },
+            "deposit_fee": null,
+            "display_config": {
+              "color": {
+                "background": null,
+                "font": null
+              }
+            },
+            "id": 4226992,
+            "image_dimensions": null,
+            "images": null,
+            "is_default": 0,
+            "is_event": 0,
+            "is_paid": true,
+            "is_pickup": 0,
+            "item_ids": [],
+            "large_party_cancellation_fee": null,
+            "large_party_secs_cancel_cut_off": null,
+            "large_party_secs_change_cut_off": null,
+            "large_party_size_cancel": null,
+            "large_party_time_cancel_cut_off": null,
+            "large_party_time_change_cut_off": null,
+            "menu": {
+              "en-us": [
+                "Tartara (steak tartar, hand chopped filet mignon with grilled bread and arugula)",
+                "Cacio E Pepe (spaghetti with black pepper and pecorino)",
+                "Branzino Al Cartoccio per due (Whole baked branzino for 2)",
+                "Galletto Schiacciato (cornish hen grilled under a brick)"
+              ]
+            },
+            "menu_ids": [],
+            "name": "4226992",
+            "payment_structure": null,
+            "pickup_highlight": 0,
+            "raw_image_names": null,
+            "reservation_config": {
+              "badge": null,
+              "secs_off_market": 1800,
+              "time_off_market": null,
+              "type": ""
+            },
+            "restriction_id": null,
+            "secs_cancel_cut_off": 14400,
+            "secs_change_cut_off": 14400,
+            "service_charge": null,
+            "service_charge_options": [],
+            "time_cancel_cut_off": null,
+            "time_change_cut_off": null,
+            "turn_times": [
+              {
+                "secs_amount": 7200,
+                "size": {
+                  "max": null,
+                  "min": 1
+                }
+              }
+            ],
+            "venue_id": 443,
+            "venue_share": null
+          }
+        },
+        "venue": {
+          "allow_bypass_payment_method": 1,
+          "average_bill_size": 71.0,
+          "collections": [
+            {
+              "collection_slug": "resy-staff-picks-in-new-york",
+              "description": "If there\u2019s one thing you must know about the people who work at Resy, it\u2019s that we genuinely love restaurants. Here are our New York picks.",
+              "file_name": "staff-picks",
+              "id": 4,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/staff-picks.svg",
+              "name": "Resy Staff Picks in New York",
+              "short_name": "Staff Picks",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "the-award-winning-restaurants-of-new-york",
+              "description": "The very deserving restaurants that have gotten awards, acclaims, or the critics\u2019 stamp of approval.",
+              "file_name": "award",
+              "id": 879,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/award.svg",
+              "name": "New York\u2019s Critically Acclaimed Restaurants",
+              "short_name": "Critically Acclaimed",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "the-women-of-food-new-york",
+              "description": "The acclaimed, women-owned and operated restaurants that shape New York\u2019s food scene.",
+              "file_name": "women",
+              "id": 880,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/women.svg",
+              "name": "The Women of Food: New York",
+              "short_name": "Women-Operated",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "new-yorks-essential-cozy-locales",
+              "description": "Your new favorite apr\u00e8s-ski (sans the ski) locales \u2014 fireplace, snug corners, and heart-warming fare included.",
+              "file_name": "winter",
+              "id": 883,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/winter.svg",
+              "name": "New York\u2019s Essential Cozy Locales",
+              "short_name": "Cozy Locales",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "new-yorks-top-pasta-destinations",
+              "description": "From bucatini to tortellini, discover the restaurants extruding some of the best fresh pasta in New York.",
+              "file_name": "bowtie",
+              "id": 1098,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/bowtie.svg",
+              "name": "If You\u2019re Craving Pasta in New York...",
+              "short_name": "Pasta Picks",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "save-room-for-dessert-in-new-york",
+              "description": "From full-blown pastry programs to signature sweets, these are the places where ordering dessert is a non-negotiable.",
+              "file_name": "dessert",
+              "id": 1148,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/dessert.svg",
+              "name": "Save Room for Dessert in New York",
+              "short_name": "Don\u2019t Skip Dessert",
+              "type_id": 1
+            },
+            {
+              "collection_slug": "book-tonight",
+              "description": "Book these venues tonight.",
+              "file_name": "book-tonight",
+              "id": 888,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/book-tonight.svg",
+              "name": "Book Tonight",
+              "short_name": "Book Tonight",
+              "type_id": 2
+            },
+            {
+              "collection_slug": "climbing",
+              "description": "You dine, the restaurant climbs. Climbing on Resy is the only data-driven list powered by your reservations. Consider it a curated guide by locals, for locals.",
+              "file_name": "climbing",
+              "id": 889,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/climbing.svg",
+              "name": "Climbing",
+              "short_name": "Climbing",
+              "type_id": 3
+            },
+            {
+              "collection_slug": "top-rated",
+              "description": "A crowd-sourced stamp of approval. The five-star treatment. Resy's top-rated restaurants according to you, the guests.",
+              "file_name": "toprated",
+              "id": 891,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/toprated.svg",
+              "name": "Top Rated",
+              "short_name": "Top Rated",
+              "type_id": 5
+            },
+            {
+              "collection_slug": "global-dining-access",
+              "description": "Global Dining Access by Resy gives eligible American Express\u00ae Card Members access to sought-after chefs and restaurants across the globe. To learn more, visit resy.com/globaldiningaccess.",
+              "file_name": "rga",
+              "id": 14,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/rga.svg",
+              "name": "Global Dining Access",
+              "short_name": "Global Dining Access",
+              "type_id": 10
+            },
+            {
+              "collection_slug": "amex-platinum-nights",
+              "description": "Special access to reservations on select nights for eligible Amex Platinum Card\u00ae Members",
+              "file_name": "platinum_nights",
+              "id": 1211,
+              "image": "https://s3.amazonaws.com/resy.com/images/lists/platinum_nights.svg",
+              "name": "Platinum Nights by Resy",
+              "short_name": "PlatinumNightsNYC",
+              "type_id": 13
+            }
+          ],
+          "content": [
+            {
+              "attribution": null,
+              "body": "I Sodi is a gleaming example of a perfect neighborhood restaurant and the Tuscan fare, from acclaimed chef Rita Sodi (Via Carota, Commerce Inn) is no joke. ",
+              "display": {
+                "type": "text"
+              },
+              "icon": {
+                "url": "https://s3.amazonaws.com/resy.com/images/icons/heart.svg"
+              },
+              "locale": {
+                "language": "en-us"
+              },
+              "name": "why_we_like_it",
+              "title": null
+            }
+          ],
+          "currency": {
+            "code": "USD",
+            "symbol": "$"
+          },
+          "currency_symbol": "$",
+          "default_template": "396410",
+          "events": [],
+          "favorite": null,
+          "feature_recaptcha": true,
+          "gda_concierge_booking": false,
+          "hide_allergy_question": false,
+          "hide_occasion_question": false,
+          "hide_special_request_question": false,
+          "hospitality_included": 0,
+          "id": {
+            "resy": 443
+          },
+          "inventory": {
+            "type": {
+              "id": 2
+            }
+          },
+          "is_gdc": 1,
+          "is_global_dining_access": true,
+          "is_global_dining_access_only": false,
+          "is_gns": 0,
+          "is_rga": true,
+          "is_rga_only": false,
+          "location": {
+            "code": "ny",
+            "geo": {
+              "lat": 40.733434,
+              "lon": -74.004996
+            },
+            "name": "New York",
+            "neighborhood": "West Village",
+            "time_zone": "EST5EDT",
+            "url_slug": "new-york-ny"
+          },
+          "name": "I Sodi",
+          "notify_options": [
+            {
+              "max_request_datetime": "2026-09-23 22:30:00",
+              "min_request_datetime": "2026-09-23 16:30:00",
+              "service_type_id": 2,
+              "step_minutes": 30
+            }
+          ],
+          "price_range": 3,
+          "rating": 4.80295,
+          "reopen": {
+            "date": "2020-08-05"
+          },
+          "requires_reservation_transfers": 0,
+          "responsive_images": {
+            "aspect_ratios": {
+              "16:9": {
+                "1600": "1600x900",
+                "400": "400x225",
+                "800": "800x450"
+              },
+              "1:1": {
+                "1600": "1600x1600",
+                "200": "200x200",
+                "400": "400x400",
+                "800": "800x800"
+              },
+              "4:3": {
+                "1600": "1600x1200",
+                "400": "400x300",
+                "800": "800x600"
+              }
+            },
+            "file_names": [
+              "d8f94410675af066465184d8d9efcb9237e2f32a",
+              "9a604ca1c2e091764c3cc745da0f2ffbd45e8590",
+              "69496bc71f26ba5608c1324308b0c6155e0b03ca"
+            ],
+            "originals": {
+              "69496bc71f26ba5608c1324308b0c6155e0b03ca": {
+                "url": "https://image.resy.com/3/003/2/443/69496bc71f26ba5608c1324308b0c6155e0b03ca/jpg"
+              },
+              "9a604ca1c2e091764c3cc745da0f2ffbd45e8590": {
+                "url": "https://image.resy.com/3/003/2/443/9a604ca1c2e091764c3cc745da0f2ffbd45e8590/jpg"
+              },
+              "d8f94410675af066465184d8d9efcb9237e2f32a": {
+                "url": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg"
+              }
+            },
+            "urls": {
+              "69496bc71f26ba5608c1324308b0c6155e0b03ca": {
+                "16:9": {},
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/443/69496bc71f26ba5608c1324308b0c6155e0b03ca/jpg/1:1/200"
+                },
+                "4:3": {}
+              },
+              "9a604ca1c2e091764c3cc745da0f2ffbd45e8590": {
+                "16:9": {
+                  "400": "https://image.resy.com/3/003/2/443/9a604ca1c2e091764c3cc745da0f2ffbd45e8590/jpg/16:9/400"
+                },
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/443/9a604ca1c2e091764c3cc745da0f2ffbd45e8590/jpg/1:1/200"
+                },
+                "4:3": {
+                  "400": "https://image.resy.com/3/003/2/443/9a604ca1c2e091764c3cc745da0f2ffbd45e8590/jpg/4:3/400"
+                }
+              },
+              "d8f94410675af066465184d8d9efcb9237e2f32a": {
+                "16:9": {
+                  "1600": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/16:9/1600",
+                  "400": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/16:9/400",
+                  "800": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/16:9/800"
+                },
+                "1:1": {
+                  "200": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/1:1/200",
+                  "400": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/1:1/400",
+                  "800": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/1:1/800"
+                },
+                "4:3": {
+                  "1600": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/4:3/1600",
+                  "400": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/4:3/400",
+                  "800": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/4:3/800"
+                }
+              }
+            },
+            "urls_by_resolution": {
+              "69496bc71f26ba5608c1324308b0c6155e0b03ca": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/443/69496bc71f26ba5608c1324308b0c6155e0b03ca/jpg/1:1/200"
+                }
+              },
+              "9a604ca1c2e091764c3cc745da0f2ffbd45e8590": {
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/443/9a604ca1c2e091764c3cc745da0f2ffbd45e8590/jpg/1:1/200"
+                },
+                "400": {
+                  "16:9": "https://image.resy.com/3/003/2/443/9a604ca1c2e091764c3cc745da0f2ffbd45e8590/jpg/16:9/400",
+                  "4:3": "https://image.resy.com/3/003/2/443/9a604ca1c2e091764c3cc745da0f2ffbd45e8590/jpg/4:3/400"
+                }
+              },
+              "d8f94410675af066465184d8d9efcb9237e2f32a": {
+                "1600": {
+                  "16:9": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/16:9/1600",
+                  "4:3": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/4:3/1600"
+                },
+                "200": {
+                  "1:1": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/1:1/200"
+                },
+                "400": {
+                  "16:9": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/16:9/400",
+                  "1:1": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/1:1/400",
+                  "4:3": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/4:3/400"
+                },
+                "800": {
+                  "16:9": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/16:9/800",
+                  "1:1": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/1:1/800",
+                  "4:3": "https://image.resy.com/3/003/2/443/d8f94410675af066465184d8d9efcb9237e2f32a/jpg/4:3/800"
+                }
+              }
+            }
+          },
+          "resy_select": 0,
+          "service_types": {
+            "2": {}
+          },
+          "source": {
+            "logo": null,
+            "name": null,
+            "privacy_policy": null,
+            "terms_of_service": null
+          },
+          "supports_pickups": 0,
+          "tax_included": false,
+          "ticket": {
+            "average": 71.0,
+            "average_str": "$71"
+          },
+          "top": true,
+          "total_ratings": 25400,
+          "transaction_processor": "stripe",
+          "travel_time": {
+            "distance": 5391.450780302598
+          },
+          "type": "Italian",
+          "url_slug": "i-sodi",
+          "venue_group": {
+            "id": 304,
+            "name": "I Sodi",
+            "venues": [
+              2567,
+              4241,
+              53342,
+              65661,
+              93530,
+              93531
+            ]
+          },
+          "waitlist": {
+            "available": 0,
+            "current": null,
+            "label": "Join Wait List"
+          }
+        }
+      }
+    ]
+  }
+}

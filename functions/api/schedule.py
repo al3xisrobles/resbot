@@ -27,6 +27,8 @@ from .response_schemas import (
 )
 from google.cloud.scheduler_v1 import CloudSchedulerClient, HttpMethod
 
+from .watch_limits import limit_error, load_active_watches
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -235,6 +237,132 @@ def _create_discovery_scheduler_job(
     return schedule_dt
 
 
+def _parse_hhmm(value) -> tuple[int, int]:
+    """Parse 'HH:MM' into (hour, minute); raises ValueError on anything else."""
+    hour, minute = (int(p) for p in str(value).split(":"))
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        raise ValueError(f"Invalid time {value!r}")
+    return hour, minute
+
+
+def _normalize_hhmm(value) -> str:
+    hour, minute = _parse_hhmm(value)
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _validate_watch_range(date_str: str, range_start: str, range_end: str, tz_info: ZoneInfo) -> str | None:
+    """Return an error message if the watch's date and time range are unusable, else None."""
+    try:
+        start_hour, start_minute = _parse_hhmm(range_start)
+        end_hour, end_minute = _parse_hhmm(range_end)
+        day = dt.date.fromisoformat(date_str)
+    except ValueError as e:
+        return f"Invalid date or time range: {e}"
+    if (end_hour, end_minute) < (start_hour, start_minute):
+        return "The latest time must not be before the earliest time."
+    range_end_dt = dt.datetime(day.year, day.month, day.day, end_hour, end_minute, tzinfo=tz_info)
+    if range_end_dt <= dt.datetime.now(tz_info):
+        return "The time range has already passed."
+    return None
+
+
+def _create_watch(data: dict):
+    """
+    Create a cancellation watch: a pending reservationJobs doc with watchMode, polled by
+    the shared watch tick (api/watch.py). No Cloud Scheduler job is created.
+    """
+    required_fields = ["userId", "venueId", "partySize", "date", "rangeStart", "rangeEnd"]
+    missing = [f for f in required_fields if not data.get(f)]
+    if missing:
+        return error_response(f"Missing fields: {', '.join(missing)}", 400)
+
+    timezone = data.get("timezone", "America/New_York")
+    try:
+        tz_info = ZoneInfo(timezone)
+    except Exception:
+        timezone = "America/New_York"
+        tz_info = ZoneInfo(timezone)
+
+    range_error = _validate_watch_range(data["date"], data["rangeStart"], data["rangeEnd"], tz_info)
+    if range_error:
+        return error_response(range_error, 400)
+
+    cap_error = limit_error(load_active_watches(get_db()), data["userId"], data["venueId"], data["partySize"])
+    if cap_error:
+        return error_response(cap_error, 400)
+
+    start_hour, start_minute = _parse_hhmm(data["rangeStart"])
+    day = dt.date.fromisoformat(data["date"])
+    range_start_dt = dt.datetime(day.year, day.month, day.day, start_hour, start_minute, tzinfo=tz_info)
+
+    job_ref = get_db().collection("reservationJobs").document()
+    job_data = {
+        "jobId": job_ref.id,
+        "userId": data["userId"],
+        "venueId": str(data["venueId"]),
+        "partySize": int(data["partySize"]),
+        "date": data["date"],
+        # hour/minute mirror the range start so existing list code has a time to show
+        "hour": start_hour,
+        "minute": start_minute,
+        "rangeStart": _normalize_hhmm(data["rangeStart"]),
+        "rangeEnd": _normalize_hhmm(data["rangeEnd"]),
+        "seatingType": data.get("seatingType") if data.get("seatingType") not in (None, "", "any") else None,
+        "watchMode": True,
+        "discoveryMode": False,
+        "status": "pending",
+        "targetTimeIso": range_start_dt.isoformat(),
+        "timezone": timezone,
+        "bookingFailures": 0,
+        "createdAt": firestore.SERVER_TIMESTAMP,
+        "lastUpdate": firestore.SERVER_TIMESTAMP,
+    }
+    job_ref.set(job_data)
+    logger.info("[create_snipe] Created cancellation watch %s", job_ref.id)
+    return success_response(JobCreatedData(jobId=job_ref.id, targetTimeIso=job_data["targetTimeIso"])), 200
+
+
+def _update_watch(job_ref, existing_job: dict, data: dict):
+    """Update a pending watch. Watches have no scheduler job, so nothing is rescheduled."""
+    merged = {**existing_job}
+    updates = {}
+    if "date" in data:
+        updates["date"] = data["date"]
+    if "partySize" in data:
+        updates["partySize"] = int(data["partySize"])
+    if "seatingType" in data:
+        updates["seatingType"] = data["seatingType"] if data["seatingType"] not in (None, "", "any") else None
+    for field in ("rangeStart", "rangeEnd"):
+        if field in data:
+            try:
+                updates[field] = _normalize_hhmm(data[field])
+            except ValueError as e:
+                return error_response(f"Invalid time range: {e}", 400)
+    merged.update(updates)
+
+    tz_info = ZoneInfo(merged.get("timezone") or "America/New_York")
+    range_error = _validate_watch_range(merged["date"], merged["rangeStart"], merged["rangeEnd"], tz_info)
+    if range_error:
+        return error_response(range_error, 400)
+
+    if "partySize" in updates:
+        others = [w for w in load_active_watches(get_db()) if w.get("jobId") != existing_job.get("jobId")]
+        cap_error = limit_error(others, merged["userId"], merged["venueId"], merged["partySize"])
+        if cap_error:
+            return error_response(cap_error, 400)
+
+    start_hour, start_minute = _parse_hhmm(merged["rangeStart"])
+    day = dt.date.fromisoformat(merged["date"])
+    updates["hour"] = start_hour
+    updates["minute"] = start_minute
+    updates["targetTimeIso"] = dt.datetime(
+        day.year, day.month, day.day, start_hour, start_minute, tzinfo=tz_info
+    ).isoformat()
+    updates["lastUpdate"] = firestore.SERVER_TIMESTAMP
+    job_ref.update(updates)
+    return success_response(JobUpdatedData(jobId=existing_job["jobId"], targetTimeIso=updates["targetTimeIso"])), 200
+
+
 @on_request(cors=CorsOptions(cors_origins="*", cors_methods=["POST"]))
 @with_sentry_trace
 def create_snipe(req: Request):
@@ -259,6 +387,9 @@ def create_snipe(req: Request):
         
         # Log the raw request data for debugging
         logger.info(f"[create_snipe] Received request data: {json.dumps(data, default=str)}")
+
+        if data.get("watchMode"):
+            return _create_watch(data)
 
         required_fields = [
             "venueId",
@@ -431,6 +562,9 @@ def update_snipe(req: Request):
         # Only allow updates to pending jobs
         if existing_job.get("status") != "pending":
             return error_response("Can only update pending jobs", 400)
+
+        if existing_job.get("watchMode"):
+            return _update_watch(job_ref, existing_job, data)
         
         # Build update dict with only provided fields
         updates = {}
@@ -600,8 +734,9 @@ def cancel_snipe(req: Request):
         if existing_job.get("status") != "pending":
             return error_response("Can only cancel pending jobs", 400)
 
-        # Delete Cloud Scheduler job (discovery vs precise)
-        _delete_scheduler_job(job_id, is_discovery=existing_job.get("discoveryMode", False))
+        # Delete Cloud Scheduler job (discovery vs precise). Watches have none.
+        if not existing_job.get("watchMode"):
+            _delete_scheduler_job(job_id, is_discovery=existing_job.get("discoveryMode", False))
         
         # Update Firestore document status
         job_ref.update({
