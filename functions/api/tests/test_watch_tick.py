@@ -322,3 +322,27 @@ class TestEnqueue:
 
         monkeypatch.setattr(watch.fb_functions, "task_queue", lambda _name: Queue())
         assert watch.enqueue_tick(NOW) is False
+
+    def test_task_body_is_what_the_tasks_handler_accepts(self, monkeypatch):
+        """
+        The tasks handler rejects any body that is not exactly {"data": ...} with a 400,
+        and the Python Admin SDK does not add that wrapper, so every tick would fail.
+        """
+        from firebase_functions.private import util as fn_util  # pylint: disable=import-outside-toplevel
+
+        class Credential:
+            service_account_email = "sa@example.com"
+
+        app = type("App", (), {"credential": type("Cred", (), {"get_credential": lambda _self: Credential()})()})()
+        monkeypatch.setattr(watch.firebase_admin, "get_app", lambda: app)
+        sent = []
+
+        class Queue:
+            def enqueue(self, data, _opts):
+                sent.append(data)
+
+        monkeypatch.setattr(watch.fb_functions, "task_queue", lambda _name: Queue())
+        watch.enqueue_tick(NOW)
+        request = type("Req", (), {"json": sent[0]})()
+        assert fn_util._on_call_valid_body(request)  # pylint: disable=protected-access
+        assert watch._parse_scheduled_for(sent[0]["data"]["scheduledFor"], NOW) == NOW  # pylint: disable=protected-access

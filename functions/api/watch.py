@@ -116,8 +116,10 @@ def enqueue_tick(scheduled_for: dt.datetime) -> bool:
         task_id=tick_task_id(scheduled_for),
     )
     try:
+        # The tasks handler only accepts a body of exactly {"data": ...}, the callable
+        # protocol, but the Python Admin SDK sends the payload as given, so wrap it here.
         fb_functions.task_queue(TICK_FUNCTION_NAME).enqueue(
-            {"scheduledFor": scheduled_for.isoformat()}, options
+            {"data": {"scheduledFor": scheduled_for.isoformat()}}, options
         )
         return True
     except fb_exceptions.AlreadyExistsError:
