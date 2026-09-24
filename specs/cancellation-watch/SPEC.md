@@ -104,7 +104,7 @@ Cloud Scheduler cron has minute granularity, so any job it runs fires near secon
 
 To hit a chosen second we use Cloud Tasks, which schedules to the second:
 
-- `run_watch_tick` is a `tasks_fn.on_task_dispatched` function. Its first action is to enqueue the next tick at its own scheduled time plus 60 seconds, with task ID `watch-tick-{YYYYMMDDHHMM}` for the minute of that next time. Computing from the scheduled time rather than the clock matters: a tick scheduled for 4:00:50 that cold-starts and begins at 4:01:02 must queue 4:01:50, not skip to 4:02:50. The first tick after a seed runs at second `WATCH_TICK_SECOND` (default 50). Only then does it poll. Enqueueing first means a crash mid-poll does not break the chain.
+- `watchtick` is a `tasks_fn.on_task_dispatched` function. It has no underscores because Firebase names its Cloud Tasks queue after it, and queue IDs allow only letters, digits and hyphens. Its first action is to enqueue the next tick at its own scheduled time plus 60 seconds, with task ID `watch-tick-{YYYYMMDDHHMM}` for the minute of that next time. Computing from the scheduled time rather than the clock matters: a tick scheduled for 4:00:50 that cold-starts and begins at 4:01:02 must queue 4:01:50, not skip to 4:02:50. The first tick after a seed runs at second `WATCH_TICK_SECOND` (default 50). Only then does it poll. Enqueueing first means a crash mid-poll does not break the chain.
 - Cloud Tasks rejects a duplicate task ID for about an hour, so the deterministic ID makes enqueueing idempotent: two ticks or a tick plus the watchdog can never fork into two chains.
 - `seed_watch_tick` is an `on_schedule("every 5 minutes")` watchdog that enqueues the next tick with the same deterministic ID. If the chain is alive, this is a rejected duplicate and costs one operation. If the chain died (a deploy, a failed enqueue), it restarts within 5 minutes.
 - During quiet hours the tick does not enqueue a successor, and the watchdog does not seed. The first watchdog run after 7am restarts the chain.
@@ -174,7 +174,7 @@ Booking reuses the snipe path in `snipe.py`: `_build_reservation_request_from_di
 
 ```text
 functions/
-├── main.py                                   (modified)  export run_watch_tick, seed_watch_tick
+├── main.py                                   (modified)  export watchtick, seed_watch_tick
 ├── scripts/capture_resy_fixtures.py          (new)       refresh fixtures from live Resy
 └── api/
     ├── constants.py                          (modified)  WATCH_* caps, tick second, quiet hours, flag
