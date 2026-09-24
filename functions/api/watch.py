@@ -53,7 +53,9 @@ from .watch_match import assign_slots, is_release, new_slot_keys, slot_key
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-TICK_FUNCTION_NAME = "run_watch_tick"
+# Firebase names a task function's Cloud Tasks queue after the function, and queue IDs
+# allow only letters, digits and hyphens. An underscore in the name fails the deploy.
+TICK_FUNCTION_NAME = "watchtick"
 # A Retry-After longer than this backs the target off instead of sleeping inside the tick.
 POLL_MAX_RETRY_DELAY_SECONDS = 2.0
 DEFAULT_RESY_API_KEY = "VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5"  # the public web app key, same as utils.py
@@ -135,7 +137,7 @@ def seed_watch_tick(_event: scheduler_fn.ScheduledEvent) -> None:
     memory=MemoryOption.MB_256,
     max_instances=1,
 )
-def run_watch_tick(req: tasks_fn.CallableRequest) -> None:
+def watchtick(req: tasks_fn.CallableRequest) -> None:
     started = dt.datetime.now(dt.timezone.utc)
     process_tick(_parse_scheduled_for((req.data or {}).get("scheduledFor"), started), started)
 
@@ -150,7 +152,7 @@ def process_tick(scheduled_for: dt.datetime, started: dt.datetime, db=None) -> O
             enqueue_tick(successor)
         except Exception as e:  # pylint: disable=broad-exception-caught
             # The watchdog restarts the chain within 5 minutes; keep this tick's poll.
-            logger.error("[run_watch_tick] Failed to enqueue successor: %s", e)
+            logger.error("[watchtick] Failed to enqueue successor: %s", e)
             sentry_sdk.capture_exception(e)
 
     if in_quiet_hours(started):
@@ -159,12 +161,12 @@ def process_tick(scheduled_for: dt.datetime, started: dt.datetime, db=None) -> O
     try:
         stats = run_tick(db or get_db(), started)
     except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error("[run_watch_tick] Tick failed: %s", e)
+        logger.error("[watchtick] Tick failed: %s", e)
         sentry_sdk.capture_exception(e)
         return None
 
     logger.info(
-        "[run_watch_tick] scheduled=%s start_lag_s=%.2f first_poll_second=%s duration_s=%.2f "
+        "[watchtick] scheduled=%s start_lag_s=%.2f first_poll_second=%s duration_s=%.2f "
         "watches=%d targets=%d calendar_calls=%d find_calls=%d openings=%d assignments=%d "
         "bookings=%d rate_limited=%d errors=%d skipped_backoff=%d",
         scheduled_for.isoformat(),
