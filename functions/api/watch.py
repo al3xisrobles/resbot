@@ -23,6 +23,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
+import firebase_admin
+import google.auth.transport.requests
 import sentry_sdk
 from firebase_admin import exceptions as fb_exceptions
 from firebase_admin import firestore
@@ -91,11 +93,24 @@ def tick_task_id(scheduled_for: dt.datetime) -> str:
     return f"watch-tick-{scheduled_for.astimezone(dt.timezone.utc):%Y%m%d%H%M}"
 
 
+def _ensure_credential_email() -> None:
+    """
+    firebase-admin builds the task's OIDC token from the credential's service account
+    email before its own request refreshes the credential. On Cloud Run that email reads
+    "default" until the first refresh, and Cloud Tasks rejects "default" with a 400
+    (invalid argument). Refreshing once per instance resolves the real email.
+    """
+    credential = firebase_admin.get_app().credential.get_credential()
+    if getattr(credential, "service_account_email", None) == "default":
+        credential.refresh(google.auth.transport.requests.Request())
+
+
 def enqueue_tick(scheduled_for: dt.datetime) -> bool:
     """
     Queue a tick. Returns False if a tick for that minute already exists, which is
     the normal case when the watchdog runs while the chain is alive.
     """
+    _ensure_credential_email()
     options = fb_functions.TaskOptions(
         schedule_time=scheduled_for,
         task_id=tick_task_id(scheduled_for),

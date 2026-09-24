@@ -281,3 +281,44 @@ class TestLifecycle:
         assert watch.next_seed_time(now) == dt.datetime(2026, 9, 23, 20, 2, 50, tzinfo=dt.timezone.utc)
         early = now.replace(second=10)
         assert watch.next_seed_time(early) == early.replace(second=50)
+
+
+class TestEnqueue:
+    def test_credential_is_refreshed_before_the_task_is_built(self, monkeypatch):
+        """
+        On Cloud Run the credential's email reads "default" until refreshed, and a task
+        built with that email is rejected by Cloud Tasks. The real email must be in
+        place by the time firebase-admin builds the task.
+        """
+        class Credential:
+            service_account_email = "default"
+
+            def refresh(self, _request):
+                self.service_account_email = "782094781658-compute@developer.gserviceaccount.com"
+
+        credential = Credential()
+        app = type("App", (), {"credential": type("Cred", (), {"get_credential": lambda _self: credential})()})()
+        monkeypatch.setattr(watch.firebase_admin, "get_app", lambda: app)
+        emails_at_enqueue = []
+
+        class Queue:
+            def enqueue(self, _data, _opts):
+                emails_at_enqueue.append(credential.service_account_email)
+
+        monkeypatch.setattr(watch.fb_functions, "task_queue", lambda _name: Queue())
+        assert watch.enqueue_tick(NOW) is True
+        assert emails_at_enqueue == ["782094781658-compute@developer.gserviceaccount.com"]
+
+    def test_duplicate_minute_is_not_an_error(self, monkeypatch):
+        class Credential:
+            service_account_email = "sa@example.com"
+
+        app = type("App", (), {"credential": type("Cred", (), {"get_credential": lambda _self: Credential()})()})()
+        monkeypatch.setattr(watch.firebase_admin, "get_app", lambda: app)
+
+        class Queue:
+            def enqueue(self, _data, _opts):
+                raise watch.fb_exceptions.AlreadyExistsError("exists", None)
+
+        monkeypatch.setattr(watch.fb_functions, "task_queue", lambda _name: Queue())
+        assert watch.enqueue_tick(NOW) is False
