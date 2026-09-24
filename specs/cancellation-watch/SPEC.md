@@ -70,6 +70,12 @@ Resy's `/4/venue/calendar` returns one status per date (`available` or `sold-out
 
 Booking uses the current slots, not only the new ones, so a watch created on a date that already has a matching slot gets it on the next tick.
 
+### Update: find-only polling
+
+In production, Resy's bot protection started answering `/4/venue/calendar` with 500s about 15 minutes into steady once-a-minute polling, signed in or not, and kept doing so for an hour or more. `/4/find` kept answering throughout. The tick now skips the calendar and calls `/4/find` once per watched date; an empty slot list is how a sold-out date looks. The poller makes a single attempt per request, and a 500 backs the target off for 10 minutes, because retrying into a bot block only keeps it tripped.
+
+Snapshots now record table counts, `{date: {slot key: quantity}}`, because one slot can stand for several identical tables. A cancellation at a time that still had a table left shows up only as a higher quantity, so an increase counts as an opening, and a slot with quantity N can be assigned to N watches. Snapshots in the older list format are treated as a baseline, so the first tick after this change logs nothing spurious. The snapshot fields are written with `merge=[fields]` rather than `merge=True`, which would deep-merge the map and keep vanished slots.
+
 ### Snapshot storage
 
 Each target's state lives on one doc, `watchTargets/{venueId}_{partySize}`, as a plain map from date to a sorted list of slot keys, for example `{"2026-09-26": ["19:30|Dining Room", "21:15|Bar"]}`. A slot key is the start time plus the seating type (`config.type`). Diffing is a set difference of two lists, and the doc stays small: a few dates with a few dozen keys each, far under Firestore's 1 MiB doc limit. The same doc holds the last calendar result, `lastPolledAt` and `backoffUntil`.
