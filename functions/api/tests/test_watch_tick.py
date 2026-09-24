@@ -2,9 +2,9 @@
 The watch tick against real captured Resy payloads (fixtures/resy, refreshed by
 scripts/capture_resy_fixtures.py) and replayed failure sequences.
 
-What these protect: one poll per target however many people watch it, no user token
-on any poll, one bad target never stalls the rest, and the tick chain never skips or
-forks a minute.
+What these protect: one poll per watched date however many people watch it, polls only
+on resbot's own account, one bad target never stalls the rest, a bot block is backed
+away from rather than hammered, and the tick chain never skips or forks a minute.
 """
 import copy
 import datetime as dt
@@ -14,15 +14,15 @@ import pathlib
 import pytest
 import requests
 import responses
-from responses import registries
 
 from api import watch
 from api.resy_client.constants import RESY_BASE_URL, ResyEndpoints
 from api.tests.watch_fakes import FakeDb, make_watch_doc
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "resy"
-CALENDAR_URL = RESY_BASE_URL + ResyEndpoints.CALENDAR.value
 FIND_URL = RESY_BASE_URL + ResyEndpoints.FIND.value
+AUTH_URL = RESY_BASE_URL + ResyEndpoints.PASSWORD_AUTH.value
+POLL_TOKEN = "poll-account-token"
 # 5:00:50pm Eastern on 2026-09-23: outside quiet hours, before every watch's range ends
 NOW = dt.datetime(2026, 9, 23, 21, 0, 50, tzinfo=dt.timezone.utc)
 WATCH_DATE = "2026-09-25"
@@ -32,17 +32,13 @@ def load(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text())
 
 
-def calendar_with(statuses: dict) -> dict:
-    """The real captured calendar, with chosen dates' reservation status overridden."""
-    body = copy.deepcopy(load("calendar.json"))
-    for entry in body["scheduled"]:
-        if entry["date"] in statuses:
-            entry["inventory"]["reservation"] = statuses[entry["date"]]
+def find_with_quantity(slot_time: str, quantity: int) -> dict:
+    """The real captured find payload with one slot's table count changed."""
+    body = copy.deepcopy(load("find_available.json"))
+    for slot in body["results"]["venues"][0]["slots"]:
+        if slot["date"]["start"].endswith(slot_time):
+            slot["quantity"] = quantity
     return body
-
-
-AUTH_URL = RESY_BASE_URL + ResyEndpoints.PASSWORD_AUTH.value
-POLL_TOKEN = "poll-account-token"
 
 
 def auth_body(token: str = POLL_TOKEN) -> dict:
@@ -70,27 +66,44 @@ def add_watch(db: FakeDb, job_id: str, **overrides) -> None:
     db.collection("reservationJobs").document(job_id).set(make_watch_doc(job_id, **overrides))
 
 
-def only_venue(venue_id: str):
-    return [responses.matchers.query_param_matcher(
-        {"venue_id": venue_id, "num_seats": "2", "start_date": WATCH_DATE, "end_date": WATCH_DATE})]
+def only_venue(venue_id: int):
+    return [responses.matchers.json_params_matcher(
+        {"lat": 0, "long": 0, "day": WATCH_DATE, "party_size": 2, "venue_id": venue_id})]
 
 
-EMPTY_STATS = {k: 0 for k in ("watches", "targets", "calendar_calls", "find_calls", "openings", "assignments",
-                              "bookings", "rate_limited", "errors", "skipped_backoff", "auth_errors")}
+EMPTY_STATS = {k: 0 for k in ("watches", "targets", "find_calls", "openings", "assignments", "bookings",
+                              "rate_limited", "blocked", "errors", "skipped_backoff", "auth_errors")}
 
 
 def calls_to(url: str):
     return [c for c in responses.calls if c.request.url.startswith(url)]
 
 
+def target_slots(db: FakeDb, target: str = "443_2") -> dict:
+    return db.docs("watchTargets")[target]["slots"]
+
+
 class TestPolling:
     @responses.activate
-    def test_two_watchers_on_one_target_share_one_calendar_call(self, db):
+    def test_two_watchers_on_one_date_share_one_find_call(self, db):
         add_watch(db, "job-2", userId="user-2")
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({}))
+        responses.add(responses.POST, FIND_URL, json=load("find_sold_out.json"))
         stats = watch.run_tick(db, NOW)
         assert stats["targets"] == 1
-        assert len(calls_to(CALENDAR_URL)) == 1
+        assert len(calls_to(FIND_URL)) == 1
+
+    @responses.activate
+    def test_each_watched_date_costs_one_find_call(self, db):
+        add_watch(db, "job-2", date="2026-09-26")
+        responses.add(responses.POST, FIND_URL, json=load("find_sold_out.json"))
+        assert watch.run_tick(db, NOW)["find_calls"] == 2
+
+    @responses.activate
+    def test_polls_never_touch_the_calendar(self, db):
+        """Resy's bot block hit /4/venue/calendar while /4/find kept working."""
+        responses.add(responses.POST, FIND_URL, json=load("find_sold_out.json"))
+        watch.run_tick(db, NOW)
+        assert all(ResyEndpoints.CALENDAR.value not in c.request.url for c in responses.calls)
 
     @responses.activate
     def test_polls_use_only_the_poll_account(self, db, monkeypatch):
@@ -99,7 +112,6 @@ class TestPolling:
         own account: never a watcher's, and never the owner's RESY_TOKEN.
         """
         monkeypatch.setenv("RESY_TOKEN", "owner-token")
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
         responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
         watch.run_tick(db, NOW)
         assert responses.calls
@@ -108,25 +120,21 @@ class TestPolling:
             assert call.request.headers["X-Resy-Universal-Auth"] == POLL_TOKEN
 
     @responses.activate
-    def test_sold_out_dates_cost_no_find_call(self, db):
-        responses.add(responses.GET, CALENDAR_URL, json=load("calendar.json"))  # captured: all sold out
-        stats = watch.run_tick(db, NOW)
-        assert stats["find_calls"] == 0
-        assert not calls_to(FIND_URL)
-        assert db.docs("watchTargets")["443_2"]["slots"] == {WATCH_DATE: []}
+    def test_sold_out_date_is_an_empty_snapshot(self, db):
+        responses.add(responses.POST, FIND_URL, json=load("find_sold_out.json"))
+        watch.run_tick(db, NOW)
+        assert target_slots(db) == {WATCH_DATE: {}}
 
     @responses.activate
-    def test_available_date_is_found_and_snapshotted(self, db):
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
+    def test_snapshot_records_table_counts(self, db):
         responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
         watch.run_tick(db, NOW)
-        assert db.docs("watchTargets")["443_2"]["slots"][WATCH_DATE] == ["21:15|Dining Room", "21:30|Dining Room"]
+        assert target_slots(db) == {WATCH_DATE: {"21:15|Dining Room": 1, "21:30|Dining Room": 2}}
 
 
 class TestOpenings:
     @responses.activate
     def test_first_poll_is_a_baseline_then_new_slots_are_openings(self, db):
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
         responses.add(responses.POST, FIND_URL, json=load("find_sold_out.json"))
         watch.run_tick(db, NOW)
         assert not db.docs("watchEvents")
@@ -137,17 +145,38 @@ class TestOpenings:
         events = sorted(db.docs("watchEvents").values(), key=lambda e: e["slotKey"])
         assert [e["slotKey"] for e in events] == ["21:15|Dining Room", "21:30|Dining Room"]
         # In shadow mode the event still records who would have booked it.
-        assert events[0]["assignedJobId"] == "job-1"
+        assert events[0]["assignedJobIds"] == ["job-1"]
         assert events[0]["bookingEnabled"] is False
 
     @responses.activate
-    def test_slot_reopening_after_a_sell_out_is_an_opening(self, db):
-        responses.add(responses.GET, CALENDAR_URL, json=load("calendar.json"))
+    def test_extra_table_at_a_shown_time_is_an_opening(self, db):
+        """A cancellation at a time that still had a table left only shows up as a higher quantity."""
+        responses.add(responses.POST, FIND_URL, json=find_with_quantity("21:30:00", 1))
         watch.run_tick(db, NOW)
-        responses.replace(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
-        responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
+        responses.replace(responses.POST, FIND_URL, json=find_with_quantity("21:30:00", 2))
         stats = watch.run_tick(db, NOW + dt.timedelta(minutes=1))
-        assert stats["openings"] == 2
+        assert stats["openings"] == 1
+        (event,) = db.docs("watchEvents").values()
+        assert (event["slotKey"], event["quantity"]) == ("21:30|Dining Room", 2)
+
+    @responses.activate
+    def test_slot_that_vanishes_and_returns_is_an_opening_again(self, db):
+        """The stored snapshot must drop vanished slots, or their return would be missed."""
+        responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
+        watch.run_tick(db, NOW)
+        responses.replace(responses.POST, FIND_URL, json=load("find_sold_out.json"))
+        watch.run_tick(db, NOW + dt.timedelta(minutes=1))
+        assert target_slots(db) == {WATCH_DATE: {}}
+        responses.replace(responses.POST, FIND_URL, json=load("find_available.json"))
+        assert watch.run_tick(db, NOW + dt.timedelta(minutes=2))["openings"] == 2
+
+    @responses.activate
+    def test_snapshot_from_before_quantities_is_a_baseline(self, db):
+        """The first tick after deploying must not log every open slot as an opening."""
+        db.collection("watchTargets").document("443_2").set(
+            {"slots": {WATCH_DATE: ["21:15|Dining Room"]}, "backoffUntil": None})
+        responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
+        assert watch.run_tick(db, NOW)["openings"] == 0
 
 
 class TestBookingModes:
@@ -155,7 +184,6 @@ class TestBookingModes:
     def test_shadow_mode_never_books(self, db, monkeypatch):
         attempts = []
         monkeypatch.setattr(watch, "attempt_booking", lambda *a: attempts.append(a))
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
         responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
         stats = watch.run_tick(db, NOW)
         assert stats["assignments"] == 1
@@ -168,7 +196,6 @@ class TestBookingModes:
         monkeypatch.setenv("WATCH_BOOKING_ENABLED", "true")
         monkeypatch.setattr(watch, "attempt_booking",
                             lambda _db, job_id, key, _now: attempts.append((job_id, key)) or "booked")
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
         responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
         stats = watch.run_tick(db, NOW)
         assert attempts == [("job-1", "21:15|Dining Room")]
@@ -177,7 +204,6 @@ class TestBookingModes:
     @responses.activate
     def test_out_of_range_slots_are_not_assigned(self, db):
         add_watch(db, "job-1", rangeStart="17:00", rangeEnd="19:00")
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
         responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
         assert watch.run_tick(db, NOW)["assignments"] == 0
 
@@ -186,57 +212,60 @@ class TestFailures:
     @responses.activate
     def test_rate_limited_target_backs_off_without_failing_others(self, db):
         add_watch(db, "job-2", venueId="53342")
-        responses.add(responses.GET, CALENDAR_URL, status=429, headers={"Retry-After": "120"},
-                      match=only_venue("443"))
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({}), match=only_venue("53342"))
+        responses.add(responses.POST, FIND_URL, status=429, headers={"Retry-After": "120"}, match=only_venue(443))
+        responses.add(responses.POST, FIND_URL, json=load("find_sold_out.json"), match=only_venue(53342))
         stats = watch.run_tick(db, NOW)
         assert stats["rate_limited"] == 1
-        assert stats["calendar_calls"] == 2
-        backoff = db.docs("watchTargets")["443_2"]["backoffUntil"]
-        assert backoff >= NOW + dt.timedelta(seconds=120)
+        assert stats["find_calls"] == 2
+        assert db.docs("watchTargets")["443_2"]["backoffUntil"] >= NOW + dt.timedelta(seconds=120)
         assert db.docs("watchTargets")["53342_2"]["backoffUntil"] is None
 
         # While backed off, the target costs no requests at all.
         responses.calls.reset()  # pylint: disable=no-member
         stats = watch.run_tick(db, NOW + dt.timedelta(minutes=1))
         assert stats["skipped_backoff"] == 1
-        assert all("venue_id=443" not in c.request.url for c in responses.calls)
+        assert all(b'"venue_id": 443' not in (c.request.body or b"") for c in responses.calls)
 
     @responses.activate
     def test_long_retry_after_does_not_sleep_inside_the_tick(self, db, monkeypatch):
         """A Retry-After past the tick's timeout must back off, not sleep until the tick is killed."""
         slept = []
         monkeypatch.setattr("api.resy_client.http_client.time.sleep", slept.append)
-        responses.add(responses.GET, CALENDAR_URL, status=429, headers={"Retry-After": "300"})
+        responses.add(responses.POST, FIND_URL, status=429, headers={"Retry-After": "300"})
         watch.run_tick(db, NOW)
-        assert len(calls_to(CALENDAR_URL)) == 1
+        assert len(calls_to(FIND_URL)) == 1
         assert not slept
 
-    def test_transient_500s_are_retried_within_the_tick(self, db):
-        with responses.RequestsMock(registry=registries.OrderedRegistry) as mock:
-            mock.add(responses.GET, CALENDAR_URL, status=500)
-            mock.add(responses.GET, CALENDAR_URL, status=500)
-            mock.add(responses.GET, CALENDAR_URL, json=calendar_with({}))
-            stats = watch.run_tick(db, NOW)
-        assert stats["errors"] == 0
-        assert "443_2" in db.docs("watchTargets")
+    @responses.activate
+    def test_bot_block_500_backs_off_instead_of_hammering(self, db):
+        """
+        Once Resy's bot protection trips it answers 500 for an hour or more. Retrying, or
+        calling again next minute, only keeps it tripped: one call, then stay away.
+        """
+        responses.add(responses.POST, FIND_URL, status=500)
+        stats = watch.run_tick(db, NOW)
+        assert stats["blocked"] == 1
+        assert len(calls_to(FIND_URL)) == 1
+        backoff = db.docs("watchTargets")["443_2"]["backoffUntil"]
+        assert backoff == NOW + dt.timedelta(seconds=watch.WATCH_TARGET_BLOCK_BACKOFF_SECONDS)
+
+        for minute in range(1, 10):
+            assert watch.run_tick(db, NOW + dt.timedelta(minutes=minute))["skipped_backoff"] == 1
+        assert len(calls_to(FIND_URL)) == 1
 
     @responses.activate
     def test_connection_reset_on_one_target_leaves_others_polled(self, db):
         add_watch(db, "job-2", venueId="53342")
-        responses.add(responses.GET, CALENDAR_URL, body=requests.exceptions.ConnectionError("reset"),
-                      match=only_venue("443"))
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({}), match=only_venue("53342"))
+        responses.add(responses.POST, FIND_URL, body=requests.exceptions.ConnectionError("reset"),
+                      match=only_venue(443))
+        responses.add(responses.POST, FIND_URL, json=load("find_sold_out.json"), match=only_venue(53342))
         stats = watch.run_tick(db, NOW)
         assert stats["errors"] == 1
         assert "53342_2" in db.docs("watchTargets")
-        # The reset was retried before giving up on that target.
-        assert sum("venue_id=443" in c.request.url for c in responses.calls) == 3
 
     @responses.activate
     def test_schema_drift_is_an_error_not_a_silent_empty_poll(self, db):
         """If Resy changes the find shape, we must hear about it rather than see 'no slots' forever."""
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
         responses.add(responses.POST, FIND_URL, json={"results": {"hotels": []}})
         stats = watch.run_tick(db, NOW)
         assert stats["errors"] == 1
@@ -368,23 +397,23 @@ class TestPollAccount:
     def test_signs_in_once_and_reuses_the_session(self, db, monkeypatch):
         monkeypatch.setattr(watch, "_poll_token", None)
         responses.add(responses.POST, AUTH_URL, json=auth_body())
-        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({}))
+        responses.add(responses.POST, FIND_URL, json=load("find_sold_out.json"))
         watch.run_tick(db, NOW)
         watch.run_tick(db, NOW + dt.timedelta(minutes=1))
         assert len(calls_to(AUTH_URL)) == 1
-        assert all(c.request.headers["X-Resy-Auth-Token"] == POLL_TOKEN for c in calls_to(CALENDAR_URL))
+        assert all(c.request.headers["X-Resy-Auth-Token"] == POLL_TOKEN for c in calls_to(FIND_URL))
 
     @responses.activate
     def test_rejected_session_signs_in_again_next_tick(self, db):
-        responses.add(responses.GET, CALENDAR_URL, status=419, json={"message": "Unauthorized"})
+        responses.add(responses.POST, FIND_URL, status=419, json={"message": "Unauthorized"})
         stats = watch.run_tick(db, NOW)
         assert stats["auth_errors"] == 1
         assert watch._poll_token is None  # pylint: disable=protected-access
 
-        responses.replace(responses.GET, CALENDAR_URL, json=calendar_with({}))
+        responses.replace(responses.POST, FIND_URL, json=load("find_sold_out.json"))
         responses.add(responses.POST, AUTH_URL, json=auth_body("fresh-token"))
         watch.run_tick(db, NOW + dt.timedelta(minutes=1))
-        assert calls_to(CALENDAR_URL)[-1].request.headers["X-Resy-Auth-Token"] == "fresh-token"
+        assert calls_to(FIND_URL)[-1].request.headers["X-Resy-Auth-Token"] == "fresh-token"
 
     @responses.activate
     def test_failed_sign_in_is_not_retried_every_minute(self, db, monkeypatch):
@@ -396,7 +425,7 @@ class TestPollAccount:
         with pytest.raises(RuntimeError, match="paused"):
             watch.run_tick(db, NOW + dt.timedelta(minutes=1))
         assert len(calls_to(AUTH_URL)) == 1
-        assert not calls_to(CALENDAR_URL)
+        assert not calls_to(FIND_URL)
 
     def test_missing_credentials_fail_loudly(self, db, monkeypatch):
         """Without the poll account, never fall back to signed-out or someone else's token."""

@@ -97,8 +97,12 @@ class ResyHttpClient:
     Does not perform retries or Pydantic parsing; callers do that.
     """
 
-    def __init__(self, session: Session, max_retry_delay: float | None = None):
+    def __init__(self, session: Session, max_retry_delay: float | None = None,
+                 max_attempts: int = MAX_RETRY_ATTEMPTS):
         self.session = session
+        # Attempts per request, including the first. Snipes keep the default; the watch
+        # poller uses 1, because retrying into a bot block only extends the block.
+        self.max_attempts = max_attempts
         # Longest wait a retry may take. None means no cap (snipes wait out Retry-After);
         # the watch poller sets one so a long Retry-After fails fast and backs the target off
         # instead of sleeping past the tick's timeout.
@@ -247,7 +251,7 @@ class ResyHttpClient:
                 )
             except (ResyTransientError, RateLimitError, requests.exceptions.ConnectionError) as exc:
                 attempt += 1
-                if not retryable or attempt >= MAX_RETRY_ATTEMPTS:
+                if not retryable or attempt >= self.max_attempts:
                     raise
                 delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
                 if isinstance(exc, RateLimitError) and exc.retry_after is not None:
@@ -259,7 +263,7 @@ class ResyHttpClient:
                     method,
                     endpoint,
                     attempt,
-                    MAX_RETRY_ATTEMPTS,
+                    self.max_attempts,
                     delay,
                     exc,
                 )

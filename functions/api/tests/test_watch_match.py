@@ -7,16 +7,17 @@ import json
 import pathlib
 
 from api.resy_client.models import Slot
-from api.watch_match import assign_slots, in_range, is_release, new_slot_keys, slot_key
+from api.watch_match import assign_slots, in_range, is_release, new_openings, slot_key, slot_quantities
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "resy"
 
 
-def make_slot(hhmm: str, seating: str = "Dining Room", day: str = "2026-09-26") -> Slot:
+def make_slot(hhmm: str, seating: str = "Dining Room", day: str = "2026-09-26", quantity: int = 1) -> Slot:
     start = dt.datetime.fromisoformat(f"{day} {hhmm}:00")
     return Slot(
         config={"id": 1, "type": seating, "token": f"tok-{hhmm}-{seating}"},
         date={"start": start, "end": start + dt.timedelta(hours=2)},
+        quantity=quantity,
     )
 
 
@@ -44,19 +45,40 @@ class TestSlotKey:
         assert slot_key(make_slot("19:00", "Bar")) != slot_key(make_slot("19:00", "Dining Room"))
 
 
-class TestNewSlotKeys:
+class TestNewOpenings:
     def test_first_poll_of_a_date_is_a_baseline(self):
         """Slots already open when we start watching are not reported as openings."""
-        assert not new_slot_keys(None, ["19:00|Dining Room"])
+        assert not new_openings(None, {"19:00|Dining Room": 1})
+
+    def test_old_list_snapshot_is_a_baseline(self):
+        """Snapshots written before quantities were tracked must not read as a burst of openings."""
+        assert not new_openings(["19:00|Dining Room"], {"19:00|Dining Room": 2, "21:00|Bar": 1})
 
     def test_slot_on_a_previously_sold_out_date_is_an_opening(self):
-        assert new_slot_keys([], ["19:00|Dining Room"]) == ["19:00|Dining Room"]
+        assert new_openings({}, {"19:00|Dining Room": 1}) == ["19:00|Dining Room"]
 
     def test_only_new_keys_are_reported(self):
-        assert new_slot_keys(["19:00|Dining Room"], ["19:00|Dining Room", "21:00|Bar"]) == ["21:00|Bar"]
+        assert new_openings({"19:00|Dining Room": 1}, {"19:00|Dining Room": 1, "21:00|Bar": 1}) == ["21:00|Bar"]
 
-    def test_removed_slots_are_not_openings(self):
-        assert not new_slot_keys(["19:00|Dining Room"], [])
+    def test_more_tables_at_a_shown_time_is_an_opening(self):
+        """A cancellation at a time that still had a table left only shows up as a higher quantity."""
+        assert new_openings({"19:00|Dining Room": 1}, {"19:00|Dining Room": 2}) == ["19:00|Dining Room"]
+
+    def test_fewer_tables_or_removed_slots_are_not_openings(self):
+        assert not new_openings({"19:00|Dining Room": 2}, {"19:00|Dining Room": 1})
+        assert not new_openings({"19:00|Dining Room": 1}, {})
+
+
+class TestSlotQuantities:
+    def test_quantities_from_real_payload(self):
+        body = json.loads((FIXTURES / "find_available.json").read_text())
+        slots = [Slot(**s) for s in body["results"]["venues"][0]["slots"]]
+        assert slot_quantities(slots) == {"21:15|Dining Room": 1, "21:30|Dining Room": 2}
+
+    def test_missing_quantity_counts_as_one(self):
+        slot = make_slot("19:00")
+        slot.model_extra.pop("quantity")
+        assert slot_quantities([slot]) == {"19:00|Dining Room": 1}
 
 
 class TestInRange:
@@ -92,6 +114,13 @@ class TestAssignSlots:
         result = assign_slots([older, narrow], [make_slot("19:00"), make_slot("20:00")])
         assert slot_key(result["older"]) == "19:00|Dining Room"
         assert "narrow" not in result
+
+    def test_slot_with_two_tables_serves_two_watches(self):
+        a = make_watch("a", "17:00", "21:00", created_minute=1)
+        b = make_watch("b", "17:00", "21:00", created_minute=2)
+        c = make_watch("c", "17:00", "21:00", created_minute=3)
+        result = assign_slots([a, b, c], [make_slot("19:00", quantity=2)])
+        assert sorted(result) == ["a", "b"]
 
     def test_seating_type_filter(self):
         bar_only = make_watch("bar", "17:00", "21:00", seating="Bar")

@@ -22,6 +22,7 @@ WATCH_MAX_TARGETS = 25              # active (venueId, partySize) pairs across a
 WATCH_MAX_PER_USER = 5              # active watches per user
 WATCH_POLL_WORKERS = 8              # targets polled in parallel per tick
 WATCH_TARGET_BACKOFF_SECONDS = 300  # skip a target this long after a 429
+WATCH_TARGET_BLOCK_BACKOFF_SECONDS = 600  # and this long after a 500, which is how Resy's bot block answers
 WATCH_RELEASE_WINDOW_MINUTES = 5    # openings this close to a venue's drop time count as a release
 WATCH_MAX_BOOKING_FAILURES = 3      # non-transient failures before a watch ends
 WATCH_CLAIM_STALE_SECONDS = 120     # a claim older than this is treated as abandoned

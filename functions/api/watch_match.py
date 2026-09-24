@@ -15,18 +15,36 @@ def slot_key(slot: Slot) -> str:
     return f"{slot.date.start.strftime('%H:%M')}|{slot.config.type}"
 
 
-def new_slot_keys(previous: Optional[List[str]], current: Iterable[str]) -> List[str]:
+def slot_quantity(slot: Slot) -> int:
+    """How many identical tables this slot stands for (Resy's `quantity`, default 1)."""
+    try:
+        return max(int((slot.model_extra or {}).get("quantity") or 1), 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def slot_quantities(slots: Iterable[Slot]) -> Dict[str, int]:
+    """Snapshot of a date: {slot key: number of tables}."""
+    counts: Dict[str, int] = {}
+    for slot in slots:
+        key = slot_key(slot)
+        counts[key] = counts.get(key, 0) + slot_quantity(slot)
+    return counts
+
+
+def new_openings(previous, current: Dict[str, int]) -> List[str]:
     """
-    Keys present now that were not present last poll.
+    Slot keys that gained tables since the last poll: a new key, or more tables at a
+    key already shown (someone cancelled at a time that still had a table left).
 
     A date seen for the first time (previous is None) is a baseline, not a burst of
-    openings, so it reports nothing. A date previously seen with no slots ([]) reports
+    openings, so it reports nothing. So is a snapshot in the old list format, written
+    before quantities were tracked. A date previously seen with no slots ({}) reports
     every current slot, because each of those did open since the last poll.
     """
-    if previous is None:
+    if previous is None or isinstance(previous, list):
         return []
-    seen = set(previous)
-    return sorted(k for k in set(current) if k not in seen)
+    return sorted(k for k, n in current.items() if n > int(previous.get(k, 0)))
 
 
 def _minutes(hhmm: str) -> int:
@@ -56,21 +74,21 @@ def _arrival_order(watch: dict):
 def assign_slots(watches: List[dict], slots: List[Slot]) -> Dict[str, Slot]:
     """
     First come, first served: the oldest watch takes the earliest slot in its range
-    that no older watch took. Returns {jobId: slot}. Watches left without a slot are
-    simply absent.
+    that older watches have not used up (a slot with quantity N serves N watches).
+    Returns {jobId: slot}. Watches left without a slot are simply absent.
 
     This is greedy, not a maximum matching, on purpose: a maximum matching can serve
     more watches in a burst but would sometimes hand an older watch's slot to a newer one.
     """
     ordered_slots = sorted(slots, key=lambda s: s.date.start)
-    taken: set = set()
+    remaining = slot_quantities(slots)  # a slot with quantity 2 can serve two watches
     assignments: Dict[str, Slot] = {}
     for watch in sorted(watches, key=_arrival_order):
         for slot in ordered_slots:
             key = slot_key(slot)
-            if key in taken or not matches_watch(slot, watch):
+            if remaining.get(key, 0) <= 0 or not matches_watch(slot, watch):
                 continue
-            taken.add(key)
+            remaining[key] -= 1
             assignments[watch["jobId"]] = slot
             break
     return assignments

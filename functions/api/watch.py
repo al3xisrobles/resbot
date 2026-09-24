@@ -4,8 +4,8 @@ Cancellation watch tick.
 One shared poller serves every watch. Each tick:
   1. queues the next tick for exactly 60 seconds after its own scheduled time,
   2. loads pending watches and groups them into targets (venueId, partySize),
-  3. polls /4/venue/calendar once per target, and /4/find for watched dates that
-     are available, signed in as resbot's own poll account (never a user's),
+  3. calls /4/find once per watched date of each target, signed in as resbot's own
+     poll account (never a user's),
   4. diffs slots against the last snapshot and logs each opening to watchEvents,
   5. assigns slots to watches first come, first served, and books them when
      booking is enabled (otherwise the assignment is only logged: shadow mode).
@@ -42,15 +42,16 @@ from .constants import (
     WATCH_QUIET_TIMEZONE,
     WATCH_RELEASE_WINDOW_MINUTES,
     WATCH_TARGET_BACKOFF_SECONDS,
+    WATCH_TARGET_BLOCK_BACKOFF_SECONDS,
     WATCH_TICK_SECOND,
     WATCH_TICK_TIMEOUT_SECONDS,
 )
 from .resy_client.api_access import ResyApiAccess, build_resy_client
-from .resy_client.errors import RateLimitError, ResyAuthError
-from .resy_client.models import AuthRequestBody, CalendarRequestParams, FindRequestBody, ResyConfig
+from .resy_client.errors import RateLimitError, ResyAuthError, ResyTransientError
+from .resy_client.models import AuthRequestBody, FindRequestBody, ResyConfig
 from .watch_booking import BOOKED, attempt_booking, booking_enabled
 from .watch_limits import load_active_watches, target_id
-from .watch_match import assign_slots, is_release, new_slot_keys, slot_key
+from .watch_match import assign_slots, is_release, new_openings, slot_key, slot_quantities
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -188,15 +189,15 @@ def process_tick(scheduled_for: dt.datetime, started: dt.datetime, db=None) -> O
 
     logger.info(
         "[watchtick] scheduled=%s start_lag_s=%.2f first_poll_second=%s duration_s=%.2f "
-        "watches=%d targets=%d calendar_calls=%d find_calls=%d openings=%d assignments=%d "
-        "bookings=%d rate_limited=%d errors=%d skipped_backoff=%d",
+        "watches=%d targets=%d find_calls=%d openings=%d assignments=%d "
+        "bookings=%d rate_limited=%d blocked=%d errors=%d skipped_backoff=%d",
         scheduled_for.isoformat(),
         (started - scheduled_for).total_seconds(),
         stats.get("first_poll_second"),
         (dt.datetime.now(dt.timezone.utc) - started).total_seconds(),
-        stats["watches"], stats["targets"], stats["calendar_calls"], stats["find_calls"],
+        stats["watches"], stats["targets"], stats["find_calls"],
         stats["openings"], stats["assignments"], stats["bookings"], stats["rate_limited"],
-        stats["errors"], stats["skipped_backoff"],
+        stats["blocked"], stats["errors"], stats["skipped_backoff"],
     )
     return stats
 
@@ -247,6 +248,7 @@ def build_poll_client() -> ResyApiAccess:
         logger.info("[build_poll_client] Signed in poll account")
     access = build_resy_client(ResyConfig(api_key=api_key, token=_poll_token))
     access.client.max_retry_delay = POLL_MAX_RETRY_DELAY_SECONDS
+    access.client.max_attempts = 1  # retrying into a bot block only extends it; the next tick is a minute away
     return access
 
 
@@ -287,8 +289,8 @@ def group_by_target(watches: List[dict]) -> Dict[str, List[dict]]:
 
 def run_tick(db, now: dt.datetime, client: Optional[ResyApiAccess] = None) -> dict:
     stats = {
-        "watches": 0, "targets": 0, "calendar_calls": 0, "find_calls": 0, "openings": 0,
-        "assignments": 0, "bookings": 0, "rate_limited": 0, "errors": 0, "skipped_backoff": 0,
+        "watches": 0, "targets": 0, "find_calls": 0, "openings": 0, "assignments": 0,
+        "bookings": 0, "rate_limited": 0, "blocked": 0, "errors": 0, "skipped_backoff": 0,
         "auth_errors": 0, "first_poll_second": None,
     }
     watches = expire_watches(db, load_active_watches(db), now)
@@ -318,9 +320,14 @@ def run_tick(db, now: dt.datetime, client: Optional[ResyApiAccess] = None) -> di
 
 
 def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now: dt.datetime) -> dict:
-    """Poll one target, record openings, and book assignments. Never raises."""
-    stats = {"calendar_calls": 0, "find_calls": 0, "openings": 0, "assignments": 0,
-             "bookings": 0, "rate_limited": 0, "errors": 0, "skipped_backoff": 0, "auth_errors": 0}
+    """
+    Poll one target, record openings, and book assignments. Never raises.
+
+    Calls /4/find once per watched date. /4/find answers "sold out" too (no slots), and
+    it kept working while Resy's bot protection answered /4/venue/calendar with 500s.
+    """
+    stats = {"find_calls": 0, "openings": 0, "assignments": 0, "bookings": 0, "rate_limited": 0,
+             "blocked": 0, "errors": 0, "skipped_backoff": 0, "auth_errors": 0}
     target_ref = db.collection("watchTargets").document(target)
     snap = target_ref.get()
     state = snap.to_dict() if snap.exists else {}
@@ -333,24 +340,12 @@ def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now
     venue_id = watches[0]["venueId"]
     party_size = int(watches[0]["partySize"])
     dates = sorted({w["date"] for w in watches})
-    previous_slots: Dict[str, List[str]] = state.get("slots") or {}
+    previous_slots: Dict[str, dict] = state.get("slots") or {}
 
     try:
-        stats["calendar_calls"] += 1
-        calendar = client.get_calendar(CalendarRequestParams(
-            venue_id=str(venue_id), num_seats=party_size, start_date=dates[0], end_date=dates[-1],
-        ))
-        statuses = {
-            entry.date: (entry.inventory.reservation if entry.inventory else None)
-            for entry in calendar.scheduled if entry.date in dates
-        }
-
-        current_slots: Dict[str, List[str]] = {}
+        current_slots: Dict[str, Dict[str, int]] = {}
         openings: List[dict] = []
         for day in dates:
-            if statuses.get(day) != "available":
-                current_slots[day] = []
-                continue
             stats["find_calls"] += 1
             day_watches = [w for w in watches if w["date"] == day]
             current_slots[day], day_openings = _poll_date(
@@ -362,10 +357,11 @@ def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now
         if openings:
             _record_openings(db, target, watches[0], openings, now)
 
-        update = {"calendar": statuses, "slots": current_slots, "backoffUntil": None}
-        if update["calendar"] != state.get("calendar") or current_slots != previous_slots \
-                or state.get("backoffUntil") is not None:
-            target_ref.set({**update, "lastChangedAt": now}, merge=True)
+        if current_slots != previous_slots or state.get("backoffUntil") is not None:
+            # merge=[fields] replaces each listed field whole. merge=True would deep-merge the
+            # slots map and keep keys that have since vanished, hiding their return.
+            target_ref.set({"slots": current_slots, "backoffUntil": None, "lastChangedAt": now},
+                           merge=["slots", "backoffUntil", "lastChangedAt"])
     except ResyAuthError as e:
         # The poll session expired or was revoked; sign in again on the next tick.
         stats["errors"] = 1
@@ -375,8 +371,15 @@ def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now
     except RateLimitError as e:
         stats["rate_limited"] = 1
         wait = max(WATCH_TARGET_BACKOFF_SECONDS, int(e.retry_after or 0))
-        target_ref.set({"backoffUntil": now + dt.timedelta(seconds=wait)}, merge=True)
+        _back_off(target_ref, now, wait)
         logger.warning("[poll_target] %s rate limited; backing off %ss", target, wait)
+    except ResyTransientError as e:
+        # Resy's bot protection answers with 500s for an hour or more once it trips.
+        # Calling into it every minute only keeps it tripped, so stay away for a while.
+        stats["blocked"] = 1
+        stats["errors"] = 1
+        _back_off(target_ref, now, WATCH_TARGET_BLOCK_BACKOFF_SECONDS)
+        logger.warning("[poll_target] %s got %s; backing off %ss", target, e, WATCH_TARGET_BLOCK_BACKOFF_SECONDS)
     except Exception as e:  # pylint: disable=broad-exception-caught
         # One target's failure must never stop the others.
         stats["errors"] = 1
@@ -385,19 +388,26 @@ def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now
     return stats
 
 
+def _back_off(target_ref, now: dt.datetime, seconds: int) -> None:
+    target_ref.set({"backoffUntil": now + dt.timedelta(seconds=seconds)}, merge=True)
+
+
 def _poll_date(db, client: ResyApiAccess, venue_id, party_size: int, day: str, watches: List[dict],
-               previous: Optional[List[str]], now: dt.datetime, stats: dict) -> tuple[List[str], List[dict]]:
-    """Find slots for one available date, assign them, and book or log the assignments."""
+               previous, now: dt.datetime, stats: dict) -> tuple[Dict[str, int], List[dict]]:
+    """Find slots for one date, assign them, and book or log the assignments."""
     venue = client.find_venue_result(FindRequestBody(venue_id=int(venue_id), party_size=party_size, day=day))
     slots = venue.slots if venue else []
-    keys = sorted({slot_key(s) for s in slots})
+    quantities = slot_quantities(slots)
     assignments = assign_slots(watches, slots)
-    assigned_by_key = {slot_key(s): job_id for job_id, s in assignments.items()}
+    assigned_by_key: Dict[str, List[str]] = {}
+    for job_id, slot in assignments.items():
+        assigned_by_key.setdefault(slot_key(slot), []).append(job_id)
     stats["assignments"] += len(assignments)
 
     openings = [
-        {"date": day, "slotKey": key, "assignedJobId": assigned_by_key.get(key)}
-        for key in new_slot_keys(previous, keys)
+        {"date": day, "slotKey": key, "quantity": quantities[key],
+         "assignedJobIds": assigned_by_key.get(key, [])}
+        for key in new_openings(previous, quantities)
     ]
 
     if booking_enabled():
@@ -406,7 +416,7 @@ def _poll_date(db, client: ResyApiAccess, venue_id, party_size: int, day: str, w
                 stats["bookings"] += 1
     elif assignments:
         logger.info("[poll_target] Shadow mode: would book %s", assigned_by_key)
-    return keys, openings
+    return quantities, openings
 
 
 def _record_openings(db, target: str, watch: dict, openings: List[dict], now: dt.datetime) -> None:

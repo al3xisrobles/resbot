@@ -37,14 +37,32 @@ class FakeDocRef:
     def get(self, **_kwargs) -> FakeSnapshot:
         return FakeSnapshot(self._store.get(self.id))
 
-    def set(self, data: dict, merge: bool = False) -> None:
-        current = self._store.get(self.id, {}) if merge else {}
-        self._store[self.id] = _apply({**current}, data)
+    def set(self, data: dict, merge=False) -> None:
+        """
+        Mirrors Firestore: merge=True deep-merges nested maps, merge=[fields] replaces the
+        listed top-level fields whole, and no merge replaces the document.
+        """
+        current = copy.deepcopy(self._store.get(self.id, {})) if merge else {}
+        if merge is True:
+            self._store[self.id] = _deep_merge(current, data)
+        elif merge:
+            self._store[self.id] = _apply(current, {k: v for k, v in data.items() if k in merge})
+        else:
+            self._store[self.id] = _apply(current, data)
 
     def update(self, data: dict) -> None:
         if self.id not in self._store:
             raise KeyError(f"No document {self.id}")
         self._store[self.id] = _apply(self._store[self.id], data)
+
+
+def _deep_merge(current: dict, data: dict) -> dict:
+    for key, value in data.items():
+        if isinstance(value, dict) and isinstance(current.get(key), dict):
+            current[key] = _deep_merge(current[key], value)
+        else:
+            _apply(current, {key: value})
+    return current
 
 
 def _apply(current: dict, data: dict) -> dict:
