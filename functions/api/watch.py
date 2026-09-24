@@ -5,7 +5,7 @@ One shared poller serves every watch. Each tick:
   1. queues the next tick for exactly 60 seconds after its own scheduled time,
   2. loads pending watches and groups them into targets (venueId, partySize),
   3. polls /4/venue/calendar once per target, and /4/find for watched dates that
-     are available, without any user token,
+     are available, signed in as resbot's own poll account (never a user's),
   4. diffs slots against the last snapshot and logs each opening to watchEvents,
   5. assigns slots to watches first come, first served, and books them when
      booking is enabled (otherwise the assignment is only logged: shadow mode).
@@ -46,8 +46,8 @@ from .constants import (
     WATCH_TICK_TIMEOUT_SECONDS,
 )
 from .resy_client.api_access import ResyApiAccess, build_resy_client
-from .resy_client.errors import RateLimitError
-from .resy_client.models import CalendarRequestParams, FindRequestBody, ResyConfig
+from .resy_client.errors import RateLimitError, ResyAuthError
+from .resy_client.models import AuthRequestBody, CalendarRequestParams, FindRequestBody, ResyConfig
 from .watch_booking import BOOKED, attempt_booking, booking_enabled
 from .watch_limits import load_active_watches, target_id
 from .watch_match import assign_slots, is_release, new_slot_keys, slot_key
@@ -60,9 +60,13 @@ logger.setLevel(logging.INFO)
 TICK_FUNCTION_NAME = "watchtick"
 # A Retry-After longer than this backs the target off instead of sleeping inside the tick.
 POLL_MAX_RETRY_DELAY_SECONDS = 2.0
+# After a failed poll-account sign-in, wait this long before trying again.
+POLL_LOGIN_BACKOFF_MINUTES = 10
 DEFAULT_RESY_API_KEY = "VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5"  # the public web app key, same as utils.py
 
 _db = None
+_poll_token: Optional[str] = None
+_login_blocked_until: Optional[dt.datetime] = None
 
 
 def get_db():
@@ -209,14 +213,47 @@ def _parse_scheduled_for(value: Optional[str], fallback: dt.datetime) -> dt.date
 
 def build_poll_client() -> ResyApiAccess:
     """
-    A Resy client with the public API key and no auth token. Never use load_credentials
-    here: without a userId it falls back to RESY_TOKEN, which may be the owner's account,
-    and polling on a real account is what gets accounts banned.
+    A Resy client signed in as resbot's own poll account (RESY_POLL_EMAIL/PASSWORD).
+
+    Resy refuses signed-out calendar calls from Cloud Run, and signed-out calls miss
+    inventory gated to accounts, so polls sign in. They sign in as an account resbot owns,
+    never a user's and never the owner's personal one: steady polling is what gets
+    accounts banned, and a ban must only ever cost us this account. Never use
+    load_credentials here; without a userId it falls back to RESY_TOKEN.
+
+    The session token is cached per instance and replaced only after Resy rejects it.
     """
+    global _poll_token, _login_blocked_until
     api_key = os.getenv("RESY_API_KEY", DEFAULT_RESY_API_KEY)
-    access = build_resy_client(ResyConfig(api_key=api_key, token=""))
+    if _poll_token is None:
+        now = dt.datetime.now(dt.timezone.utc)
+        if _login_blocked_until and now < _login_blocked_until:
+            raise RuntimeError(f"Poll account sign-in paused until {_login_blocked_until.isoformat()}")
+        email = os.getenv("RESY_POLL_EMAIL", "").strip()
+        password = os.getenv("RESY_POLL_PASSWORD", "").strip()
+        if not email or not password:
+            raise RuntimeError("RESY_POLL_EMAIL and RESY_POLL_PASSWORD must be set for the watch poller")
+        try:
+            auth = build_resy_client(ResyConfig(api_key=api_key, token="")).auth(
+                AuthRequestBody(email=email, password=password)
+            )
+        except Exception:
+            # A wrong password would otherwise be retried every minute, which is its own
+            # way to get an account locked.
+            _login_blocked_until = now + dt.timedelta(minutes=POLL_LOGIN_BACKOFF_MINUTES)
+            raise
+        _poll_token = auth.token
+        _login_blocked_until = None
+        logger.info("[build_poll_client] Signed in poll account")
+    access = build_resy_client(ResyConfig(api_key=api_key, token=_poll_token))
     access.client.max_retry_delay = POLL_MAX_RETRY_DELAY_SECONDS
     return access
+
+
+def forget_poll_session() -> None:
+    """Drop the cached poll token so the next tick signs in again."""
+    global _poll_token
+    _poll_token = None
 
 
 def watch_end_time(watch: dict) -> dt.datetime:
@@ -252,7 +289,7 @@ def run_tick(db, now: dt.datetime, client: Optional[ResyApiAccess] = None) -> di
     stats = {
         "watches": 0, "targets": 0, "calendar_calls": 0, "find_calls": 0, "openings": 0,
         "assignments": 0, "bookings": 0, "rate_limited": 0, "errors": 0, "skipped_backoff": 0,
-        "first_poll_second": None,
+        "auth_errors": 0, "first_poll_second": None,
     }
     watches = expire_watches(db, load_active_watches(db), now)
     targets = group_by_target(watches)
@@ -275,13 +312,15 @@ def run_tick(db, now: dt.datetime, client: Optional[ResyApiAccess] = None) -> di
     for result in results:
         for key, value in result.items():
             stats[key] += value
+    if stats["auth_errors"]:
+        forget_poll_session()
     return stats
 
 
 def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now: dt.datetime) -> dict:
     """Poll one target, record openings, and book assignments. Never raises."""
     stats = {"calendar_calls": 0, "find_calls": 0, "openings": 0, "assignments": 0,
-             "bookings": 0, "rate_limited": 0, "errors": 0, "skipped_backoff": 0}
+             "bookings": 0, "rate_limited": 0, "errors": 0, "skipped_backoff": 0, "auth_errors": 0}
     target_ref = db.collection("watchTargets").document(target)
     snap = target_ref.get()
     state = snap.to_dict() if snap.exists else {}
@@ -327,6 +366,12 @@ def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now
         if update["calendar"] != state.get("calendar") or current_slots != previous_slots \
                 or state.get("backoffUntil") is not None:
             target_ref.set({**update, "lastChangedAt": now}, merge=True)
+    except ResyAuthError as e:
+        # The poll session expired or was revoked; sign in again on the next tick.
+        stats["errors"] = 1
+        stats["auth_errors"] = 1
+        logger.warning("[poll_target] %s: poll session rejected: %s", target, e)
+        sentry_sdk.capture_exception(e)
     except RateLimitError as e:
         stats["rate_limited"] = 1
         wait = max(WATCH_TARGET_BACKOFF_SECONDS, int(e.retry_after or 0))

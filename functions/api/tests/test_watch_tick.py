@@ -41,9 +41,21 @@ def calendar_with(statuses: dict) -> dict:
     return body
 
 
+AUTH_URL = RESY_BASE_URL + ResyEndpoints.PASSWORD_AUTH.value
+POLL_TOKEN = "poll-account-token"
+
+
+def auth_body(token: str = POLL_TOKEN) -> dict:
+    return {"token": token, "payment_methods": []}
+
+
 @pytest.fixture(autouse=True)
 def _quiet_env(monkeypatch):
     monkeypatch.delenv("WATCH_BOOKING_ENABLED", raising=False)
+    monkeypatch.setenv("RESY_POLL_EMAIL", "poller@example.com")
+    monkeypatch.setenv("RESY_POLL_PASSWORD", "poller-password")
+    monkeypatch.setattr(watch, "_poll_token", POLL_TOKEN)  # most tests start signed in
+    monkeypatch.setattr(watch, "_login_blocked_until", None)
     monkeypatch.setattr("api.resy_client.http_client.time.sleep", lambda _s: None)
 
 
@@ -64,7 +76,7 @@ def only_venue(venue_id: str):
 
 
 EMPTY_STATS = {k: 0 for k in ("watches", "targets", "calendar_calls", "find_calls", "openings", "assignments",
-                              "bookings", "rate_limited", "errors", "skipped_backoff")}
+                              "bookings", "rate_limited", "errors", "skipped_backoff", "auth_errors")}
 
 
 def calls_to(url: str):
@@ -81,16 +93,19 @@ class TestPolling:
         assert len(calls_to(CALENDAR_URL)) == 1
 
     @responses.activate
-    def test_polls_never_carry_a_user_token(self, db, monkeypatch):
-        """Polling on a real account is what gets accounts banned; even RESY_TOKEN must not leak in."""
+    def test_polls_use_only_the_poll_account(self, db, monkeypatch):
+        """
+        Steady polling is what gets accounts banned, so it must only ever run on resbot's
+        own account: never a watcher's, and never the owner's RESY_TOKEN.
+        """
         monkeypatch.setenv("RESY_TOKEN", "owner-token")
         responses.add(responses.GET, CALENDAR_URL, json=calendar_with({WATCH_DATE: "available"}))
         responses.add(responses.POST, FIND_URL, json=load("find_available.json"))
         watch.run_tick(db, NOW)
         assert responses.calls
         for call in responses.calls:
-            assert call.request.headers["X-Resy-Auth-Token"] == ""
-            assert call.request.headers["X-Resy-Universal-Auth"] == ""
+            assert call.request.headers["X-Resy-Auth-Token"] == POLL_TOKEN
+            assert call.request.headers["X-Resy-Universal-Auth"] == POLL_TOKEN
 
     @responses.activate
     def test_sold_out_dates_cost_no_find_call(self, db):
@@ -346,3 +361,46 @@ class TestEnqueue:
         request = type("Req", (), {"json": sent[0]})()
         assert fn_util._on_call_valid_body(request)  # pylint: disable=protected-access
         assert watch._parse_scheduled_for(sent[0]["data"]["scheduledFor"], NOW) == NOW  # pylint: disable=protected-access
+
+
+class TestPollAccount:
+    @responses.activate
+    def test_signs_in_once_and_reuses_the_session(self, db, monkeypatch):
+        monkeypatch.setattr(watch, "_poll_token", None)
+        responses.add(responses.POST, AUTH_URL, json=auth_body())
+        responses.add(responses.GET, CALENDAR_URL, json=calendar_with({}))
+        watch.run_tick(db, NOW)
+        watch.run_tick(db, NOW + dt.timedelta(minutes=1))
+        assert len(calls_to(AUTH_URL)) == 1
+        assert all(c.request.headers["X-Resy-Auth-Token"] == POLL_TOKEN for c in calls_to(CALENDAR_URL))
+
+    @responses.activate
+    def test_rejected_session_signs_in_again_next_tick(self, db):
+        responses.add(responses.GET, CALENDAR_URL, status=419, json={"message": "Unauthorized"})
+        stats = watch.run_tick(db, NOW)
+        assert stats["auth_errors"] == 1
+        assert watch._poll_token is None  # pylint: disable=protected-access
+
+        responses.replace(responses.GET, CALENDAR_URL, json=calendar_with({}))
+        responses.add(responses.POST, AUTH_URL, json=auth_body("fresh-token"))
+        watch.run_tick(db, NOW + dt.timedelta(minutes=1))
+        assert calls_to(CALENDAR_URL)[-1].request.headers["X-Resy-Auth-Token"] == "fresh-token"
+
+    @responses.activate
+    def test_failed_sign_in_is_not_retried_every_minute(self, db, monkeypatch):
+        """A wrong password retried every minute is its own way to get the account locked."""
+        monkeypatch.setattr(watch, "_poll_token", None)
+        responses.add(responses.POST, AUTH_URL, status=419, json={"message": "Unauthorized"})
+        with pytest.raises(Exception):
+            watch.run_tick(db, NOW)
+        with pytest.raises(RuntimeError, match="paused"):
+            watch.run_tick(db, NOW + dt.timedelta(minutes=1))
+        assert len(calls_to(AUTH_URL)) == 1
+        assert not calls_to(CALENDAR_URL)
+
+    def test_missing_credentials_fail_loudly(self, db, monkeypatch):
+        """Without the poll account, never fall back to signed-out or someone else's token."""
+        monkeypatch.setattr(watch, "_poll_token", None)
+        monkeypatch.delenv("RESY_POLL_PASSWORD")
+        with pytest.raises(RuntimeError, match="RESY_POLL_EMAIL"):
+            watch.run_tick(db, NOW)
