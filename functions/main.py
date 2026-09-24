@@ -34,6 +34,8 @@ set_global_options(secrets=[
     "SENTRY_DSN",
     "RESY_DEBUG_EMAIL",
     "RESY_DEBUG_PASSWORD",
+    "RESY_POLL_EMAIL",
+    "RESY_POLL_PASSWORD",
     "RESEND_API_KEY",
     "RESEND_FROM_ADDRESS",
 ])

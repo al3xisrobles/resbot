@@ -94,6 +94,8 @@ During implementation we compared the same calendar signed in and signed out, at
 
 The consequence: this observer sees only inventory that any signed-out visitor can book. Openings that only some accounts can see are missed. The alternative is to poll with a dedicated resbot Resy account, which sees more and risks only that account, never a user's. Deciding that is left to after the observer week, when `watchEvents` will show whether signed-out polling catches enough.
 
+Update after the first production run: the decision came sooner. Three minutes after the tick started, Resy began answering every signed-out `/4/venue/calendar` call from Cloud Run with a 500. The same call from a home connection returned 200, and a signed-in call from Cloud Run returned 200. So polls now sign in as a dedicated resbot Resy account (`RESY_POLL_EMAIL` and `RESY_POLL_PASSWORD` in Secret Manager). It is never a user's account and never the owner's personal one, so a ban costs only that account. The session is cached per instance and replaced only when Resy rejects it, and a failed sign-in waits 10 minutes before trying again, so a bad password is not retried every minute. This replaces the "no user token" requirement: polls still never use a watcher's token, and booking still uses only the watcher's own account.
+
 ### Cancellation or release
 
 The watch books either one, since a new slot on a watched date is what the user wants. The distinction only matters for the hit-rate data, so each `watchEvents` entry records whether it happened within a few minutes of the venue's known drop time, using `venues/{venueId}.dropTimeDiscovery` that discovery mode already writes. Openings outside that window count as cancellations.
