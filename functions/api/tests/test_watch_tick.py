@@ -79,6 +79,10 @@ def calls_to(url: str):
     return [c for c in responses.calls if c.request.url.startswith(url)]
 
 
+def poller_state(db: FakeDb) -> dict:
+    return db.docs(watch.POLLER_STATE_COLLECTION)[watch.POLLER_STATE_DOC]
+
+
 def target_slots(db: FakeDb, target: str = "443_2") -> dict:
     return db.docs("watchTargets")[target]["slots"]
 
@@ -239,19 +243,59 @@ class TestFailures:
     @responses.activate
     def test_bot_block_500_backs_off_instead_of_hammering(self, db):
         """
-        Once Resy's bot protection trips it answers 500 for an hour or more. Retrying, or
-        calling again next minute, only keeps it tripped: one call, then stay away.
+        Once Resy's bot protection trips it answers 500 for hours. Retrying, or calling
+        again every minute, only keeps it tripped: one call, then probe further apart.
         """
         responses.add(responses.POST, FIND_URL, status=500)
         stats = watch.run_tick(db, NOW)
         assert stats["blocked"] == 1
         assert len(calls_to(FIND_URL)) == 1
-        backoff = db.docs("watchTargets")["443_2"]["backoffUntil"]
-        assert backoff == NOW + dt.timedelta(seconds=watch.WATCH_TARGET_BLOCK_BACKOFF_SECONDS)
+        block = poller_state(db)
+        assert block["blockedSince"] == NOW
+        assert block["ceiling"] == 20
 
-        for minute in range(1, 10):
-            assert watch.run_tick(db, NOW + dt.timedelta(minutes=minute))["skipped_backoff"] == 1
+        # Probes at +1, +3 (1+2), +7 (1+2+4) minutes; nothing in between.
+        probed = [m for m in range(1, 10) if watch.run_tick(db, NOW + dt.timedelta(minutes=m))["find_calls"]]
+        assert probed == [1, 3, 7]
+        assert len(calls_to(FIND_URL)) == 4
+
+    @responses.activate
+    def test_block_on_one_restaurant_backs_off_all_of_them(self, db):
+        """The block is on the poller, not a venue: one probe answers for every target."""
+        add_watch(db, "job-2", venueId="53342")
+        responses.add(responses.POST, FIND_URL, status=500)
+        watch.run_tick(db, NOW)
+        responses.calls.reset()  # pylint: disable=no-member
+
+        stats = watch.run_tick(db, NOW + dt.timedelta(minutes=1))
         assert len(calls_to(FIND_URL)) == 1
+        assert stats["skipped_backoff"] == 1
+        assert watch.run_tick(db, NOW + dt.timedelta(minutes=2))["skipped_backoff"] == 2
+
+    @responses.activate
+    def test_probe_that_gets_through_resumes_every_target(self, db):
+        add_watch(db, "job-2", venueId="53342")
+        responses.add(responses.POST, FIND_URL, status=500)
+        watch.run_tick(db, NOW)
+        responses.replace(responses.POST, FIND_URL, json=load("find_sold_out.json"))
+        stats = watch.run_tick(db, NOW + dt.timedelta(minutes=1))
+        assert stats["find_calls"] == 2
+        block = poller_state(db)
+        assert block["blockedSince"] is None
+        assert block["hi"] == 20
+        assert block["history"][-1]["outcome"] == "pass"
+
+    @responses.activate
+    def test_rate_limited_probe_says_nothing_about_the_block(self, db):
+        """A 429 is not a pass or a fail for the ceiling; probe again next tick."""
+        responses.add(responses.POST, FIND_URL, status=500)
+        watch.run_tick(db, NOW)
+        responses.replace(responses.POST, FIND_URL, status=429, headers={"Retry-After": "1"})
+        watch.run_tick(db, NOW + dt.timedelta(minutes=1))
+        block = poller_state(db)
+        assert block["blockedSince"] == NOW
+        assert block["probeDelay"] == 1
+        assert not block["history"]
 
     @responses.activate
     def test_connection_reset_on_one_target_leaves_others_polled(self, db):
@@ -433,3 +477,137 @@ class TestPollAccount:
         monkeypatch.delenv("RESY_POLL_PASSWORD")
         with pytest.raises(RuntimeError, match="RESY_POLL_EMAIL"):
             watch.run_tick(db, NOW)
+
+
+# --- Bot-block backoff search --------------------------------------------------
+# Probes back away exponentially rather than keep Resy's block topped up, a ceiling that
+# never clears a block moves up instead of probing it forever, and once some ceiling
+# clears a block the search narrows towards the shortest one that does.
+
+# 10:00am Eastern on 2026-10-05, well clear of quiet hours on both sides
+BLOCK_T0 = dt.datetime(2026, 10, 5, 14, 0, 0, tzinfo=dt.timezone.utc)
+
+
+def minutes(n: float) -> dt.timedelta:
+    return dt.timedelta(minutes=n)
+
+
+def fail_probes_until(state: dict, end: dt.datetime) -> tuple[dict, list]:
+    """Fail every probe the state asks for until `end`. Returns the state and the waits used."""
+    waits = []
+    while state["nextProbeAt"] <= end:
+        state, _ = watch.on_probe_failed(state, state["nextProbeAt"])
+        waits.append(state["probeDelay"])
+    return state, waits
+
+
+class TestBlockProbeSpacing:
+    def test_first_block_doubles_the_wait_up_to_twenty_minutes(self):
+        state = watch.on_block(watch.initial_block_state(), BLOCK_T0)
+        assert state["nextProbeAt"] == BLOCK_T0 + minutes(1)
+        state, waits = fail_probes_until(state, BLOCK_T0 + minutes(120))
+        assert waits[:7] == [2, 4, 8, 16, 20, 20, 20]
+
+    def test_probe_due_a_moment_after_the_tick_still_goes_on_that_tick(self):
+        """Ticks land within a fraction of a second of :50; a probe must not slip a whole minute."""
+        state = watch.on_block(watch.initial_block_state(), BLOCK_T0.replace(microsecond=200_000))
+        assert watch.should_probe(state, BLOCK_T0 + minutes(1))
+        assert not watch.should_probe(state, BLOCK_T0 + minutes(0.4))
+
+    def test_no_block_means_every_tick_polls(self):
+        assert watch.should_probe(watch.initial_block_state(), BLOCK_T0)
+
+
+class TestBlockMovingCeiling:
+    def test_ceiling_that_never_clears_fails_after_three_hours_and_moves_up(self):
+        state = watch.on_block(watch.initial_block_state(), BLOCK_T0)
+        state, _ = fail_probes_until(state, BLOCK_T0 + minutes(179))
+        assert state["ceiling"] == 20
+        state, waits = fail_probes_until(state, BLOCK_T0 + minutes(200))
+        assert state["ceiling"] == 30
+        assert state["lo"] == 20
+        assert waits[-1] == 30
+        assert state["history"][-1]["outcome"] == watch.EPISODE_FAIL
+
+    def test_ceiling_climbs_to_an_hour_and_stops_there(self):
+        state = watch.on_block(watch.initial_block_state(), BLOCK_T0)
+        state, _ = fail_probes_until(state, BLOCK_T0 + dt.timedelta(hours=24))
+        assert state["ceiling"] == 60
+        assert [h["ceiling"] for h in state["history"]][:5] == [20, 30, 40, 50, 60]
+
+    def test_block_that_clears_records_a_pass_and_polling_resumes(self):
+        state = watch.on_block(watch.initial_block_state(), BLOCK_T0)
+        state, _ = fail_probes_until(state, BLOCK_T0 + minutes(40))
+        state, notes = watch.on_probe_passed(state, BLOCK_T0 + minutes(51))
+        assert not watch.is_blocked(state)
+        assert state["hi"] == 20
+        assert state["history"][-1]["outcome"] == watch.EPISODE_PASS
+        assert "block cleared after 51 min under ceiling 20" in notes
+
+
+class TestBlockSearch:
+    def test_bracketed_search_tries_the_midpoint(self):
+        assert watch.choose_block_ceiling(30, 40) == 35
+
+    def test_search_without_a_failed_ceiling_halves_towards_zero(self):
+        assert watch.choose_block_ceiling(None, 20) == 10
+
+    def test_search_stops_within_five_minutes_and_keeps_the_passing_ceiling(self):
+        assert watch.choose_block_ceiling(32, 35) == 35
+        assert watch.block_search_done({"lo": 32, "hi": 35})
+
+    def test_whole_search_converges_on_the_shortest_ceiling_that_clears(self):
+        """
+        Simulates Resy clearing a block only under ceilings of 33 minutes or more. Every
+        episode must end with lo below 33 and hi at or above it, and they must close in.
+        """
+        threshold = 33
+        state = watch.initial_block_state()
+        start = BLOCK_T0
+        for _ in range(12):
+            state = watch.on_block(state, start)
+            end = start + dt.timedelta(hours=20)
+            while watch.is_blocked(state):
+                at = state["nextProbeAt"]
+                assert at < end, "an episode never ended"
+                if state["ceiling"] >= threshold and at - state["ceilingSince"] >= minutes(60):
+                    state, _ = watch.on_probe_passed(state, at)
+                else:
+                    state, _ = watch.on_probe_failed(state, at)
+            start = start + dt.timedelta(days=1)
+            if watch.block_search_done(state):
+                break
+        assert watch.block_search_done(state)
+        assert state["lo"] < threshold <= state["hi"]
+
+    def test_failure_at_a_ceiling_that_passed_before_drops_the_pass(self):
+        """With noisy results the bracket can invert; it must not lock in a ceiling that failed."""
+        state = watch.on_block({**watch.initial_block_state(), "lo": 30, "hi": 35}, BLOCK_T0)
+        assert state["ceiling"] == 35
+        notes = []
+        while state["nextProbeAt"] <= BLOCK_T0 + minutes(240):
+            state, new_notes = watch.on_probe_failed(state, state["nextProbeAt"])
+            notes += new_notes
+        assert state["hi"] is None
+        assert state["lo"] == 35
+        assert state["ceiling"] == 45
+        assert "ceiling 35 passed before but failed now; dropping it" in notes
+
+
+class TestBlockQuietHours:
+    def test_block_open_across_quiet_hours_is_censored(self):
+        # Blocked at 11pm Eastern; the 7:03am tick finds the episode still open.
+        start = dt.datetime(2026, 10, 6, 3, 0, tzinfo=dt.timezone.utc)
+        state = watch.on_block(watch.initial_block_state(), start)
+        morning = dt.datetime(2026, 10, 6, 11, 3, 50, tzinfo=dt.timezone.utc)
+        state, cut = watch.censor_block_cut_by_quiet_hours(state, morning)
+        assert cut
+        assert not watch.is_blocked(state)
+        assert state["lo"] is None and state["hi"] is None
+        assert state["history"][-1]["outcome"] == watch.EPISODE_CENSORED
+
+    def test_block_within_one_day_is_not_censored(self):
+        state = watch.on_block(watch.initial_block_state(), BLOCK_T0)
+        state, cut = watch.censor_block_cut_by_quiet_hours(state, BLOCK_T0 + dt.timedelta(hours=8))
+        assert not cut
+        assert watch.is_blocked(state)
