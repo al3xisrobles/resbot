@@ -22,7 +22,7 @@ WATCH_MAX_TARGETS = 25              # active (venueId, partySize) pairs across a
 WATCH_MAX_PER_USER = 5              # active watches per user
 WATCH_POLL_WORKERS = 8              # targets polled in parallel per tick
 WATCH_TARGET_BACKOFF_SECONDS = 300  # skip a target this long after a 429
-# Backoff from Resy's bot block (answered as 500s). See watch_backoff.py for the algorithm.
+# Backoff from Resy's bot block (answered as 500s). See the bot-block backoff section of watch.py.
 WATCH_BLOCK_START_CEILING_MINUTES = 20     # first ceiling on the wait between probes
 WATCH_BLOCK_CEILING_STEP_MINUTES = 10      # how far a failed ceiling moves up
 WATCH_BLOCK_MAX_CEILING_MINUTES = 60       # never wait longer than this between probes
