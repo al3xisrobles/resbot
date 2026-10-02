@@ -58,6 +58,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /watchPoller/{docId} {
+      allow read, write: if false;
+    }
+
     match /searchJobs/{jobId} {
       // allow any signed-in user to read job progress
       allow read: if isSignedIn();

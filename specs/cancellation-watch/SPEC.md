@@ -72,9 +72,15 @@ Booking uses the current slots, not only the new ones, so a watch created on a d
 
 ### Update: find-only polling
 
-In production, Resy's bot protection started answering `/4/venue/calendar` with 500s about 15 minutes into steady once-a-minute polling, signed in or not, and kept doing so for an hour or more. `/4/find` kept answering throughout. The tick now skips the calendar and calls `/4/find` once per watched date; an empty slot list is how a sold-out date looks. The poller makes a single attempt per request, and a 500 backs the target off for 10 minutes, because retrying into a bot block only keeps it tripped.
+In production, Resy's bot protection started answering `/4/venue/calendar` with 500s about 15 minutes into steady once-a-minute polling, signed in or not, and kept doing so for an hour or more. `/4/find` kept answering throughout. The tick now skips the calendar and calls `/4/find` once per watched date; an empty slot list is how a sold-out date looks. The poller makes a single attempt per request, because retrying into a bot block only keeps it tripped. (The fixed 10-minute backoff after a 500 was later replaced; see the next section.)
 
 Snapshots now record table counts, `{date: {slot key: quantity}}`, because one slot can stand for several identical tables. A cancellation at a time that still had a table left shows up only as a higher quantity, so an increase counts as an opening, and a slot with quantity N can be assigned to N watches. Snapshots in the older list format are treated as a baseline, so the first tick after this change logs nothing spurious. The snapshot fields are written with `merge=[fields]` rather than `merge=True`, which would deep-merge the map and keep vanished slots.
+
+### Update: searching for the block's recovery time
+
+Logs from Sep 23 to Oct 2 showed polling live only 4.1% of the time (386 of 9,478 tick minutes). Every morning after quiet hours polling worked, for a median of 10 minutes, and then a block usually held until 2am. A fixed probe every 11 minutes never cleared one; only the 5-hour overnight pause did. Our probes may themselves be what keeps the block in place, so the fixed 10-minute backoff is replaced by a search for the shortest probe spacing that lets a block clear (`functions/api/watch_backoff.py`).
+
+The block is on the poller, not a venue, so its state is one doc, `watchPoller/block`, and a single probe answers for every target. The first 500 opens an episode. Probes then go out 1, 2, 4, 8 and 16 minutes apart, and after that at the episode's ceiling, which starts at 20 minutes. A probe that gets through closes the episode as a pass for that ceiling. A ceiling that has run for 3 hours without a pass fails and moves up 10 minutes, to a maximum of 60. The highest ceiling that failed is `lo` and the lowest that passed is `hi`. Once a ceiling has passed, each new episode tries the midpoint of `lo` and `hi`, and the search stops when they are within 5 minutes; from then on, `hi` is used. Quiet hours cut an open episode short, and it counts as neither pass nor fail. If a ceiling that passed later fails, or one that failed later passes, the stale bound is dropped so the search never locks onto a ceiling the data contradicts. Each episode is logged to `history` on the state doc for analysis.
 
 ### Snapshot storage
 

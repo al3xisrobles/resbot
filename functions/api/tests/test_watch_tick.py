@@ -79,6 +79,10 @@ def calls_to(url: str):
     return [c for c in responses.calls if c.request.url.startswith(url)]
 
 
+def poller_state(db: FakeDb) -> dict:
+    return db.docs(watch.POLLER_STATE_COLLECTION)[watch.POLLER_STATE_DOC]
+
+
 def target_slots(db: FakeDb, target: str = "443_2") -> dict:
     return db.docs("watchTargets")[target]["slots"]
 
@@ -239,19 +243,59 @@ class TestFailures:
     @responses.activate
     def test_bot_block_500_backs_off_instead_of_hammering(self, db):
         """
-        Once Resy's bot protection trips it answers 500 for an hour or more. Retrying, or
-        calling again next minute, only keeps it tripped: one call, then stay away.
+        Once Resy's bot protection trips it answers 500 for hours. Retrying, or calling
+        again every minute, only keeps it tripped: one call, then probe further apart.
         """
         responses.add(responses.POST, FIND_URL, status=500)
         stats = watch.run_tick(db, NOW)
         assert stats["blocked"] == 1
         assert len(calls_to(FIND_URL)) == 1
-        backoff = db.docs("watchTargets")["443_2"]["backoffUntil"]
-        assert backoff == NOW + dt.timedelta(seconds=watch.WATCH_TARGET_BLOCK_BACKOFF_SECONDS)
+        block = poller_state(db)
+        assert block["blockedSince"] == NOW
+        assert block["ceiling"] == 20
 
-        for minute in range(1, 10):
-            assert watch.run_tick(db, NOW + dt.timedelta(minutes=minute))["skipped_backoff"] == 1
+        # Probes at +1, +3 (1+2), +7 (1+2+4) minutes; nothing in between.
+        probed = [m for m in range(1, 10) if watch.run_tick(db, NOW + dt.timedelta(minutes=m))["find_calls"]]
+        assert probed == [1, 3, 7]
+        assert len(calls_to(FIND_URL)) == 4
+
+    @responses.activate
+    def test_block_on_one_restaurant_backs_off_all_of_them(self, db):
+        """The block is on the poller, not a venue: one probe answers for every target."""
+        add_watch(db, "job-2", venueId="53342")
+        responses.add(responses.POST, FIND_URL, status=500)
+        watch.run_tick(db, NOW)
+        responses.calls.reset()  # pylint: disable=no-member
+
+        stats = watch.run_tick(db, NOW + dt.timedelta(minutes=1))
         assert len(calls_to(FIND_URL)) == 1
+        assert stats["skipped_backoff"] == 1
+        assert watch.run_tick(db, NOW + dt.timedelta(minutes=2))["skipped_backoff"] == 2
+
+    @responses.activate
+    def test_probe_that_gets_through_resumes_every_target(self, db):
+        add_watch(db, "job-2", venueId="53342")
+        responses.add(responses.POST, FIND_URL, status=500)
+        watch.run_tick(db, NOW)
+        responses.replace(responses.POST, FIND_URL, json=load("find_sold_out.json"))
+        stats = watch.run_tick(db, NOW + dt.timedelta(minutes=1))
+        assert stats["find_calls"] == 2
+        block = poller_state(db)
+        assert block["blockedSince"] is None
+        assert block["hi"] == 20
+        assert block["history"][-1]["outcome"] == "pass"
+
+    @responses.activate
+    def test_rate_limited_probe_says_nothing_about_the_block(self, db):
+        """A 429 is not a pass or a fail for the ceiling; probe again next tick."""
+        responses.add(responses.POST, FIND_URL, status=500)
+        watch.run_tick(db, NOW)
+        responses.replace(responses.POST, FIND_URL, status=429, headers={"Retry-After": "1"})
+        watch.run_tick(db, NOW + dt.timedelta(minutes=1))
+        block = poller_state(db)
+        assert block["blockedSince"] == NOW
+        assert block["probeDelay"] == 1
+        assert not block["history"]
 
     @responses.activate
     def test_connection_reset_on_one_target_leaves_others_polled(self, db):
