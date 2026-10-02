@@ -4,7 +4,7 @@ Cancellation watch tick.
 One shared poller serves every watch. Each tick:
   1. queues the next tick for exactly 60 seconds after its own scheduled time,
   2. loads pending watches and groups them into targets (venueId, partySize), and skips
-     the poll while Resy's bot block is being waited out (watch_backoff.py),
+     the poll while Resy's bot block is being waited out (see Bot-block backoff below),
   3. calls /4/find once per watched date of each target, signed in as resbot's own
      poll account (never a user's),
   4. diffs slots against the last snapshot and logs each opening to watchEvents,
@@ -36,6 +36,11 @@ from google.cloud import firestore as gc_firestore
 from sentry_sdk.crons import monitor
 
 from .constants import (
+    WATCH_BLOCK_CEILING_STEP_MINUTES,
+    WATCH_BLOCK_CEILING_TRIAL_HOURS,
+    WATCH_BLOCK_MAX_CEILING_MINUTES,
+    WATCH_BLOCK_SEARCH_PRECISION_MINUTES,
+    WATCH_BLOCK_START_CEILING_MINUTES,
     WATCH_MAX_TARGETS,
     WATCH_POLL_WORKERS,
     WATCH_QUIET_END_HOUR,
@@ -46,7 +51,6 @@ from .constants import (
     WATCH_TICK_SECOND,
     WATCH_TICK_TIMEOUT_SECONDS,
 )
-from . import watch_backoff
 from .resy_client.api_access import ResyApiAccess, build_resy_client
 from .resy_client.errors import RateLimitError, ResyAuthError, ResyTransientError
 from .resy_client.models import AuthRequestBody, FindRequestBody, ResyConfig
@@ -64,7 +68,7 @@ TICK_FUNCTION_NAME = "watchtick"
 POLL_MAX_RETRY_DELAY_SECONDS = 2.0
 # After a failed poll-account sign-in, wait this long before trying again.
 POLL_LOGIN_BACKOFF_MINUTES = 10
-# The poller's bot-block state (watch_backoff.py), one doc for every target.
+# The poller's bot-block state (see Bot-block backoff below), one doc for every target.
 POLLER_STATE_COLLECTION = "watchPoller"
 POLLER_STATE_DOC = "block"
 DEFAULT_RESY_API_KEY = "VbWk7s3L4KiK5fzlO7JD3Q5EYolJI7n5"  # the public web app key, same as utils.py
@@ -213,6 +217,175 @@ def _parse_scheduled_for(value: Optional[str], fallback: dt.datetime) -> dt.date
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.timezone.utc)
 
 
+# --- Bot-block backoff ---------------------------------------------------------
+#
+# Backoff from Resy's bot block, and the search for how long it takes to clear.
+#
+# Resy's bot protection answers 500 once it trips, and it blocks the poller as a whole,
+# not one restaurant. A block is an episode with one state, shared by every target:
+#
+#   1. The first 500 opens the episode. Probes go out 1, 2, 4, 8, 16... minutes apart,
+#      doubling until they reach the episode's ceiling, then repeat at the ceiling.
+#   2. A probe that gets through closes the episode as a pass for its ceiling, and polling
+#      goes back to every minute.
+#   3. A ceiling that has probed for WATCH_BLOCK_CEILING_TRIAL_HOURS without a pass fails.
+#      The ceiling then moves up and the episode carries on under the new one.
+#   4. Quiet hours cut an open episode short; it counts as neither pass nor fail.
+#
+# Ceilings move through `lo` (highest ceiling that failed) and `hi` (lowest that passed).
+# Until something passes, the ceiling climbs from 20 minutes in 10-minute steps up to 60.
+# Once there is a pass, each new episode tries the midpoint of lo and hi, and the search
+# stops when they are WATCH_BLOCK_SEARCH_PRECISION_MINUTES apart; from then on, hi is used.
+#
+# The functions below are pure: they take the state dict stored on watchPoller/block
+# and the time, and return the new state. run_tick loads and saves it.
+
+# Ticks start a fraction of a second either side of :50, so a probe due at 12:10:50.2
+# must still go out on the 12:10:50.1 tick rather than wait a whole extra minute.
+PROBE_SLACK = dt.timedelta(seconds=30)
+BLOCK_HISTORY_LIMIT = 200  # episodes kept on the state doc for analysis
+
+EPISODE_PASS = "pass"
+EPISODE_FAIL = "fail"
+EPISODE_CENSORED = "censored"
+
+
+def initial_block_state() -> dict:
+    return {"blockedSince": None, "lo": None, "hi": None, "history": []}
+
+
+def is_blocked(state: dict) -> bool:
+    return state.get("blockedSince") is not None
+
+
+def block_search_done(state: dict) -> bool:
+    lo, hi = state.get("lo"), state.get("hi")
+    return hi is not None and (hi - (lo or 0)) <= WATCH_BLOCK_SEARCH_PRECISION_MINUTES
+
+
+def choose_block_ceiling(lo: Optional[int], hi: Optional[int]) -> int:
+    """The ceiling the next episode, or the next trial within one, should use."""
+    if hi is None:
+        if lo is None:
+            return WATCH_BLOCK_START_CEILING_MINUTES
+        return min(lo + WATCH_BLOCK_CEILING_STEP_MINUTES, WATCH_BLOCK_MAX_CEILING_MINUTES)
+    low = lo or 0
+    if hi - low <= WATCH_BLOCK_SEARCH_PRECISION_MINUTES:
+        return hi
+    return (low + hi) // 2
+
+
+def should_probe(state: dict, now: dt.datetime) -> bool:
+    """While blocked, whether this tick sends a probe. Outside a block, every tick polls."""
+    if not is_blocked(state):
+        return True
+    return now + PROBE_SLACK >= state["nextProbeAt"]
+
+
+def on_block(state: dict, now: dt.datetime) -> dict:
+    """A poll got a 500 outside a block: open an episode."""
+    ceiling = choose_block_ceiling(state.get("lo"), state.get("hi"))
+    return {
+        **state,
+        "blockedSince": now,
+        "ceiling": ceiling,
+        "ceilingSince": now,
+        "probeDelay": 1,
+        "nextProbeAt": now + dt.timedelta(minutes=1),
+        "probes": 0,
+    }
+
+
+def on_probe_failed(state: dict, now: dt.datetime) -> tuple[dict, List[str]]:
+    """
+    A probe got another 500. Doubles the wait up to the ceiling, and fails the ceiling
+    once it has run for the trial period. Returns the new state and notes to log.
+    """
+    notes = []
+    state = {**state, "probes": state.get("probes", 0) + 1}
+    ceiling = state["ceiling"]
+    delay = min(state["probeDelay"] * 2, ceiling)
+
+    if now - state["ceilingSince"] >= dt.timedelta(hours=WATCH_BLOCK_CEILING_TRIAL_HOURS):
+        state = _record_episode(state, now, EPISODE_FAIL)
+        lo, hi = ceiling, state.get("hi")
+        if hi is not None and hi <= lo:
+            # The ceiling that once cleared a block did not clear this one. Results this
+            # noisy cannot bracket anything, so forget the pass and climb from here.
+            notes.append(f"ceiling {hi} passed before but failed now; dropping it")
+            hi = None
+        next_ceiling = choose_block_ceiling(lo, hi)
+        if next_ceiling == ceiling:
+            notes.append(f"ceiling {ceiling} failed and it is already the maximum")
+        else:
+            notes.append(f"ceiling {ceiling} failed after {WATCH_BLOCK_CEILING_TRIAL_HOURS}h; trying {next_ceiling}")
+        state.update({"lo": lo, "hi": hi, "ceiling": next_ceiling, "ceilingSince": now})
+        delay = next_ceiling
+
+    state.update({"probeDelay": delay, "nextProbeAt": now + dt.timedelta(minutes=delay)})
+    return state, notes
+
+
+def on_probe_passed(state: dict, now: dt.datetime) -> tuple[dict, List[str]]:
+    """A probe got through: close the episode as a pass for its ceiling."""
+    ceiling = state["ceiling"]
+    minutes = int((now - state["blockedSince"]).total_seconds() // 60)
+    state = _record_episode(state, now, EPISODE_PASS)
+    lo, hi = state.get("lo"), ceiling
+    notes = [f"block cleared after {minutes} min under ceiling {ceiling}"]
+    if lo is not None and lo >= hi:
+        notes.append(f"ceiling {lo} failed before but {hi} passed now; dropping the fail")
+        lo = None
+    state.update({"lo": lo, "hi": hi})
+    if block_search_done(state):
+        notes.append(f"search done: ceiling {hi}")
+    return _cleared_block(state), notes
+
+
+def censor_block_cut_by_quiet_hours(state: dict, now: dt.datetime) -> tuple[dict, bool]:
+    """
+    Quiet hours stop all probes, so an episode open across them has no outcome. Drop it
+    and start the day polling normally. Returns the new state and whether it was cut.
+    """
+    if not is_blocked(state) or not _quiet_hours_started_between(state["blockedSince"], now):
+        return state, False
+    return _cleared_block(_record_episode(state, now, EPISODE_CENSORED)), True
+
+
+def _quiet_hours_started_between(start: dt.datetime, end: dt.datetime) -> bool:
+    tz = ZoneInfo(WATCH_QUIET_TIMEZONE)
+    local_end = end.astimezone(tz)
+    last_start = local_end.replace(hour=WATCH_QUIET_START_HOUR, minute=0, second=0, microsecond=0)
+    if last_start > local_end:
+        last_start -= dt.timedelta(days=1)
+    return start < last_start <= end
+
+
+def _record_episode(state: dict, now: dt.datetime, outcome: str) -> dict:
+    entry = {
+        "ceiling": state["ceiling"],
+        "outcome": outcome,
+        "trialStart": state["ceilingSince"],
+        "blockedSince": state["blockedSince"],
+        "end": now,
+        "probes": state.get("probes", 0),
+    }
+    history = (list(state.get("history") or []) + [entry])[-BLOCK_HISTORY_LIMIT:]
+    return {**state, "history": history}
+
+
+def _cleared_block(state: dict) -> dict:
+    return {
+        **state,
+        "blockedSince": None,
+        "ceiling": None,
+        "ceilingSince": None,
+        "probeDelay": None,
+        "nextProbeAt": None,
+        "probes": 0,
+    }
+
+
 # --- The tick -------------------------------------------------------------------
 
 
@@ -309,13 +482,13 @@ def run_tick(db, now: dt.datetime, client: Optional[ResyApiAccess] = None) -> di
 
     state_ref = db.collection(POLLER_STATE_COLLECTION).document(POLLER_STATE_DOC)
     snap = state_ref.get()
-    loaded = snap.to_dict() if snap.exists else watch_backoff.initial_state()
-    state, cut = watch_backoff.censor_if_cut_by_quiet_hours(loaded, now)
+    loaded = snap.to_dict() if snap.exists else initial_block_state()
+    state, cut = censor_block_cut_by_quiet_hours(loaded, now)
     if cut:
-        logger.warning("[watch_backoff] Block open since %s was cut by quiet hours; polling resumes",
+        logger.warning("[block_backoff] Block open since %s was cut by quiet hours; polling resumes",
                        loaded["blockedSince"].isoformat())
     try:
-        if not watch_backoff.should_probe(state, now):
+        if not should_probe(state, now):
             stats["skipped_backoff"] = len(targets)
             return stats
         client = client or build_poll_client()
@@ -344,21 +517,21 @@ def _poll_targets(db, client: ResyApiAccess, items: List[tuple], state: dict,
         with ThreadPoolExecutor(max_workers=WATCH_POLL_WORKERS) as pool:
             return list(pool.map(lambda item: poll_target(db, client, item[0], item[1], now), batch))
 
-    if not watch_backoff.is_blocked(state):
+    if not is_blocked(state):
         results = poll_all(items)
         if any(r["blocked"] for r in results):
-            state = watch_backoff.on_block(state, now)
-            logger.warning("[watch_backoff] Blocked; probing from 1 min up to a %d min ceiling", state["ceiling"])
+            state = on_block(state, now)
+            logger.warning("[block_backoff] Blocked; probing from 1 min up to a %d min ceiling", state["ceiling"])
         return results, state
 
     probe = poll_target(db, client, items[0][0], items[0][1], now)
     if probe["blocked"]:
-        state, notes = watch_backoff.on_probe_failed(state, now)
+        state, notes = on_probe_failed(state, now)
         notes.append(f"probe failed; next in {state['probeDelay']} min")
         _log_backoff(notes)
         return [probe] + [_skipped() for _ in items[1:]], state
     if probe["find_calls"] and not probe["errors"] and not probe["rate_limited"]:
-        state, notes = watch_backoff.on_probe_passed(state, now)
+        state, notes = on_probe_passed(state, now)
         _log_backoff(notes)
         return [probe] + poll_all(items[1:]), state
     # The probe failed for some other reason (a 429, a dropped connection), which says
@@ -375,7 +548,7 @@ def _skipped() -> dict:
 
 def _log_backoff(notes: List[str]) -> None:
     for note in notes:
-        logger.warning("[watch_backoff] %s", note)
+        logger.warning("[block_backoff] %s", note)
 
 
 def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now: dt.datetime) -> dict:
@@ -434,7 +607,7 @@ def poll_target(db, client: ResyApiAccess, target: str, watches: List[dict], now
         logger.warning("[poll_target] %s rate limited; backing off %ss", target, wait)
     except ResyTransientError as e:
         # How Resy's bot protection answers once it trips. It blocks the poller as a whole,
-        # so run_tick backs every target off together (watch_backoff.py).
+        # so run_tick backs every target off together (see Bot-block backoff below).
         stats["blocked"] = 1
         stats["errors"] = 1
         logger.warning("[poll_target] %s got %s", target, e)
